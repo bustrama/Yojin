@@ -34,7 +34,7 @@ export interface PortfolioSnapshot {
   totalPnl: number;
   totalPnlPercent: number;
   timestamp: string;
-  platform: Platform;
+  platform: Platform | null;
 }
 
 // ---------------------------------------------------------------------------

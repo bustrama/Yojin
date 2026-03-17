@@ -9,23 +9,32 @@ import { pubsub } from '../pubsub.js';
 // In-memory store (replaced by JSONL persistence when available)
 // ---------------------------------------------------------------------------
 
-const alertStore: Alert[] = [
-  {
-    id: 'alert-001',
-    rule: { type: 'PRICE_MOVE', symbol: 'AAPL', threshold: 5, direction: 'UP' },
-    status: 'ACTIVE',
-    message: 'AAPL price move > 5%',
-    createdAt: new Date(Date.now() - 86_400_000).toISOString(),
-  },
-  {
-    id: 'alert-002',
-    rule: { type: 'CONCENTRATION_DRIFT', threshold: 0.6 },
-    status: 'TRIGGERED',
-    message: 'BTC concentration exceeded 60% threshold',
-    triggeredAt: new Date(Date.now() - 3_600_000).toISOString(),
-    createdAt: new Date(Date.now() - 172_800_000).toISOString(),
-  },
-];
+function createDefaultAlerts(): Alert[] {
+  return [
+    {
+      id: 'alert-001',
+      rule: { type: 'PRICE_MOVE', symbol: 'AAPL', threshold: 5, direction: 'UP' },
+      status: 'ACTIVE',
+      message: 'AAPL price move > 5%',
+      createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+    },
+    {
+      id: 'alert-002',
+      rule: { type: 'CONCENTRATION_DRIFT', threshold: 0.6 },
+      status: 'TRIGGERED',
+      message: 'BTC concentration exceeded 60% threshold',
+      triggeredAt: new Date(Date.now() - 3_600_000).toISOString(),
+      createdAt: new Date(Date.now() - 172_800_000).toISOString(),
+    },
+  ];
+}
+
+let alertStore: Alert[] = createDefaultAlerts();
+
+/** Reset alert store to defaults — used in tests to prevent order-dependence. */
+export function resetAlertStore(): void {
+  alertStore = createDefaultAlerts();
+}
 
 // ---------------------------------------------------------------------------
 // Query resolvers

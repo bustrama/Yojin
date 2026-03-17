@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { yoga } from '../../../src/api/graphql/server.js';
+import { resetAlertStore } from '../../../src/api/graphql/resolvers/alerts.js';
 
 /** Helper — execute a GraphQL query against the yoga instance. */
 async function executeQuery(query: string, variables?: Record<string, unknown>) {
@@ -16,6 +17,10 @@ async function executeQuery(query: string, variables?: Record<string, unknown>) 
 }
 
 describe('GraphQL resolvers', () => {
+  beforeEach(() => {
+    resetAlertStore();
+  });
+
   describe('Query.portfolio', () => {
     it('returns a portfolio snapshot with positions', async () => {
       const result = await executeQuery(`

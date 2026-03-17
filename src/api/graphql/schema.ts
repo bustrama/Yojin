@@ -69,7 +69,7 @@ export const typeDefs = /* GraphQL */ `
     totalPnl: Float!
     totalPnlPercent: Float!
     timestamp: String!
-    platform: Platform!
+    platform: Platform
   }
 
   # ---------------------------------------------------------------------------

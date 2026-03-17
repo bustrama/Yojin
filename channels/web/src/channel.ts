@@ -26,8 +26,25 @@ export function buildWebChannel(): ChannelPlugin {
   const app = new Hono();
   const messageHandlers: MessageHandler[] = [];
 
+  const RESPONSE_TIMEOUT_MS = 30_000;
+
   // Track pending SSE responses by thread ID
   const pendingResponses = new Map<string, (text: string) => void>();
+
+  /** Create a response promise with timeout to prevent hanging requests. */
+  function createResponsePromise(threadId: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingResponses.delete(threadId);
+        reject(new Error('Response timeout'));
+      }, RESPONSE_TIMEOUT_MS);
+
+      pendingResponses.set(threadId, (text: string) => {
+        clearTimeout(timer);
+        resolve(text);
+      });
+    });
+  }
 
   const messagingAdapter: ChannelMessagingAdapter = {
     async sendMessage(msg: OutgoingMessage): Promise<void> {
@@ -87,18 +104,18 @@ export function buildWebChannel(): ChannelPlugin {
           timestamp: new Date().toISOString(),
         };
 
-        // Create a promise that resolves when the agent responds
-        const responsePromise = new Promise<string>((resolve) => {
-          pendingResponses.set(threadId, resolve);
-        });
+        const responsePromise = createResponsePromise(threadId);
 
-        // Dispatch to agent
         for (const handler of messageHandlers) {
           await handler(incoming);
         }
 
-        const response = await responsePromise;
-        return c.json({ threadId, response });
+        try {
+          const response = await responsePromise;
+          return c.json({ threadId, response });
+        } catch {
+          return c.json({ error: 'Request timed out' }, 504);
+        }
       });
 
       // SSE streaming endpoint
@@ -119,24 +136,27 @@ export function buildWebChannel(): ChannelPlugin {
             timestamp: new Date().toISOString(),
           };
 
-          // Set up response capture
-          const responsePromise = new Promise<string>((resolve) => {
-            pendingResponses.set(threadId, resolve);
-          });
+          const responsePromise = createResponsePromise(threadId);
 
-          // Dispatch to agent
           for (const handler of messageHandlers) {
             await handler(incoming);
           }
 
-          const response = await responsePromise;
+          try {
+            const response = await responsePromise;
 
-          await stream.writeSSE({
-            event: 'message',
-            data: JSON.stringify({ threadId, response }),
-          });
+            await stream.writeSSE({
+              event: 'message',
+              data: JSON.stringify({ threadId, response }),
+            });
 
-          await stream.writeSSE({ event: 'done', data: '' });
+            await stream.writeSSE({ event: 'done', data: '' });
+          } catch {
+            await stream.writeSSE({
+              event: 'error',
+              data: JSON.stringify({ error: 'Request timed out' }),
+            });
+          }
         });
       });
 
@@ -148,7 +168,10 @@ export function buildWebChannel(): ChannelPlugin {
 
     async teardown(): Promise<void> {
       if (server) {
-        server.close();
+        await new Promise<void>((resolve, reject) => {
+          server!.close((err) => (err ? reject(err) : resolve()));
+        });
+        server = undefined;
       }
     },
   };

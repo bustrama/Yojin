@@ -53,10 +53,8 @@ const yoga = createYoga({
   schema,
   graphqlEndpoint: '/graphql',
   graphiql: process.env.NODE_ENV !== 'production',
-  cors: {
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
-    credentials: true,
-  },
+  // CORS handled by Hono middleware in the web channel — no duplicate headers
+  cors: false,
 });
 
 /**

@@ -71,7 +71,7 @@ function buildSnapshot(platform?: Platform): PortfolioSnapshot {
     totalPnl,
     totalPnlPercent: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
     timestamp: new Date().toISOString(),
-    platform: platform ?? 'INTERACTIVE_BROKERS',
+    platform: platform ?? null,
   };
 }
 
