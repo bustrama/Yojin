@@ -51,8 +51,15 @@ describe('JsonlSessionStore', () => {
   });
 
   it('returns undefined for unknown session id', async () => {
-    const result = await store.get('nonexistent');
+    const result = await store.get('00000000-0000-0000-0000-000000000000');
     expect(result).toBeUndefined();
+  });
+
+  it('rejects invalid session id format', async () => {
+    expect(await store.get('nonexistent')).toBeUndefined();
+    expect(await store.get('../config/secrets')).toBeUndefined();
+    await expect(store.append('../traversal', { role: 'user', content: '' })).rejects.toThrow('Invalid session id');
+    await expect(store.delete('../traversal')).rejects.toThrow('Invalid session id');
   });
 
   it('finds session by thread', async () => {
@@ -111,7 +118,7 @@ describe('JsonlSessionStore', () => {
 
   it('throws when appending to nonexistent session', async () => {
     const msg: AgentMessage = { role: 'user', content: 'Hello' };
-    await expect(store.append('nonexistent', msg)).rejects.toThrow('Session not found');
+    await expect(store.append('00000000-0000-0000-0000-000000000000', msg)).rejects.toThrow('Session not found');
   });
 
   it('lists session ids', async () => {

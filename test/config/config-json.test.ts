@@ -91,6 +91,6 @@ describe('Config schemas have sensible defaults', () => {
   it('GuardConfigSchema', () => {
     const config = GuardConfigSchema.parse({});
     expect(config).toBeDefined();
-    expect(config.posture).toBe('standard');
+    expect(config.posture).toBe('local');
   });
 });

@@ -107,7 +107,14 @@ export async function loadJsonConfig<T>(filePath: string, schema: z.ZodType<T>):
   try {
     raw = await readFile(filePath, 'utf-8');
   } catch {
-    return schema.parse({});
+    try {
+      return schema.parse({});
+    } catch (err) {
+      throw new Error(
+        `Failed to load config from ${filePath} (file missing and schema has required fields): ${(err as Error).message}`,
+        { cause: err },
+      );
+    }
   }
 
   try {
@@ -161,7 +168,7 @@ export const AIProviderConfigSchema = z.object({
 export type AIProviderConfig = z.infer<typeof AIProviderConfigSchema>;
 
 export const GuardConfigSchema = z.object({
-  posture: z.enum(['local', 'standard', 'unbounded']).default('standard'),
+  posture: z.enum(['local', 'standard', 'unbounded']).default('local'),
   rateLimit: z
     .object({
       callsPerMinute: z.number().default(60),

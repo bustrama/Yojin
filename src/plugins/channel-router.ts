@@ -21,6 +21,12 @@ export class ChannelRouter {
 
   unregister(channelId: string): void {
     this.channels.delete(channelId);
+
+    for (const [userId, preferred] of this.preferredChannel) {
+      if (preferred === channelId) {
+        this.preferredChannel.delete(userId);
+      }
+    }
   }
 
   async send(channelId: string, text: string, threadId?: string): Promise<void> {
@@ -44,12 +50,12 @@ export class ChannelRouter {
     const sent: string[] = [];
     const errors: BroadcastResult['errors'] = [];
 
-    for (const result of settled) {
+    for (let i = 0; i < settled.length; i++) {
+      const result = settled[i];
       if (result.status === 'fulfilled') {
         sent.push(result.value);
       } else {
-        const idx = settled.indexOf(result);
-        errors.push({ channelId: entries[idx][0], error: result.reason as Error });
+        errors.push({ channelId: entries[i][0], error: result.reason as Error });
       }
     }
 

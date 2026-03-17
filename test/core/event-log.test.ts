@@ -51,7 +51,7 @@ describe('EventLog', () => {
     await log.append({ type: 'event.one', data: {} });
     await log.append({ type: 'event.two', data: {} });
 
-    const recent = log.recent(10);
+    const recent = await log.recent(10);
     expect(recent).toHaveLength(2);
     expect(recent[0].type).toBe('event.one');
     expect(recent[1].type).toBe('event.two');
@@ -64,7 +64,7 @@ describe('EventLog', () => {
       await smallLog.append({ type: `event.${i}`, data: {} });
     }
 
-    const recent = smallLog.recent(10);
+    const recent = await smallLog.recent(10);
     expect(recent).toHaveLength(3);
     expect(recent[0].type).toBe('event.2');
     expect(recent[1].type).toBe('event.3');
@@ -76,7 +76,7 @@ describe('EventLog', () => {
     await log.append({ type: 'session.created', data: {} });
     await log.append({ type: 'tool.executed', data: { tool: 'b' } });
 
-    const results = log.query({ type: 'tool.executed' });
+    const results = await log.query({ type: 'tool.executed' });
     expect(results).toHaveLength(2);
     expect(results.every((e) => e.type === 'tool.executed')).toBe(true);
   });
@@ -85,18 +85,18 @@ describe('EventLog', () => {
     await log.append({ type: 'tool.executed', data: { tool: 'get_time' } });
     await log.append({ type: 'tool.executed', data: { tool: 'calculate' } });
 
-    const results = log.query({
+    const results = await log.query({
       predicate: (e) => (e.data as { tool: string }).tool === 'calculate',
     });
     expect(results).toHaveLength(1);
   });
 
   it('queries by time range', async () => {
-    const before = new Date('2026-03-17T10:00:00Z').toISOString();
+    const before = new Date(Date.now() - 1000).toISOString();
     await log.append({ type: 'event.a', data: {} });
-    const after = new Date('2026-03-17T23:59:59Z').toISOString();
+    const after = new Date(Date.now() + 1000).toISOString();
 
-    const results = log.query({ since: before, until: after });
+    const results = await log.query({ since: before, until: after });
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results.every((e) => e.type === 'event.a')).toBe(true);
   });
@@ -106,7 +106,7 @@ describe('EventLog', () => {
       await log.append({ type: `event.${i}`, data: {} });
     }
 
-    const last3 = log.recent(3);
+    const last3 = await log.recent(3);
     expect(last3).toHaveLength(3);
     expect(last3[0].type).toBe('event.7');
   });
@@ -127,7 +127,7 @@ describe('EventLog', () => {
     const warmedLog = new EventLog(testDir);
     await warmedLog.initialize();
 
-    const recent = warmedLog.recent(10);
+    const recent = await warmedLog.recent(10);
     expect(recent).toHaveLength(2);
     expect(recent[0].type).toBe('old.event');
   });

@@ -8,10 +8,11 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { Logger } from 'tslog';
 import { z } from 'zod';
 
-const logger = new Logger({ name: 'event-log' });
+import { createSubsystemLogger } from '../logging/logger.js';
+
+const logger = createSubsystemLogger('event-log');
 
 export interface EventEntry {
   id: string;
@@ -41,6 +42,9 @@ export class EventLog {
   private readonly bufferSize: number;
   private readonly dir: string;
   private readonly filePath: string;
+  private initialized = false;
+  private initPromise: Promise<void> | null = null;
+  private dirCreated = false;
 
   constructor(dir: string, options?: EventLogOptions) {
     this.dir = dir;
@@ -49,10 +53,19 @@ export class EventLog {
   }
 
   async initialize(): Promise<void> {
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = this.doInitialize();
+    await this.initPromise;
+  }
+
+  private async doInitialize(): Promise<void> {
     let content: string;
     try {
       content = await readFile(this.filePath, 'utf-8');
     } catch {
+      this.initialized = true;
       return; // File doesn't exist yet
     }
 
@@ -65,9 +78,15 @@ export class EventLog {
         logger.warn(`Skipping malformed event at line ${i}`);
       }
     }
+    this.initialized = true;
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) await this.initialize();
   }
 
   async append(input: { type: string; data?: Record<string, unknown> }): Promise<EventEntry> {
+    await this.ensureInitialized();
     const validated = EventEnvelopeSchema.parse(input);
 
     const entry: EventEntry = {
@@ -77,7 +96,10 @@ export class EventLog {
       data: validated.data,
     };
 
-    await mkdir(this.dir, { recursive: true });
+    if (!this.dirCreated) {
+      await mkdir(this.dir, { recursive: true });
+      this.dirCreated = true;
+    }
     await appendFile(this.filePath, JSON.stringify(entry) + '\n');
 
     if (this.buffer.length >= this.bufferSize) {
@@ -88,7 +110,8 @@ export class EventLog {
     return entry;
   }
 
-  query(filter: EventQueryFilter): EventEntry[] {
+  async query(filter: EventQueryFilter): Promise<EventEntry[]> {
+    await this.ensureInitialized();
     return this.buffer.filter((event) => {
       if (filter.type && event.type !== filter.type) return false;
       if (filter.since && event.timestamp < filter.since) return false;
@@ -98,7 +121,8 @@ export class EventLog {
     });
   }
 
-  recent(n: number): EventEntry[] {
+  async recent(n: number): Promise<EventEntry[]> {
+    await this.ensureInitialized();
     return this.buffer.slice(-n);
   }
 }

@@ -10,14 +10,17 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { Logger } from 'tslog';
-
 import type { SessionEntry, SessionMetadata, SessionStore } from './types.js';
 import type { AgentMessage } from '../core/types.js';
+import { createSubsystemLogger } from '../logging/logger.js';
 
-const logger = new Logger({ name: 'jsonl-store' });
+const logger = createSubsystemLogger('jsonl-store');
 
 export class JsonlSessionStore implements SessionStore {
+  private sequenceCounters = new Map<string, number>();
+  private sequenceInitPromises = new Map<string, Promise<void>>();
+  private threadIndex = new Map<string, string>();
+
   constructor(private readonly dir: string) {}
 
   async create(data: Omit<SessionMetadata, 'id' | 'createdAt'>): Promise<SessionMetadata> {
@@ -30,6 +33,12 @@ export class JsonlSessionStore implements SessionStore {
     };
 
     await appendFile(this.filePath(meta.id), JSON.stringify(meta) + '\n');
+    this.sequenceCounters.set(meta.id, 0);
+
+    if (meta.channelId && meta.threadId) {
+      this.threadIndex.set(`${meta.channelId}:${meta.threadId}`, meta.id);
+    }
+
     return meta;
   }
 
@@ -53,10 +62,19 @@ export class JsonlSessionStore implements SessionStore {
   }
 
   async getByThread(channelId: string, threadId: string): Promise<SessionMetadata | undefined> {
+    const key = `${channelId}:${threadId}`;
+    const cached = this.threadIndex.get(key);
+    if (cached) {
+      const meta = await this.get(cached);
+      if (meta) return meta;
+      this.threadIndex.delete(key);
+    }
+
     const ids = await this.list();
     for (const id of ids) {
       const meta = await this.get(id);
       if (meta && meta.channelId === channelId && meta.threadId === threadId) {
+        this.threadIndex.set(key, id);
         return meta;
       }
     }
@@ -66,17 +84,31 @@ export class JsonlSessionStore implements SessionStore {
   async append(sessionId: string, message: AgentMessage): Promise<SessionEntry> {
     const filePath = this.filePath(sessionId);
 
-    let content: string;
-    try {
-      content = await readFile(filePath, 'utf-8');
-    } catch {
-      throw new Error(`Session not found: ${sessionId}`);
+    if (!this.sequenceCounters.has(sessionId)) {
+      if (!this.sequenceInitPromises.has(sessionId)) {
+        const initPromise = (async () => {
+          let content: string;
+          try {
+            content = await readFile(filePath, 'utf-8');
+          } catch {
+            throw new Error(`Session not found: ${sessionId}`);
+          }
+          const lineCount = content.split('\n').filter(Boolean).length;
+          this.sequenceCounters.set(sessionId, lineCount - 1);
+        })();
+        this.sequenceInitPromises.set(sessionId, initPromise);
+      }
+      const pending = this.sequenceInitPromises.get(sessionId);
+      if (pending) await pending;
+      this.sequenceInitPromises.delete(sessionId);
     }
 
-    const lineCount = content.split('\n').filter(Boolean).length;
+    const sequence = this.sequenceCounters.get(sessionId) ?? 0;
+    this.sequenceCounters.set(sessionId, sequence + 1);
+
     const entry: SessionEntry = {
       sessionId,
-      sequence: lineCount - 1, // subtract metadata line
+      sequence,
       timestamp: new Date().toISOString(),
       message,
     };
@@ -119,9 +151,19 @@ export class JsonlSessionStore implements SessionStore {
 
   async delete(id: string): Promise<void> {
     await rm(this.filePath(id), { force: true });
+    this.sequenceCounters.delete(id);
+
+    for (const [key, sessionId] of this.threadIndex) {
+      if (sessionId === id) {
+        this.threadIndex.delete(key);
+      }
+    }
   }
 
   private filePath(id: string): string {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new Error(`Invalid session id: ${id}`);
+    }
     return join(this.dir, `${id}.jsonl`);
   }
 }
