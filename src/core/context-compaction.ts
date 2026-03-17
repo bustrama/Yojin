@@ -4,7 +4,7 @@
  */
 
 import type { AgentLoopProvider, AgentMessage, TextBlock } from './types.js';
-import { TokenBudget } from './token-budget.js';
+import type { TokenBudget } from './token-budget.js';
 
 export interface CompactionConfig {
   /** Number of recent user/assistant turn pairs to preserve verbatim (default 3). */
@@ -170,6 +170,7 @@ async function summarizeWithLlm(
   const response = await provider.completeWithTools({
     model,
     system: COMPACTION_SYSTEM_PROMPT,
+    maxTokens: 2048,
     messages: [
       {
         role: 'user',

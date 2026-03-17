@@ -84,14 +84,16 @@ export async function runAgentLoop(
       const result = await compactMessages(messages, provider, model, budget, {
         preserveRecentTurns: memory?.preserveRecentTurns,
       });
-      messages = result.messages;
-      compactions++;
-      emit(onEvent, {
-        type: 'compaction',
-        messagesBefore: result.messagesBefore,
-        messagesAfter: result.messagesAfter,
-        usedLlmSummary: result.usedLlmSummary,
-      });
+      if (result.messagesAfter < result.messagesBefore) {
+        messages = result.messages;
+        compactions++;
+        emit(onEvent, {
+          type: 'compaction',
+          messagesBefore: result.messagesBefore,
+          messagesAfter: result.messagesAfter,
+          usedLlmSummary: result.usedLlmSummary,
+        });
+      }
     }
 
     // ── Thought: ask the LLM ──────────────────────────────────────────
