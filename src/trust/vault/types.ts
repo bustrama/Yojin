@@ -1,5 +1,5 @@
 /**
- * Vault types and schemas.
+ * Encrypted vault types and schemas.
  */
 
 import { z } from 'zod';
