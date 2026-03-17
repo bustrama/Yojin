@@ -4,6 +4,7 @@
  */
 
 import { slackPlugin } from '../../channels/slack/index.js';
+import { webPlugin } from '../../channels/web/index.js';
 import { anthropicPlugin } from '../../providers/anthropic/index.js';
 import type { YojinConfig } from '../config/config.js';
 import { runAgentLoop } from '../core/agent-loop.js';
@@ -12,8 +13,6 @@ import type { AgentLoopProvider, AgentMessage } from '../core/types.js';
 import { getLogger } from '../logging/index.js';
 import { PluginRegistry } from '../plugins/registry.js';
 import type { IncomingMessage } from '../plugins/types.js';
-
-// Built-in plugin imports
 
 export class Gateway {
   private registry: PluginRegistry;
@@ -33,6 +32,7 @@ export class Gateway {
     this.log.info('Loading plugins…');
     this.registry.loadPlugin(anthropicPlugin);
     this.registry.loadPlugin(slackPlugin);
+    this.registry.loadPlugin(webPlugin);
     this.log.info('Plugins loaded');
   }
 
