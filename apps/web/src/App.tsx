@@ -5,14 +5,14 @@ import { ThemeProvider } from './lib/theme';
 import AppShell from './components/layout/app-shell';
 import Dashboard from './pages/dashboard';
 import Positions from './pages/positions';
-import Position from './pages/position';
-import Skills from './pages/alerts';
+import AppShell from './components/layout/app-shell';
+import Dashboard from './pages/Dashboard';
+import Positions from './pages/Positions';
+import Position from './pages/Position';
+import Skills from './pages/Alerts';
 import Chat from './pages/chat';
 import Profile from './pages/profile';
-import Settings from './pages/settings';
-
-function RedirectPositionSymbol() {
-  const { symbol } = useParams();
+import Settings from './pages/Settings';
   return <Navigate to={`/portfolio/${symbol}`} replace />;
 }
 
