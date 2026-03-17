@@ -1,5 +1,9 @@
 # Yojin
 
+[![CI](https://github.com/YojinHQ/Yojin/actions/workflows/ci.yml/badge.svg)](https://github.com/YojinHQ/Yojin/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
+
 A free, open-source AI agent that runs on your machine, connects to every platform and delivers personalized portfolio intelligence.
 
 ## What It Does
@@ -196,6 +200,14 @@ Core portfolio intelligence:
 5. Persona-driven reasoning
 6. Morning digest + intraday alerts
 
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.

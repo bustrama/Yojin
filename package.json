@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Yojin is a personal AI finance agent that runs locally, connects to all your investment accounts, delivers personalized portfolio intelligence, and executes trades across accounts.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YojinHQ/Yojin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YojinHQ/Yojin/issues"
+  },
+  "homepage": "https://github.com/YojinHQ/Yojin#readme",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
