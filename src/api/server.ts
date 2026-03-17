@@ -14,7 +14,7 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 
-import { createGraphQLServer } from './graphql/index.js';
+import { mountGraphQL } from './graphql/server.js';
 import { createSubsystemLogger } from '../logging/index.js';
 
 const log = createSubsystemLogger('api');
@@ -35,12 +35,7 @@ app.get('/api/health', (c) =>
 );
 
 // Mount graphql-yoga
-const yoga = createGraphQLServer();
-
-app.on(['GET', 'POST', 'OPTIONS'], '/graphql', async (c) => {
-  const response = await yoga.handle(c.req.raw);
-  return response;
-});
+mountGraphQL(app);
 
 // ---------------------------------------------------------------------------
 // Server lifecycle
