@@ -1,29 +1,129 @@
-import PositionTable from '../components/portfolio/PositionTable';
+import { useState, useMemo } from 'react';
+import PortfolioStats from '../components/portfolio/portfolio-stats';
+import FilterTabs from '../components/portfolio/filter-tabs';
+import PositionTable from '../components/portfolio/position-table';
+import type { FilterStatus } from '../components/portfolio/filter-tabs';
+
+const mockPositions = [
+  {
+    symbol: 'AAPL',
+    name: 'Apple Inc.',
+    assetClass: 'Equity',
+    shares: 150,
+    value: 28432.5,
+    date: '2024-03-15',
+    status: 'holding' as const,
+  },
+  {
+    symbol: 'MSFT',
+    name: 'Microsoft Corp.',
+    assetClass: 'Equity',
+    shares: 85,
+    value: 35221.8,
+    date: '2024-01-22',
+    status: 'holding' as const,
+  },
+  {
+    symbol: 'GOOGL',
+    name: 'Alphabet Inc.',
+    assetClass: 'Equity',
+    shares: 45,
+    value: 12845.2,
+    date: '2024-06-10',
+    status: 'holding' as const,
+  },
+  {
+    symbol: 'NVDA',
+    name: 'NVIDIA Corp.',
+    assetClass: 'Equity',
+    shares: 60,
+    value: 22150.75,
+    date: '2024-02-08',
+    status: 'holding' as const,
+  },
+  {
+    symbol: 'BTC',
+    name: 'Bitcoin',
+    assetClass: 'Crypto',
+    shares: 0.45,
+    value: 18720.0,
+    date: '2023-11-20',
+    status: 'holding' as const,
+  },
+  {
+    symbol: 'ETH',
+    name: 'Ethereum',
+    assetClass: 'Crypto',
+    shares: 5.2,
+    value: 8450.0,
+    date: '2024-04-05',
+    status: 'watching' as const,
+  },
+  {
+    symbol: 'AMZN',
+    name: 'Amazon.com Inc.',
+    assetClass: 'Equity',
+    shares: 30,
+    value: 11534.0,
+    date: '2024-05-18',
+    status: 'holding' as const,
+  },
+  {
+    symbol: 'TSLA',
+    name: 'Tesla Inc.',
+    assetClass: 'Equity',
+    shares: 40,
+    value: 7030.0,
+    date: '2024-07-01',
+    status: 'pending' as const,
+  },
+  {
+    symbol: 'META',
+    name: 'Meta Platforms',
+    assetClass: 'Equity',
+    shares: 25,
+    value: 9875.5,
+    date: '2023-12-15',
+    status: 'sold' as const,
+  },
+  {
+    symbol: 'SOL',
+    name: 'Solana',
+    assetClass: 'Crypto',
+    shares: 120,
+    value: 3640.8,
+    date: '2024-08-22',
+    status: 'watching' as const,
+  },
+];
 
 export default function Positions() {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-white">Positions</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            All portfolio positions across connected accounts.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <select className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-            <option value="all">All Accounts</option>
-          </select>
-          <select className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-            <option value="all">All Asset Classes</option>
-            <option value="equity">Equities</option>
-            <option value="crypto">Crypto</option>
-            <option value="cash">Cash</option>
-          </select>
-        </div>
-      </div>
+  const [filter, setFilter] = useState<FilterStatus>('all');
 
-      <PositionTable />
+  const counts = useMemo(() => {
+    const result: Record<FilterStatus, number> = {
+      all: mockPositions.length,
+      holding: 0,
+      watching: 0,
+      pending: 0,
+      sold: 0,
+    };
+    for (const pos of mockPositions) {
+      result[pos.status]++;
+    }
+    return result;
+  }, []);
+
+  const filteredPositions = useMemo(() => {
+    if (filter === 'all') return mockPositions;
+    return mockPositions.filter((pos) => pos.status === filter);
+  }, [filter]);
+
+  return (
+    <div className="flex-1 overflow-auto p-6 space-y-6">
+      <PortfolioStats />
+      <FilterTabs activeFilter={filter} onChange={setFilter} counts={counts} />
+      <PositionTable positions={filteredPositions} />
     </div>
   );
 }

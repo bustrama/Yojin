@@ -1,38 +1,34 @@
-import PortfolioSummary from '../components/portfolio/PortfolioSummary';
-import AllocationChart from '../components/charts/AllocationChart';
-import Card from '../components/common/Card';
+import { useState } from 'react';
+import PortfolioValueStrip from '../components/overview/portfolio-value-strip';
+import PortfolioChart from '../components/overview/portfolio-chart';
+import PositionsPreview from '../components/overview/positions-preview';
+import AllocationChart from '../components/charts/allocation-chart';
+import RightPanel from '../components/layout/right-panel';
+import NewsFeed from '../components/overview/news-feed';
+import IntelAlerts from '../components/overview/intel-alerts';
+
+type PanelTab = 'news' | 'intel';
 
 export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState<PanelTab>('news');
+
+  const tabs = [
+    { label: 'News', active: activeTab === 'news', onClick: () => setActiveTab('news') },
+    { label: 'Intel', active: activeTab === 'intel', onClick: () => setActiveTab('intel') },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-white">Dashboard</h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Portfolio overview and key metrics at a glance.
-        </p>
-      </div>
-
-      {/* Summary cards */}
-      <PortfolioSummary />
-
-      {/* Charts row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="flex flex-1 overflow-hidden">
+      {/* Main content */}
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        <PortfolioValueStrip />
+        <PortfolioChart />
+        <PositionsPreview />
         <AllocationChart />
-        <Card title="Recent Activity">
-          <div className="flex h-48 items-center justify-center">
-            <p className="text-sm text-slate-500">No recent activity to display.</p>
-          </div>
-        </Card>
       </div>
 
-      {/* Alerts row */}
-      <Card title="Active Alerts">
-        <div className="flex h-32 items-center justify-center">
-          <p className="text-sm text-slate-500">
-            No active alerts. Configure alert rules in the Alerts page.
-          </p>
-        </div>
-      </Card>
+      {/* Right panel with tabs */}
+      <RightPanel tabs={tabs}>{activeTab === 'news' ? <NewsFeed /> : <IntelAlerts />}</RightPanel>
     </div>
   );
 }
