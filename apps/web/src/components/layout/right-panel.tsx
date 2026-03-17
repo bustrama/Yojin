@@ -20,9 +20,7 @@ export default function RightPanel({ title, tabs, children }: RightPanelProps) {
                   onClick={tab.onClick}
                   className={cn(
                     'rounded-md px-3 py-1 text-sm transition-colors',
-                    tab.active
-                      ? 'bg-bg-hover text-text-primary'
-                      : 'text-text-muted hover:text-text-secondary',
+                    tab.active ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
                   )}
                 >
                   {tab.label}

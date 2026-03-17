@@ -13,13 +13,7 @@ const navItems: NavItem[] = [
     label: 'Overview',
     path: '/',
     icon: (
-      <svg
-        className="w-5 h-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -32,13 +26,7 @@ const navItems: NavItem[] = [
     label: 'Chat',
     path: '/chat',
     icon: (
-      <svg
-        className="w-5 h-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -51,13 +39,7 @@ const navItems: NavItem[] = [
     label: 'Portfolio',
     path: '/portfolio',
     icon: (
-      <svg
-        className="w-5 h-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -70,13 +52,7 @@ const navItems: NavItem[] = [
     label: 'Skills',
     path: '/skills',
     icon: (
-      <svg
-        className="w-5 h-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-      >
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"

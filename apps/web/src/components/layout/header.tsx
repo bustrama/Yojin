@@ -36,9 +36,7 @@ export default function Header() {
               onClick={() => setSearchParams({})}
               className={cn(
                 'rounded-md px-3 py-1 text-sm transition-colors',
-                skillsView === 'active'
-                  ? 'bg-bg-hover text-text-primary'
-                  : 'text-text-muted hover:text-text-secondary',
+                skillsView === 'active' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
               )}
             >
               Active

@@ -22,6 +22,10 @@ Thumbs.db
 *.log
 *.pid
 
+# Internal docs — architecture plans, specs, design docs
+plans/
+docs/superpowers/
+
 # TypeScript build info
 *.tsbuildinfo
 

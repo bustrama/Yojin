@@ -1,14 +1,6 @@
 import { useMemo, useState } from 'react';
 import { cn } from '../../lib/utils';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const timeRanges = ['1D', '1W', '1M', '3M', '1Y', 'ALL'] as const;
 type TimeRange = (typeof timeRanges)[number];
@@ -62,9 +54,7 @@ export default function PortfolioChart() {
               onClick={() => setActiveRange(range)}
               className={cn(
                 'rounded-md px-3 py-1 text-xs font-medium transition-colors',
-                activeRange === range
-                  ? 'bg-accent-primary text-white'
-                  : 'text-text-muted hover:text-text-secondary',
+                activeRange === range ? 'bg-accent-primary text-white' : 'text-text-muted hover:text-text-secondary',
               )}
             >
               {range}
@@ -107,13 +97,7 @@ export default function PortfolioChart() {
                 'Value',
               ]}
             />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke="#FF5A5E"
-              strokeWidth={2}
-              fill="url(#portfolioGradient)"
-            />
+            <Area type="monotone" dataKey="value" stroke="#FF5A5E" strokeWidth={2} fill="url(#portfolioGradient)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>

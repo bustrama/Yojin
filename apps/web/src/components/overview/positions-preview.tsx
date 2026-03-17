@@ -22,10 +22,7 @@ export default function PositionsPreview() {
     <div className="rounded-xl border border-border bg-bg-card">
       <div className="flex items-center justify-between px-6 pt-5 pb-4">
         <h3 className="font-headline text-lg text-text-primary">Top Positions</h3>
-        <Link
-          to="/portfolio"
-          className="text-sm text-accent-primary hover:text-accent-primary/80 transition-colors"
-        >
+        <Link to="/portfolio" className="text-sm text-accent-primary hover:text-accent-primary/80 transition-colors">
           View All
         </Link>
       </div>
@@ -44,12 +41,7 @@ export default function PositionsPreview() {
               <td className="px-6 py-3 text-sm font-medium text-accent-primary">{pos.symbol}</td>
               <td className="px-6 py-3 text-sm text-text-secondary">{pos.name}</td>
               <td className="px-6 py-3 text-right text-sm text-text-primary">{pos.value}</td>
-              <td
-                className={cn(
-                  'px-6 py-3 text-right text-sm',
-                  pos.positive ? 'text-success' : 'text-error',
-                )}
-              >
+              <td className={cn('px-6 py-3 text-right text-sm', pos.positive ? 'text-success' : 'text-error')}>
                 {pos.change}
               </td>
             </tr>

@@ -98,9 +98,7 @@ export default function ActiveRulesView() {
         const skills = mockSkills.filter((s) => s.category === cat.key);
         return (
           <div key={cat.key}>
-            <h3 className="font-headline text-sm text-text-secondary uppercase tracking-wider mb-4">
-              {cat.label}
-            </h3>
+            <h3 className="font-headline text-sm text-text-secondary uppercase tracking-wider mb-4">{cat.label}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {skills.map((skill) => (
                 <SkillCard key={skill.id} skill={skill} />

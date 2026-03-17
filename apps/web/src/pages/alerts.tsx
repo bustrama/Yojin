@@ -7,9 +7,5 @@ export default function Skills() {
   const [searchParams] = useSearchParams();
   const view = searchParams.get('view') === 'builder' ? 'builder' : 'active';
 
-  return (
-    <div className="flex-1 overflow-auto p-6">
-      {view === 'active' ? <ActiveRulesView /> : <RuleEditorView />}
-    </div>
-  );
+  return <div className="flex-1 overflow-auto p-6">{view === 'active' ? <ActiveRulesView /> : <RuleEditorView />}</div>;
 }

@@ -24,9 +24,7 @@ export default function SkillCard({ skill }: { skill: Skill }) {
       <div className="text-text-secondary text-sm mt-1">{skill.description}</div>
 
       <div className="mt-4">
-        <span className="text-text-muted text-xs">
-          {skill.source === 'built-in' ? 'Built-in' : 'Custom'}
-        </span>
+        <span className="text-text-muted text-xs">{skill.source === 'built-in' ? 'Built-in' : 'Custom'}</span>
       </div>
     </div>
   );

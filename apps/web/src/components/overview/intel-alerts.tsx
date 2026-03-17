@@ -57,12 +57,8 @@ export default function IntelAlerts() {
       {alerts.map((alert, i) => (
         <div key={i} className="rounded-lg bg-bg-tertiary p-4">
           <div className="mb-2 flex items-center gap-2">
-            <span
-              className={cn('inline-block h-2 w-2 rounded-full', urgencyIndicator[alert.urgency])}
-            />
-            <span
-              className={cn('rounded-full px-2 py-0.5 text-xs font-medium', badgeStyles[alert.type])}
-            >
+            <span className={cn('inline-block h-2 w-2 rounded-full', urgencyIndicator[alert.urgency])} />
+            <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', badgeStyles[alert.type])}>
               {alert.label}
             </span>
           </div>

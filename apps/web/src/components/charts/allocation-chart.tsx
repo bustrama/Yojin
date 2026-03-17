@@ -46,10 +46,7 @@ export default function AllocationChart() {
         <div className="flex flex-col gap-3">
           {allocationData.map((entry) => (
             <div key={entry.name} className="flex items-center gap-3">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: entry.color }}
-              />
+              <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: entry.color }} />
               <span className="text-sm text-text-secondary">{entry.name}</span>
               <span className="ml-auto text-sm font-medium text-text-primary">{entry.value}%</span>
             </div>

@@ -24,9 +24,7 @@ export default function PortfolioValueStrip() {
           <p className="text-xs uppercase tracking-wider text-text-muted">{stat.label}</p>
           <p className="mt-2 text-xl font-semibold text-text-primary">{stat.value}</p>
           {stat.change && (
-            <p className={cn('mt-1 text-sm', stat.positive ? 'text-success' : 'text-error')}>
-              {stat.change}
-            </p>
+            <p className={cn('mt-1 text-sm', stat.positive ? 'text-success' : 'text-error')}>{stat.change}</p>
           )}
         </div>
       ))}
