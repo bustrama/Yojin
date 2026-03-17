@@ -1,3 +1,1 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
-pnpm run ci
+pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test:ci
