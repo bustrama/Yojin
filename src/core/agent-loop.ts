@@ -8,14 +8,14 @@
 
 import { ToolRegistry } from './tool-registry.js';
 import type {
-  AgentLoopOptions,
   AgentLoopEvent,
+  AgentLoopOptions,
   AgentMessage,
+  TextBlock,
   ToolCall,
   ToolCallResult,
-  ToolUseBlock,
   ToolResultBlock,
-  TextBlock,
+  ToolUseBlock,
 } from './types.js';
 
 const DEFAULT_MAX_ITERATIONS = 20;
@@ -36,14 +36,7 @@ export async function runAgentLoop(
   history: AgentMessage[],
   options: AgentLoopOptions,
 ): Promise<AgentLoopResult> {
-  const {
-    provider,
-    model,
-    systemPrompt,
-    tools = [],
-    maxIterations = DEFAULT_MAX_ITERATIONS,
-    onEvent,
-  } = options;
+  const { provider, model, systemPrompt, tools = [], maxIterations = DEFAULT_MAX_ITERATIONS, onEvent } = options;
 
   const registry = new ToolRegistry();
   for (const tool of tools) {
@@ -134,9 +127,7 @@ export async function runAgentLoop(
   const lastAssistant = messages.filter((m) => m.role === 'assistant').pop();
   const fallbackText = extractText(lastAssistant);
   return {
-    text:
-      fallbackText ||
-      'I reached the maximum number of steps. Please try again with a simpler request.',
+    text: fallbackText || 'I reached the maximum number of steps. Please try again with a simpler request.',
     messages,
     iterations,
     usage: totalUsage,

@@ -12,16 +12,16 @@ Multi-agent architecture with four specialized agents collaborating through shar
 
 ### The Four Agents
 
-| Agent | Role | Tools | Decides |
-|-------|------|-------|---------|
-| **Research Analyst** | Market intelligence | OpenBB SDK, equity research, news, analysis kit, Keelson enrichment | "What's happening in the market that affects your portfolio?" |
-| **Strategist** | Reasoning & recommendations | Brain (persona, memory), research results, risk reports | "Based on your persona and the data, what should you do?" |
-| **Risk Manager** | Portfolio risk analysis | Exposure analyzer, concentration, correlation, earnings calendar, drawdown | "What are the risks in your current portfolio?" |
-| **Trader** | Execution & platform interaction | Scraper (Playwright), platform login, position tracking, guard pipeline | "Execute the approved action safely on the right platform" |
+| Agent                | Role                             | Tools                                                                      | Decides                                                       |
+|----------------------|----------------------------------|----------------------------------------------------------------------------|---------------------------------------------------------------|
+| **Research Analyst** | Market intelligence              | OpenBB SDK, equity research, news, analysis kit, Keelson enrichment        | "What's happening in the market that affects your portfolio?" |
+| **Strategist**       | Reasoning & recommendations      | Brain (persona, memory), research results, risk reports                    | "Based on your persona and the data, what should you do?"     |
+| **Risk Manager**     | Portfolio risk analysis          | Exposure analyzer, concentration, correlation, earnings calendar, drawdown | "What are the risks in your current portfolio?"               |
+| **Trader**           | Execution & platform interaction | Scraper (Playwright), platform login, position tracking, guard pipeline    | "Execute the approved action safely on the right platform"    |
 
 ### How They Collaborate
 
-```
+```text
 User connects platforms → Trader scrapes positions
                               ↓
                     PortfolioSnapshot → shared state
@@ -47,6 +47,7 @@ User connects platforms → Trader scrapes positions
 ```
 
 Each agent has its own:
+
 - **Tool set** — subset of ToolRegistry relevant to its role
 - **System prompt** — specialized persona for its domain
 - **Session history** — independent JSONL conversation thread
@@ -57,25 +58,29 @@ Agents are not separate processes — they're specialized profiles within AgentR
 ### Orchestration Patterns
 
 **Scheduled digest** (morning, heartbeat):
-```
+
+```text
 Trader.scrape() → Research.enrich() → Risk.analyze()
   → Strategist.digest(enriched, riskReport) → channels
 ```
 
 **User asks "analyze NVDA"**:
-```
+
+```text
 Research.analyze('NVDA') → Risk.checkExposure('NVDA')
   → Strategist.recommend(research, risk) → user
 ```
 
 **User asks "should I sell?"**:
-```
+
+```text
 Research.enrich(portfolio) → Risk.fullReport()
   → Strategist.reason(research, risk, persona) → user
 ```
 
 **Trade execution** (Phase 2):
-```
+
+```text
 Strategist.recommend('sell 50 NVDA') → user approves
   → Guard.check(action) → Trader.execute(action) → confirm via channels
 ```
@@ -84,22 +89,22 @@ Strategist.recommend('sell 50 NVDA') → user approves
 
 ## Current Codebase (~1,700 lines working TypeScript)
 
-| Module | Status | Description |
-|--------|--------|-------------|
-| `src/plugins/` (types, registry, SDK) | **Complete** | Plugin system — ProviderPlugin + ChannelPlugin interfaces, registry, lifecycle hooks, public SDK |
-| `src/gateway/server.ts` | **Complete** | Message routing: channel → provider → channel. Foundation for AgentRuntime |
-| `src/auth/claude-oauth.ts` | **Complete** | Full OAuth PKCE flow (browser + CLI + manual paste) |
-| `src/cli/` (run-main, chat, setup-token) | **Complete** | CLI entry points — start server, interactive chat REPL, token setup |
-| `src/config/config.ts` | **Complete** | Zod-based config with env var resolution |
-| `src/sessions/memory-store.ts` | **Complete** | In-memory session store (SessionStore interface) |
-| `providers/anthropic/` | **Complete** | Claude provider — API key + OAuth modes, streaming, model resolution |
-| `channels/slack/` | **Complete** | Slack channel via @slack/bolt — messaging, threading, reactions |
+| Module                                   | Status       | Description                                                                                      |
+|------------------------------------------|--------------|--------------------------------------------------------------------------------------------------|
+| `src/plugins/` (types, registry, SDK)    | **Complete** | Plugin system — ProviderPlugin + ChannelPlugin interfaces, registry, lifecycle hooks, public SDK |
+| `src/gateway/server.ts`                  | **Complete** | Message routing: channel → provider → channel. Foundation for AgentRuntime                       |
+| `src/auth/claude-oauth.ts`               | **Complete** | Full OAuth PKCE flow (browser + CLI + manual paste)                                              |
+| `src/cli/` (run-main, chat, setup-token) | **Complete** | CLI entry points — start server, interactive chat REPL, token setup                              |
+| `src/config/config.ts`                   | **Complete** | Zod-based config with env var resolution                                                         |
+| `src/sessions/memory-store.ts`           | **Complete** | In-memory session store (SessionStore interface)                                                 |
+| `providers/anthropic/`                   | **Complete** | Claude provider — API key + OAuth modes, streaming, model resolution                             |
+| `channels/slack/`                        | **Complete** | Slack channel via @slack/bolt — messaging, threading, reactions                                  |
 
 ---
 
 ## Monorepo Structure
 
-```
+```text
 yojin/
 ├── package.json                    # pnpm workspace root
 ├── pnpm-workspace.yaml
@@ -348,15 +353,16 @@ yojin/
 
 Yojin supports multiple channels simultaneously via the existing ChannelPlugin interface. Each channel is an independent plugin in `channels/`:
 
-| Channel | Library | Status | Capabilities |
-|---------|---------|--------|-------------|
-| **Slack** | @slack/bolt | **EXISTS** | Messages, threads, reactions, files, 40K char limit |
-| **Telegram** | grammY | Phase 1 | Messages, photos, approval buttons, chunked delivery |
-| **Web UI** | Hono + SSE | Phase 1 | Real-time streaming, portfolio dashboard, chat |
-| **Discord** | discord.js | Future | Messages, embeds, threads |
-| **MCP** | @modelcontextprotocol/sdk | Phase 1 | Tool exposure for Claude Desktop/Cursor |
+| Channel      | Library                   | Status     | Capabilities                                         |
+|--------------|---------------------------|------------|------------------------------------------------------|
+| **Slack**    | @slack/bolt               | **EXISTS** | Messages, threads, reactions, files, 40K char limit  |
+| **Telegram** | grammY                    | Phase 1    | Messages, photos, approval buttons, chunked delivery |
+| **Web UI**   | Hono + SSE                | Phase 1    | Real-time streaming, portfolio dashboard, chat       |
+| **Discord**  | discord.js                | Future     | Messages, embeds, threads                            |
+| **MCP**      | @modelcontextprotocol/sdk | Phase 1    | Tool exposure for Claude Desktop/Cursor              |
 
 All channels share the same ChannelPlugin interface (already defined in `src/plugins/types.ts`):
+
 - `messagingAdapter` — send/receive messages
 - `authAdapter` — token validation
 - `setupAdapter` — initialization
@@ -376,11 +382,11 @@ Evolves from the existing `gateway/server.ts`. Every interaction flows through A
 
 Builds on existing `providers/anthropic/` plugin. All four agents share the same ProviderRouter. Three backends, switchable mid-session by editing `ai-provider.json`:
 
-| Provider | Implementation | Use Case |
-|----------|---------------|----------|
-| Claude Code CLI | Spawns `claude -p` subprocess | Default — zero-config, uses existing auth |
-| Vercel AI SDK | In-process `ToolLoopAgent` | Supports Anthropic, OpenAI, Google models |
-| Agent SDK | `@anthropic-ai/claude-agent-sdk` | Advanced agent capabilities |
+| Provider        | Implementation                   | Use Case                                  |
+|-----------------|----------------------------------|-------------------------------------------|
+| Claude Code CLI | Spawns `claude -p` subprocess    | Default — zero-config, uses existing auth |
+| Vercel AI SDK   | In-process `ToolLoopAgent`       | Supports Anthropic, OpenAI, Google models |
+| Agent SDK       | `@anthropic-ai/claude-agent-sdk` | Advanced agent capabilities               |
 
 The existing Anthropic provider already handles both API key and OAuth/subprocess modes. ProviderRouter reads config on *each call* — hot-reload without restart.
 
@@ -424,7 +430,7 @@ This lives at `data/brain/persona.md`. The agent reads it and interprets the int
 
 ### Default/Override Pattern
 
-```
+```text
 Factory default:  data/default/persona.default.md   (git-tracked)
 User override:    data/brain/persona.md              (gitignored)
 
@@ -435,11 +441,11 @@ git pull → updates default; override untouched
 
 ### Brain — Strategist's Persistent Cognitive State
 
-| Component | Purpose |
-|-----------|---------|
-| Frontal lobe | Working context — current hypotheses, observations, active reasoning |
+| Component        | Purpose                                                              |
+|------------------|----------------------------------------------------------------------|
+| Frontal lobe     | Working context — current hypotheses, observations, active reasoning |
 | Emotion tracking | Agent confidence level, risk appetite, with rationale for each shift |
-| Commit history | Git-like versioned snapshots of cognitive state at decision points |
+| Commit history   | Git-like versioned snapshots of cognitive state at decision points   |
 
 Enables rollback (undo bad reasoning), audit (why did the agent think X at time T?), and continuity (resume coherently after restart). The Brain belongs to the Strategist — the other agents are stateless workers that produce reports on demand.
 
@@ -455,14 +461,14 @@ TypeScript-native re-implementation of the OpenBB data platform. No Python sidec
 
 **Asset class SDKs:**
 
-| SDK | Data | Source |
-|-----|------|--------|
-| `equity/` | Financial statements, ratios, estimates, insider, institutional | yfinance, SEC EDGAR |
-| `crypto/` | Digital asset OHLCV, market data | yfinance, CCXT |
-| `currency/` | Forex rates and pairs | yfinance |
-| `commodity/` | EIA data, spot prices | EIA API |
-| `economy/` | Macroeconomic indicators | FRED |
-| `news/` | Article aggregation | Benzinga, others |
+| SDK          | Data                                                            | Source              |
+|--------------|-----------------------------------------------------------------|---------------------|
+| `equity/`    | Financial statements, ratios, estimates, insider, institutional | yfinance, SEC EDGAR |
+| `crypto/`    | Digital asset OHLCV, market data                                | yfinance, CCXT      |
+| `currency/`  | Forex rates and pairs                                           | yfinance            |
+| `commodity/` | EIA data, spot prices                                           | EIA API             |
+| `economy/`   | Macroeconomic indicators                                        | FRED                |
+| `news/`      | Article aggregation                                             | Benzinga, others    |
 
 **SymbolIndex** — local cache for SEC (~13K US equities) and TMX symbols. Zero-latency resolution.
 
@@ -470,22 +476,22 @@ TypeScript-native re-implementation of the OpenBB data platform. No Python sidec
 
 Auto-registered with ToolRegistry — agent calls autonomously during reasoning:
 
-| Tool | Data |
-|------|------|
-| `equityGetProfile` | Business description, sector, employees, market cap |
-| `equityGetFinancials` | Income statement, balance sheet, cash flow (historical) |
-| `equityGetRatios` | Profitability, liquidity, solvency, efficiency metrics |
-| `equityGetEstimates` | Revenue/EPS forecasts, price targets, consensus |
-| `equityGetEarningsCalendar` | Upcoming earnings dates for held positions |
-| `equityGetInsiderTrading` | Recent insider buys/sells, Section 16 filings |
-| `equityGetInstitutional` | 13F filings, top holders, position changes |
-| `equityGetMovers` | Top gainers, losers, most active |
+| Tool                        | Data                                                    |
+|-----------------------------|---------------------------------------------------------|
+| `equityGetProfile`          | Business description, sector, employees, market cap     |
+| `equityGetFinancials`       | Income statement, balance sheet, cash flow (historical) |
+| `equityGetRatios`           | Profitability, liquidity, solvency, efficiency metrics  |
+| `equityGetEstimates`        | Revenue/EPS forecasts, price targets, consensus         |
+| `equityGetEarningsCalendar` | Upcoming earnings dates for held positions              |
+| `equityGetInsiderTrading`   | Recent insider buys/sells, Section 16 filings           |
+| `equityGetInstitutional`    | 13F filings, top holders, position changes              |
+| `equityGetMovers`           | Top gainers, losers, most active                        |
 
 ### Analysis Kit
 
 Formula-based technical indicators:
 
-```
+```text
 SMA(CLOSE('AAPL', '1d'), 50)
 RSI(CLOSE('AAPL', '1d'), 14)
 BBANDS(CLOSE('ETH-USD', '1d'), 20, 2)
@@ -507,7 +513,7 @@ Most AI trading agents give the LLM unrestricted access to credentials, filesyst
 
 ### The 4-Layer Trust Stack
 
-```
+```text
 Layer 1: secretctl        — Credentials never touch the LLM
 Layer 2: RADIUS Guards    — Agent can't act outside boundaries
 Layer 3: PII Redactor     — Your identity never leaves your laptop
@@ -526,7 +532,7 @@ Encrypted local credential vault with MCP-native access. The agent can USE crede
 - Credentials injected into API calls at the transport layer, never in prompts
 - Audit log of every credential access
 
-```
+```text
 src/trust/secretctl/
 ├── vault.ts          # Encrypted storage (AES-256-GCM)
 ├── mcp-server.ts     # MCP server for AI-safe credential access
@@ -538,7 +544,7 @@ src/trust/secretctl/
 
 Every agent action passes through a pipeline of deterministic guards. Guards are pure functions — no LLM, no prompt, no interpretation. They either pass or block.
 
-```
+```text
 Agent Decision → [GUARD PIPELINE] → Execute / Block + Audit
                        │
               ┌────────┴────────┐
@@ -567,7 +573,7 @@ interface Guard {
 type GuardResult = { pass: true } | { pass: false; reason: string }
 ```
 
-```
+```text
 src/guards/
 ├── types.ts              # Guard interface, GuardResult, ProposedAction
 ├── guard-runner.ts       # Pipeline executor (runs all guards, blocks on first failure)
@@ -589,26 +595,26 @@ src/guards/
 
 Three pre-configured profiles that control guard strictness:
 
-| Profile | Use Case | Default Policy | Rate Limit |
-|---------|----------|---------------|------------|
-| **Local** | Production — real money, real credentials | Default deny; all guards active | 30 calls/min |
-| **Standard** | Development — testing with sandbox accounts | Default deny; secrets redacted | 60 calls/min |
-| **Unbounded** | Research — no trading, analysis only | Logging only; observe mode | 120 calls/min |
+| Profile       | Use Case                                    | Default Policy                  | Rate Limit    |
+|---------------|---------------------------------------------|---------------------------------|---------------|
+| **Local**     | Production — real money, real credentials   | Default deny; all guards active | 30 calls/min  |
+| **Standard**  | Development — testing with sandbox accounts | Default deny; secrets redacted  | 60 calls/min  |
+| **Unbounded** | Research — no trading, analysis only        | Logging only; observe mode      | 120 calls/min |
 
 ### Layer 3: PII Redactor
 
 Strips identifying information before any data leaves the laptop. Runs automatically on every enrichment call.
 
-| What Gets Redacted | Where It's Applied |
-|--------------------|-------------------|
-| Account IDs, account names | Before Keelson API calls |
-| Exact balances (replaced with ranges) | Before any external API |
-| Personal identifiers (email, name) | Before any external API |
-| Platform credentials | Never leave secretctl |
+| What Gets Redacted                    | Where It's Applied       |
+|---------------------------------------|--------------------------|
+| Account IDs, account names            | Before Keelson API calls |
+| Exact balances (replaced with ranges) | Before any external API  |
+| Personal identifiers (email, name)    | Before any external API  |
+| Platform credentials                  | Never leave secretctl    |
 
 OpenBB calls are local/in-process — no redaction needed. Keelson calls always pass through the redactor.
 
-```
+```text
 src/trust/pii/
 ├── redactor.ts       # Core redaction engine (regex + pattern matching)
 ├── patterns.ts       # Redaction patterns (account IDs, emails, balances)
@@ -621,13 +627,15 @@ src/trust/pii/
 For irreversible actions, the agent pauses and asks the user for approval via their active channel.
 
 **Actions requiring approval (configurable):**
+
 - Trade execution (buy/sell/close)
 - New platform connection (broker login)
 - Config changes (guard posture, alert thresholds)
 - Any action the Strategist flags as high-risk
 
 **Flow:**
-```
+
+```text
 Agent proposes action → Guard pipeline passes → Approval gate triggered
   → Send approval request to user's channel (Telegram/Slack/Web)
   → User taps Approve / Deny
@@ -636,7 +644,7 @@ Agent proposes action → Guard pipeline passes → Approval gate triggered
   → Timeout (configurable) → auto-deny + log
 ```
 
-```
+```text
 src/trust/approval/
 ├── approval-gate.ts  # Core approval flow
 ├── request.ts        # ApprovalRequest type, channel routing
@@ -647,15 +655,15 @@ src/trust/approval/
 
 Immutable append-only log of all security-relevant events. Separate from the general EventLog — this is tamper-evident.
 
-| Event Type | What's Logged |
-|------------|--------------|
-| `guard.pass` | Action passed all guards |
-| `guard.block` | Action blocked — which guard, why |
-| `secret.access` | Credential accessed — which key, by which agent |
-| `pii.redact` | PII redacted — field count, before/after hash |
+| Event Type         | What's Logged                                   |
+|--------------------|-------------------------------------------------|
+| `guard.pass`       | Action passed all guards                        |
+| `guard.block`      | Action blocked — which guard, why               |
+| `secret.access`    | Credential accessed — which key, by which agent |
+| `pii.redact`       | PII redacted — field count, before/after hash   |
 | `approval.request` | Approval requested — action, channel, timestamp |
-| `approval.result` | User approved/denied — latency, channel |
-| `posture.change` | Guard posture changed |
+| `approval.result`  | User approved/denied — latency, channel         |
+| `posture.change`   | Guard posture changed                           |
 
 Stored at `data/audit/security.jsonl` — append-only, never truncated.
 
@@ -667,17 +675,18 @@ The Risk Manager is a specialized agent focused on portfolio-level financial ris
 
 ### Exposure Analysis
 
-| Analysis | What It Computes |
-|----------|-----------------|
-| Sector exposure | % of portfolio in tech, energy, healthcare, crypto, prediction markets |
-| Concentration scoring | Single-position concentration (e.g., "NVDA is 34% of portfolio") |
+| Analysis              | What It Computes                                                               |
+|-----------------------|--------------------------------------------------------------------------------|
+| Sector exposure       | % of portfolio in tech, energy, healthcare, crypto, prediction markets         |
+| Concentration scoring | Single-position concentration (e.g., "NVDA is 34% of portfolio")               |
 | Correlation detection | Clusters of correlated positions (e.g., "NVDA + AMD + MSFT all move together") |
-| Earnings calendar | Which held positions have earnings in the next N days |
-| Drawdown tracking | Daily/weekly P&L drawdown vs configurable thresholds |
+| Earnings calendar     | Which held positions have earnings in the next N days                          |
+| Drawdown tracking     | Daily/weekly P&L drawdown vs configurable thresholds                           |
 
 ### Risk Report
 
 The Risk Manager composes a full portfolio risk report that:
+
 - The **agent** reads during reasoning (to decide what to alert about)
 - The **alert engine** uses for risk-based alert rules (concentration-drift, correlation-warning)
 - The **user** queries via natural language: "what's my exposure?" or "do I have correlated positions?"
@@ -696,6 +705,7 @@ interface RiskReport {
 ### Per-Asset Configuration
 
 Risk parameters configured differently per asset class in `data/config/`:
+
 - Crypto: higher concentration tolerance (volatile, fewer positions typical)
 - Equities: stricter sector limits
 - Prediction markets: capped at X% of total portfolio
@@ -704,10 +714,10 @@ Risk parameters configured differently per asset class in `data/config/`:
 
 ## Enrichment: Dual-Source Architecture
 
-| Source | Data | Cost | Latency |
-|--------|------|------|---------|
-| **Keelson API** | Social sentiment (Reddit, Twitter), composed signals, prediction market context | Per-query (monetized) | ~200ms |
-| **OpenBB SDK** | Fundamentals, price data, technicals, earnings calendar, insider activity | Free (in-process) | ~50ms |
+| Source          | Data                                                                            | Cost                  | Latency |
+|-----------------|---------------------------------------------------------------------------------|-----------------------|---------|
+| **Keelson API** | Social sentiment (Reddit, Twitter), composed signals, prediction market context | Per-query (monetized) | ~200ms  |
+| **OpenBB SDK**  | Fundamentals, price data, technicals, earnings calendar, insider activity       | Free (in-process)     | ~50ms   |
 
 ```typescript
 async enrich(snapshot: PortfolioSnapshot): Promise<EnrichedSnapshot> {
@@ -726,7 +736,7 @@ Keelson handles what OpenBB can't (social sentiment, prediction market context).
 
 ## Data Flow
 
-```
+```text
 [Polymarket] ──Playwright──→ ScraperManager
 [Robinhood]  ──Playwright──→      ↓
 [Coinbase]   ──Playwright──→ PortfolioSnapshot (raw)
@@ -953,33 +963,33 @@ Resolvers are thin — they call into the same services the agents use (enrichme
 
 ### Dean: Data Pipeline
 
-| Component | Module |
-|-----------|--------|
-| Scraper Framework | `src/scraper/` |
-| OpenBB SDK | `src/openbb/` |
-| Research Tools | `src/research/` |
-| News System | `src/news/` |
-| Keelson Client | `packages/keelson-client/` |
-| Enrichment Pipeline | `src/enrichment/` |
-| Risk Manager | `src/risk/` |
-| Alert Engine | `src/alerts/` |
+| Component           | Module                     |
+|---------------------|----------------------------|
+| Scraper Framework   | `src/scraper/`             |
+| OpenBB SDK          | `src/openbb/`              |
+| Research Tools      | `src/research/`            |
+| News System         | `src/news/`                |
+| Keelson Client      | `packages/keelson-client/` |
+| Enrichment Pipeline | `src/enrichment/`          |
+| Risk Manager        | `src/risk/`                |
+| Alert Engine        | `src/alerts/`              |
 
 ### Dima: Agent Runtime, Security & API
 
-| Component | Module |
-|-----------|--------|
-| Core Runtime | `src/core/` (AgentRuntime, ToolRegistry, sessions, events) |
-| Trust & Security | `src/trust/` + `src/guards/` (secretctl, RADIUS, PII, approval, audit) |
-| Strategist + Brain | `src/brain/` + `src/agents/` |
-| Channels | `channels/` (Telegram, Web) |
-| GraphQL API | `src/api/graphql/` (schema, resolvers, subscriptions) |
-| MCP Server | `src/server/mcp.ts` |
-| Agent Tools | `src/tools/` |
-| Composition Root | `src/main.ts` |
+| Component          | Module                                                                 |
+|--------------------|------------------------------------------------------------------------|
+| Core Runtime       | `src/core/` (AgentRuntime, ToolRegistry, sessions, events)             |
+| Trust & Security   | `src/trust/` + `src/guards/` (secretctl, RADIUS, PII, approval, audit) |
+| Strategist + Brain | `src/brain/` + `src/agents/`                                           |
+| Channels           | `channels/` (Telegram, Web)                                            |
+| GraphQL API        | `src/api/graphql/` (schema, resolvers, subscriptions)                  |
+| MCP Server         | `src/server/mcp.ts`                                                    |
+| Agent Tools        | `src/tools/`                                                           |
+| Composition Root   | `src/main.ts`                                                          |
 
 ### Interface Contracts
 
-```
+```text
 Dean produces → Dima consumes:
   PortfolioSnapshot  (scraper → enrichment pipeline)
   EnrichedSnapshot   (enrichment → Strategist + ToolRegistry + GraphQL)
@@ -999,6 +1009,7 @@ Dima provides → Dean calls:
 Per validator recommendation (scored 8/10). Polymarket only, no brokerage integrations.
 
 ### Deliverables
+
 1. **Trust & Security Layer** — secretctl vault (encrypted JSON + MCP), RADIUS guard pipeline (security + finance guards, operational postures), PII redactor, approval gate, security audit log
 2. Strategist layer (AgentRuntime + ProviderRouter + Brain + default persona)
 3. ToolRegistry — unified tool registry
@@ -1013,6 +1024,7 @@ Per validator recommendation (scored 8/10). Polymarket only, no brokerage integr
 12. Heartbeat (periodic "any markets moving?")
 
 ### Phase 2 Expansion
+
 - **2a**: Robinhood + Coinbase scrapers, cross-platform aggregation
 - **2b**: Full equity research tools (financials, ratios, estimates, insider, institutional)
 - **2c**: Analysis kit (technical indicators — SMA, RSI, MACD, Bollinger Bands)
@@ -1029,6 +1041,7 @@ Per validator recommendation (scored 8/10). Polymarket only, no brokerage integr
 ## Implementation Order
 
 ### Step 1: Core Runtime
+
 1. **ToolRegistry**: Unified tool registry (critical for everything)
 2. **AgentRuntime**: Orchestrator with tool loops, persona injection, session-aware calls
 3. **Session persistence**: JSONL file-based session store
@@ -1037,45 +1050,52 @@ Per validator recommendation (scored 8/10). Polymarket only, no brokerage integr
 6. **Config system**: Zod schemas, hot-reload, openbb.json, guard config
 
 ### Step 2: Trust & Security Layer (Core Differentiator)
-7. **secretctl**: Encrypted JSON vault, MCP server for AI-safe credential access, CLI
-8. **RADIUS guard pipeline**: Guard runner, operational postures (Local/Standard/Unbounded)
-9. **Security guards**: fs-guard, command-guard, egress-guard, output-dlp, rate-budget, repetition-guard
-10. **Finance guards**: read-only, cooldown, symbol-whitelist
-11. **PII redactor**: Redaction engine, patterns, tests
-12. **Approval gate**: Human-in-the-loop flow, channel routing, configurable actions
-13. **Security audit log**: Immutable append-only JSONL at data/audit/security.jsonl
+
+1. **secretctl**: Encrypted JSON vault, MCP server for AI-safe credential access, CLI
+2. **RADIUS guard pipeline**: Guard runner, operational postures (Local/Standard/Unbounded)
+3. **Security guards**: fs-guard, command-guard, egress-guard, output-dlp, rate-budget, repetition-guard
+4. **Finance guards**: read-only, cooldown, symbol-whitelist
+5. **PII redactor**: Redaction engine, patterns, tests
+6. **Approval gate**: Human-in-the-loop flow, channel routing, configurable actions
+7. **Security audit log**: Immutable append-only JSONL at data/audit/security.jsonl
 
 ### Step 3: Strategist + Brain
-14. **Strategist**: Brain (frontal-lobe, emotion, persona), default persona
-15. **Agent profiles**: Research analyst, strategist, risk manager, trader definitions
-16. **Orchestrator**: Workflow coordination (digest, analyze, trade patterns)
+
+1. **Strategist**: Brain (frontal-lobe, emotion, persona), default persona
+2. **Agent profiles**: Research analyst, strategist, risk manager, trader definitions
+3. **Orchestrator**: Workflow coordination (digest, analyze, trade patterns)
 
 ### Step 4: Data Layer
-17. **OpenBB SDK**: Market data layer (equity, crypto, currency, commodity, economy, symbol-index)
-18. **Research tools**: Equity tools, analysis kit, thinking kit, market search
-19. **News system**: RSS collector, archive tools, API news tools
+
+1. **OpenBB SDK**: Market data layer (equity, crypto, currency, commodity, economy, symbol-index)
+2. **Research tools**: Equity tools, analysis kit, thinking kit, market search
+3. **News system**: RSS collector, archive tools, API news tools
 
 ### Step 5: Portfolio & Enrichment
-20. **Keelson client**: GraphQL client + cache
-21. **Scraper framework**: types, manager, session-store, pw-helpers
-22. **Polymarket scraper**: Platform-specific Playwright automation
-23. **Enrichment pipeline**: Dual-source (Keelson + OpenBB), position-analyzer
+
+1. **Keelson client**: GraphQL client + cache
+2. **Scraper framework**: types, manager, session-store, pw-helpers
+3. **Polymarket scraper**: Platform-specific Playwright automation
+4. **Enrichment pipeline**: Dual-source (Keelson + OpenBB), position-analyzer
 
 ### Step 6: Risk, Alerts & Channels
-24. **Risk manager**: Exposure analyzer, concentration scoring, correlation detection, earnings calendar, drawdown tracker
-25. **Alert engine**: Rules + digest builder (fed by RiskReport)
-26. **Agent tools**: Portfolio, market, alert, risk, scraper tools
-27. **Telegram channel**: grammY bot plugin in `channels/telegram/`
-28. **Web channel**: Hono + SSE plugin in `channels/web/`
+
+1. **Risk manager**: Exposure analyzer, concentration scoring, correlation detection, earnings calendar, drawdown tracker
+2. **Alert engine**: Rules + digest builder (fed by RiskReport)
+3. **Agent tools**: Portfolio, market, alert, risk, scraper tools
+4. **Telegram channel**: grammY bot plugin in `channels/telegram/`
+5. **Web channel**: Hono + SSE plugin in `channels/web/`
 
 ### Step 7: GraphQL API
-29. **Schema**: Type definitions for portfolio, risk, alerts, market data
-30. **Resolvers**: Query/Mutation resolvers calling into existing services
-31. **Subscriptions**: WebSocket-based live updates (alerts, portfolio, price moves)
+
+1. **Schema**: Type definitions for portfolio, risk, alerts, market data
+2. **Resolvers**: Query/Mutation resolvers calling into existing services
+3. **Subscriptions**: WebSocket-based live updates (alerts, portfolio, price moves)
 
 ### Step 8: Wire & Ship
-32. **Wire main.ts**: Composition root connecting everything
-33. **MCP server**: Register all tools for Claude Desktop
+
+1. **Wire main.ts**: Composition root connecting everything
+2. **MCP server**: Register all tools for Claude Desktop
 
 ---
 

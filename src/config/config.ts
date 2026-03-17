@@ -2,8 +2,8 @@
  * Configuration loading and validation.
  */
 
-import { z } from 'zod';
 import { config as loadDotenv } from 'dotenv';
+import { z } from 'zod';
 
 export type AnthropicAuthMode = 'oauth' | 'api_key';
 

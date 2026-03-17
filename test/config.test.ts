@@ -1,5 +1,6 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { loadConfig, YojinConfigSchema } from '../src/config/config.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { YojinConfigSchema, loadConfig } from '../src/config/config.js';
 
 // Mock dotenv so loadConfig doesn't read .env files during tests
 vi.mock('dotenv', () => ({

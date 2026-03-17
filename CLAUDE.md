@@ -43,7 +43,7 @@ See `plans/architecture.md` for the full architecture plan.
 
 ### Data Directory
 
-```
+```text
 data/
 ├── config/          # yojin.json, alerts.json, openbb.json, ai-provider.json
 ├── default/         # Factory defaults (git-tracked)

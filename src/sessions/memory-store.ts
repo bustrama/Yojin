@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+
 import type { Session, SessionStore } from './types.js';
 
 export class InMemorySessionStore implements SessionStore {

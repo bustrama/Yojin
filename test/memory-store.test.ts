@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { InMemorySessionStore } from '../src/sessions/memory-store.js';
 
 function sessionData(overrides: Record<string, unknown> = {}) {
