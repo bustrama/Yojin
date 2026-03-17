@@ -1,4 +1,5 @@
-import Card from '../common/Card';
+import Card from '../common/card';
+import { cn } from '../../lib/utils';
 
 interface SummaryCardData {
   label: string;
@@ -19,19 +20,20 @@ export default function PortfolioSummary() {
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {summaryCards.map((card) => (
         <Card key={card.label}>
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+          <p className="text-xs font-medium uppercase tracking-wider text-text-muted">
             {card.label}
           </p>
-          <p className="mt-2 text-2xl font-semibold text-white">{card.value}</p>
+          <p className="mt-2 text-2xl font-semibold text-text-primary">{card.value}</p>
           {card.change && (
             <p
-              className={`mt-1 text-sm ${
+              className={cn(
+                'mt-1 text-sm',
                 card.changeType === 'positive'
-                  ? 'text-emerald-400'
+                  ? 'text-success'
                   : card.changeType === 'negative'
-                    ? 'text-red-400'
-                    : 'text-slate-500'
-              }`}
+                    ? 'text-error'
+                    : 'text-text-muted',
+              )}
             >
               {card.change}
             </p>
