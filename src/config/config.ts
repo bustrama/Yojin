@@ -62,6 +62,13 @@ export function loadConfig(overrides?: Partial<YojinConfig>): YojinConfig {
           signingSecret: process.env.SLACK_SIGNING_SECRET,
         },
       },
+      {
+        id: 'web',
+        enabled: true,
+        options: {
+          port: process.env.YOJIN_PORT ?? '3000',
+        },
+      },
     ],
     ...overrides,
   };

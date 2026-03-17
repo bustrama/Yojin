@@ -11,6 +11,7 @@ import type { IncomingMessage } from '../plugins/types.js';
 // Built-in plugin imports
 import { anthropicPlugin } from '../../providers/anthropic/index.js';
 import { slackPlugin } from '../../channels/slack/index.js';
+import { webPlugin } from '../../channels/web/index.js';
 
 export class Gateway {
   private registry: PluginRegistry;
@@ -27,6 +28,7 @@ export class Gateway {
     this.log.info('Loading plugins…');
     this.registry.loadPlugin(anthropicPlugin);
     this.registry.loadPlugin(slackPlugin);
+    this.registry.loadPlugin(webPlugin);
     this.log.info('Plugins loaded');
 
     // TODO: Discover and load additional plugins from providers/ and channels/ directories
