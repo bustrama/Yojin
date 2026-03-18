@@ -28,10 +28,6 @@
 }
 
 @layer base {
-  html {
-    font-size: 16px;
-  }
-
   body {
     font-family: var(--font-body);
     background-color: var(--color-bg-primary);

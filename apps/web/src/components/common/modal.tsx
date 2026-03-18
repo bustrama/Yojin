@@ -9,9 +9,19 @@ interface ModalProps {
   maxWidth?: string;
   /** Override the dialog container classes (merged via cn) */
   className?: string;
+  /** ID of an element that labels the dialog (alternative to title for accessible name) */
+  'aria-labelledby'?: string;
 }
 
-export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg', className }: ModalProps) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  maxWidth = 'max-w-lg',
+  className,
+  'aria-labelledby': ariaLabelledBy,
+}: ModalProps) {
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -29,7 +39,8 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={!ariaLabelledBy ? title : undefined}
+        aria-labelledby={ariaLabelledBy}
         className={cn(
           'relative w-full max-h-[80vh] overflow-auto rounded-2xl border border-border bg-bg-secondary p-6',
           maxWidth,

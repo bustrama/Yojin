@@ -3,7 +3,8 @@ import PortfolioStats from '../components/portfolio/portfolio-stats';
 import Tabs from '../components/common/tabs';
 import PositionTable from '../components/portfolio/position-table';
 
-type FilterStatus = 'all' | 'holding' | 'watching' | 'pending' | 'sold';
+const FILTER_STATUSES = ['all', 'holding', 'watching', 'pending', 'sold'] as const;
+type FilterStatus = (typeof FILTER_STATUSES)[number];
 
 const mockPositions = [
   {
@@ -124,12 +125,14 @@ export default function Positions() {
     <div className="flex-1 overflow-auto p-6 space-y-6">
       <PortfolioStats />
       <Tabs
-        tabs={(['all', 'holding', 'watching', 'pending', 'sold'] as const).map((f) => ({
+        tabs={FILTER_STATUSES.map((f) => ({
           label: `${f.charAt(0).toUpperCase() + f.slice(1)} (${counts[f]})`,
           value: f,
         }))}
         value={filter}
-        onChange={(v) => setFilter(v as FilterStatus)}
+        onChange={(v) => {
+          if ((FILTER_STATUSES as readonly string[]).includes(v)) setFilter(v as FilterStatus);
+        }}
       />
       <PositionTable positions={filteredPositions} />
     </div>

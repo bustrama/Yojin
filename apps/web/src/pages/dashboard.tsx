@@ -28,7 +28,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Right panel with tabs */}
+      {/* Right panel — RecommendationsPanel intentionally replaced by FeedList (news + intel tabs) */}
+      {/* TODO: rebuild AI recommendations as a dedicated page or tab */}
       <RightPanel tabs={tabs}>
         <FeedList items={activeTab === 'news' ? newsItems : intelItems} />
       </RightPanel>

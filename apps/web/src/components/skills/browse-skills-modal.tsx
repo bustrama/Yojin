@@ -243,10 +243,13 @@ export default function BrowseSkillsModal({ open, onClose }: BrowseSkillsModalPr
       onClose={handleClose}
       maxWidth="max-w-[780px]"
       className="h-[600px] max-h-none overflow-hidden flex flex-col p-0"
+      aria-labelledby="browse-skills-title"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-5 pb-4">
-        <h2 className="font-headline text-xl text-text-primary">Create New Skill</h2>
+        <h2 id="browse-skills-title" className="font-headline text-xl text-text-primary">
+          Create New Skill
+        </h2>
         <button
           onClick={handleClose}
           className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
