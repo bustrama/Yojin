@@ -126,7 +126,7 @@ export default function UserMenu() {
 
               {/* Submenu */}
               {themeOpen && (
-                <div className="absolute bottom-0 left-full ml-1 w-36 rounded-xl border border-border bg-bg-secondary p-1.5 shadow-lg shadow-black/30">
+                <div className="absolute bottom-0 left-full w-36 rounded-xl border border-border bg-bg-secondary p-1.5 shadow-lg shadow-black/30">
                   {[
                     {
                       value: 'light' as const,

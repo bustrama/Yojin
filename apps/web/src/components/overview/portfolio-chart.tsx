@@ -44,7 +44,7 @@ export default function PortfolioChart() {
   const chartData = useMemo(() => generateMockData(RANGE_DAYS[activeRange]), [activeRange]);
 
   return (
-    <div className="flex min-h-0 flex-[3] flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
+    <div className="flex min-h-[120px] flex-[3] flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
       <div className="mb-1.5 flex flex-shrink-0 items-center justify-between">
         <h3 className="text-sm font-medium text-text-primary">Portfolio Performance</h3>
         <div className="flex gap-0.5">

@@ -28,7 +28,7 @@ export default function PositionsPreview() {
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full">
-          <thead className="sticky top-0 bg-bg-card">
+          <thead className="sticky top-0 z-10 bg-bg-card">
             <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-text-muted">
               <th className="px-3 pb-1.5 font-medium">Symbol</th>
               <th className="px-3 pb-1.5 font-medium">Name</th>

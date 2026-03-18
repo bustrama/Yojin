@@ -43,6 +43,8 @@
     "build:all": "pnpm -r run build",
     "test:all": "pnpm -r run test",
     "ci:all": "pnpm -r run ci",
+    "storybook": "pnpm --filter @yojin/web storybook",
+    "build-storybook": "pnpm --filter @yojin/web build-storybook",
     "lint-staged": "lint-staged",
     "prepare": "husky"
   },
