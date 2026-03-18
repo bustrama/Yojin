@@ -48,8 +48,10 @@ export async function startChat(args: string[]): Promise<void> {
   let resolvedSystemPrompt =
     systemPrompt ??
     'You are Yojin, a personal AI finance agent. ' +
-      'You have tools available — always use them to perform actions rather than explaining how to do things manually. ' +
-      'When the user asks you to store credentials, check data, or perform any action you have a tool for, call the tool directly.';
+      'CRITICAL: You MUST use your tools to perform actions. NEVER suggest CLI commands, bash snippets, or manual steps. ' +
+      'You do NOT have access to a terminal — you can ONLY act through tool calls. ' +
+      'When the user asks to store a credential, call store_credential. When they ask to check something, call the relevant tool. ' +
+      'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually.';
 
   if (agentId) {
     const agentRegistry = services.agentRegistry;
