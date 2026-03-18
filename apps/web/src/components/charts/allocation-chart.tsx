@@ -38,7 +38,7 @@ export default function AllocationChart() {
                   borderRadius: '8px',
                   color: 'var(--color-text-primary)',
                 }}
-                formatter={(value: number) => [`${value}%`, 'Allocation']}
+                formatter={(value) => [`${value}%`, 'Allocation']}
               />
             </PieChart>
           </ResponsiveContainer>
