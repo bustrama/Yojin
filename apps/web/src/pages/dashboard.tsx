@@ -4,7 +4,8 @@ import TotalValueChart from '../components/overview/total-value-chart';
 import PositionsPreview from '../components/overview/positions-preview';
 import AllocationChart from '../components/charts/allocation-chart';
 import RightPanel from '../components/layout/right-panel';
-import { FeedList, newsItems, intelItems } from '../components/overview/news-feed';
+import NewsFeed from '../components/overview/news-feed';
+import IntelAlerts from '../components/overview/intel-alerts';
 
 type PanelTab = 'news' | 'intel';
 
@@ -28,11 +29,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Right panel — RecommendationsPanel intentionally replaced by FeedList (news + intel tabs) */}
-      {/* TODO: rebuild AI recommendations as a dedicated page or tab */}
-      <RightPanel tabs={tabs}>
-        <FeedList items={activeTab === 'news' ? newsItems : intelItems} />
-      </RightPanel>
+      {/* Right panel — News + Intel tabs */}
+      <RightPanel tabs={tabs}>{activeTab === 'news' ? <NewsFeed /> : <IntelAlerts />}</RightPanel>
     </div>
   );
 }

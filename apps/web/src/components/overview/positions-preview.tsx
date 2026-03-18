@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { cn } from '../../lib/utils';
+import { SymbolLogo } from '../common/symbol-logo';
 
 interface Position {
   symbol: string;
@@ -39,7 +40,12 @@ export default function PositionsPreview() {
           <tbody>
             {positions.map((pos) => (
               <tr key={pos.symbol} className="border-b border-border last:border-b-0">
-                <td className="px-3 py-1.5 text-xs font-medium text-accent-primary">{pos.symbol}</td>
+                <td className="px-3 py-1.5">
+                  <div className="flex items-center gap-2">
+                    <SymbolLogo symbol={pos.symbol} size="sm" />
+                    <span className="text-xs font-medium text-primary">{pos.symbol}</span>
+                  </div>
+                </td>
                 <td className="px-3 py-1.5 text-xs text-text-secondary">{pos.name}</td>
                 <td className="px-3 py-1.5 text-right text-xs text-text-primary">{pos.value}</td>
                 <td className={cn('px-3 py-1.5 text-right text-xs', pos.positive ? 'text-success' : 'text-error')}>
