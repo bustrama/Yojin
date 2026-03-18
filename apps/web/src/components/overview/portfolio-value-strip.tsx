@@ -18,7 +18,7 @@ const stats: StatCard[] = [
 
 export default function PortfolioValueStrip() {
   return (
-    <div className="grid flex-shrink-0 grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
+    <div className="grid flex-shrink-0 grid-cols-2 gap-1.5 md:grid-cols-3 lg:grid-cols-6">
       {stats.map((stat) => (
         <div key={stat.label} className="rounded-lg border border-border bg-bg-card px-3 py-2">
           <p className="text-[10px] uppercase tracking-wider text-text-muted">{stat.label}</p>

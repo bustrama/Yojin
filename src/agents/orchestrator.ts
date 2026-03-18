@@ -1,4 +1,4 @@
-import type { AgentId, AgentStepResult, Workflow, WorkflowStep } from './types.js';
+import type { AgentStepResult, Workflow, WorkflowStep } from './types.js';
 import type { AgentRuntime } from '../core/agent-runtime.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 
@@ -19,14 +19,14 @@ export class Orchestrator {
   async execute(
     workflowId: string,
     trigger: { message?: string; sessionKey?: string },
-  ): Promise<Map<AgentId, AgentStepResult>> {
+  ): Promise<Map<string, AgentStepResult>> {
     const workflow = this.workflows.get(workflowId);
     if (!workflow) {
       throw new Error(`Workflow not found: ${workflowId}`);
     }
 
     logger.info(`Executing workflow: ${workflow.name}`, { workflowId });
-    const outputs = new Map<AgentId, AgentStepResult>();
+    const outputs = new Map<string, AgentStepResult>();
 
     for (const stage of workflow.stages) {
       if (Array.isArray(stage)) {
@@ -50,7 +50,7 @@ export class Orchestrator {
 
   private async executeStep(
     step: WorkflowStep,
-    previousOutputs: Map<AgentId, AgentStepResult>,
+    previousOutputs: Map<string, AgentStepResult>,
     trigger: { message?: string; sessionKey?: string },
   ): Promise<AgentStepResult> {
     const message = step.buildMessage(previousOutputs, trigger.message);

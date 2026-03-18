@@ -1,5 +1,4 @@
 import { type AIProvider, type AIProviderConfig, AIProviderConfigSchema } from './types.js';
-import type { AgentId } from '../agents/types.js';
 import { loadJsonConfig } from '../config/config.js';
 import type { AgentMessage, ContentBlock, ToolSchema } from '../core/types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
@@ -34,7 +33,7 @@ export class ProviderRouter {
   }
 
   resolve(
-    _agentId?: AgentId,
+    _agentId?: string,
     overrides?: { provider?: string; model?: string },
   ): { provider: AIProvider; model: string } {
     const config = this.getConfig();

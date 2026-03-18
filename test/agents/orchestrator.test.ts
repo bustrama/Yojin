@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Orchestrator } from '../../src/agents/orchestrator.js';
 import { AgentRegistry } from '../../src/agents/registry.js';
-import type { AgentId, AgentProfile, AgentStepResult, Workflow } from '../../src/agents/types.js';
+import type { AgentProfile, AgentStepResult, Workflow } from '../../src/agents/types.js';
 import { AgentRuntime } from '../../src/core/agent-runtime.js';
 import { EventLog } from '../../src/core/event-log.js';
 import { ToolRegistry } from '../../src/core/tool-registry.js';
@@ -15,14 +15,23 @@ import { GuardRunner } from '../../src/guards/guard-runner.js';
 import { InMemorySessionStore } from '../../src/sessions/memory-store.js';
 import { FileAuditLog } from '../../src/trust/audit/audit-log.js';
 
-function stubProfile(id: AgentId): AgentProfile {
+type StubRole = 'analyst' | 'strategist' | 'risk-manager' | 'trader';
+const ROLE_MAP: Record<string, StubRole> = {
+  'research-analyst': 'analyst',
+  strategist: 'strategist',
+  'risk-manager': 'risk-manager',
+  trader: 'trader',
+};
+
+function stubProfile(id: string): AgentProfile {
   return {
     id,
     name: id,
+    role: ROLE_MAP[id] ?? 'analyst',
     description: `${id} agent`,
-    systemPrompt: `# ${id}`,
     tools: [],
     allowedActions: ['tool_call'],
+    capabilities: ['testing'],
   };
 }
 
@@ -50,7 +59,7 @@ describe('Orchestrator', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'yojin-orch-'));
     const auditLog = new FileAuditLog(tempDir);
 
-    const agentRegistry = new AgentRegistry('.');
+    const agentRegistry = new AgentRegistry();
     agentRegistry.register(stubProfile('research-analyst'));
     agentRegistry.register(stubProfile('strategist'));
     agentRegistry.register(stubProfile('risk-manager'));
@@ -118,7 +127,7 @@ describe('Orchestrator', () => {
   });
 
   it('passes previous outputs and trigger message to buildMessage', async () => {
-    const buildMessage = vi.fn((_prev: Map<AgentId, AgentStepResult>, trigger?: string) => {
+    const buildMessage = vi.fn((_prev: Map<string, AgentStepResult>, trigger?: string) => {
       return `trigger: ${trigger ?? 'none'}`;
     });
 

@@ -4,6 +4,7 @@
 
 import { startChat } from './chat.js';
 import { setupToken } from './setup-token.js';
+import { createDefaultProfiles } from '../agents/defaults.js';
 import { AgentRegistry } from '../agents/registry.js';
 import { ClaudeCodeProvider } from '../ai-providers/claude-code.js';
 import { ProviderRouter } from '../ai-providers/router.js';
@@ -56,8 +57,10 @@ async function startGateway(): Promise<void> {
     toolRegistry.register(tool);
   }
 
-  const agentRegistry = new AgentRegistry(dataRoot);
-  await agentRegistry.loadAll();
+  const agentRegistry = new AgentRegistry();
+  for (const profile of createDefaultProfiles()) {
+    agentRegistry.register(profile);
+  }
 
   const providerRouter = new ProviderRouter();
   providerRouter.registerBackend(new ClaudeCodeProvider());

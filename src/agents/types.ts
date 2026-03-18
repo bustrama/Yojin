@@ -2,45 +2,10 @@ import { z } from 'zod';
 
 import type { AgentMessage } from '../core/types.js';
 
-export const AGENT_IDS = ['research-analyst', 'strategist', 'risk-manager', 'trader'] as const;
-export const AgentIdSchema = z.enum(AGENT_IDS);
-export type AgentId = z.infer<typeof AgentIdSchema>;
+// ---------------------------------------------------------------------------
+// Conversation types
+// ---------------------------------------------------------------------------
 
-export const AgentProfileSchema = z.object({
-  id: AgentIdSchema,
-  name: z.string(),
-  description: z.string(),
-  systemPrompt: z.string(),
-  tools: z.array(z.string()),
-  allowedActions: z.array(z.string()),
-  provider: z.string().optional(),
-  model: z.string().optional(),
-});
-export type AgentProfile = z.infer<typeof AgentProfileSchema>;
-
-export interface AgentStepResult {
-  agentId: AgentId;
-  text: string;
-  messages: AgentMessage[];
-  iterations: number;
-  usage: { inputTokens: number; outputTokens: number };
-  compactions: number;
-}
-
-export interface WorkflowStep {
-  agentId: AgentId;
-  buildMessage: (previousOutputs: Map<AgentId, AgentStepResult>, triggerMessage?: string) => string;
-}
-
-export type WorkflowStage = WorkflowStep | WorkflowStep[];
-
-export interface Workflow {
-  id: string;
-  name: string;
-  stages: WorkflowStage[];
-}
-
-// Legacy types (kept for backward compat until Gateway migration)
 export interface AgentContext {
   providerId: string;
   model: string;
@@ -54,4 +19,75 @@ export interface Agent {
   name: string;
   systemPrompt?: string;
   process(context: AgentContext, history: AgentMessage[], userMessage: string): Promise<string>;
+}
+
+// ---------------------------------------------------------------------------
+// Agent profile — serializable config for agent identity and tool scoping
+// ---------------------------------------------------------------------------
+
+export const AgentRoleSchema = z.enum(['analyst', 'strategist', 'risk-manager', 'trader']);
+export type AgentRole = z.infer<typeof AgentRoleSchema>;
+
+export const AgentProfileSchema = z.object({
+  /** Unique agent identifier (kebab-case, e.g. 'research-analyst'). */
+  id: z.string().regex(/^[a-z0-9-]+$/),
+  /** Display name. */
+  name: z.string().min(1),
+  /** Agent role. */
+  role: AgentRoleSchema,
+  /** Short description of the agent's purpose. */
+  description: z.string(),
+  /** Tool names this agent can use (subset of ToolRegistry). */
+  tools: z.array(z.string()),
+  /** Action types this agent is allowed to perform (for guard pipeline). */
+  allowedActions: z.array(z.string()),
+  /** Capability tags describing what this agent can do. */
+  capabilities: z.array(z.string()),
+  /** Optional LLM provider override (e.g. 'anthropic'). */
+  provider: z.string().optional(),
+  /** Optional model override (e.g. 'claude-sonnet-4-20250514'). */
+  model: z.string().optional(),
+});
+
+export type AgentProfile = z.infer<typeof AgentProfileSchema>;
+
+/**
+ * AgentProfile with its system prompt loaded from Markdown.
+ *
+ * Separated from AgentProfile because the system prompt is loaded at runtime
+ * from data/default/agents/{id}.default.md (or user override), not stored in
+ * the serializable config.
+ */
+export interface LoadedAgentProfile extends AgentProfile {
+  systemPrompt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Agent step result — output of a single agent invocation in a workflow
+// ---------------------------------------------------------------------------
+
+export interface AgentStepResult {
+  agentId: string;
+  text: string;
+  messages: AgentMessage[];
+  iterations: number;
+  usage: { inputTokens: number; outputTokens: number };
+  compactions: number;
+}
+
+// ---------------------------------------------------------------------------
+// Workflow types — orchestration primitives
+// ---------------------------------------------------------------------------
+
+export interface WorkflowStep {
+  agentId: string;
+  buildMessage: (previousOutputs: Map<string, AgentStepResult>, triggerMessage?: string) => string;
+}
+
+export type WorkflowStage = WorkflowStep | WorkflowStep[];
+
+export interface Workflow {
+  id: string;
+  name: string;
+  stages: WorkflowStage[];
 }

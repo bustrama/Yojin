@@ -1,14 +1,11 @@
-import { loadAgentPrompt } from '../../brain/persona.js';
 import type { AgentProfile } from '../types.js';
 
-export async function createStrategistProfile(dataRoot = '.'): Promise<AgentProfile> {
-  const systemPrompt = await loadAgentPrompt('strategist', dataRoot);
-
+export function createStrategistProfile(): AgentProfile {
   return {
     id: 'strategist',
     name: 'Strategist',
+    role: 'strategist',
     description: 'Decision-maker — synthesizes research, risk, and persona into recommendations.',
-    systemPrompt,
     tools: [
       'getFrontalLobe',
       'updateFrontalLobe',
@@ -22,5 +19,6 @@ export async function createStrategistProfile(dataRoot = '.'): Promise<AgentProf
       'getConcentration',
     ],
     allowedActions: ['tool_call'],
+    capabilities: ['reasoning', 'memory', 'emotion', 'persona', 'recommendations'],
   };
 }

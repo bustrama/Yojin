@@ -1,50 +1,15 @@
 import { useMemo, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-
-const timeRanges = ['1D', '1W', '1M', '3M', '1Y', 'ALL'] as const;
-type TimeRange = (typeof timeRanges)[number];
-
-const RANGE_DAYS: Record<TimeRange, number> = {
-  '1D': 1,
-  '1W': 7,
-  '1M': 30,
-  '3M': 90,
-  '1Y': 365,
-  ALL: 730,
-};
-
-function generateMockData(days: number) {
-  const data: { date: string; value: number }[] = [];
-  let value = 106000;
-  const now = new Date();
-
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    const label = date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-
-    // Trending upward with some noise
-    value += (Math.random() - 0.35) * 1200;
-    value = Math.max(value, 104000);
-    data.push({ date: label, value: Math.round(value * 100) / 100 });
-  }
-
-  // Ensure the last value is close to $125k
-  data[data.length - 1].value = 124850.32;
-
-  return data;
-}
+import { timeRanges, RANGE_DAYS, generateMockData } from '../../lib/mock-chart-data';
+import type { TimeRange } from '../../lib/mock-chart-data';
 
 export default function PortfolioChart() {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
   const chartData = useMemo(() => generateMockData(RANGE_DAYS[activeRange]), [activeRange]);
 
   return (
-    <div className="flex min-h-[120px] flex-[3] flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
+    <div className="flex min-h-[100px] flex-[1.5] flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
       <div className="mb-1.5 flex flex-shrink-0 items-center justify-between">
         <h3 className="text-sm font-medium text-text-primary">Portfolio Performance</h3>
         <div className="flex gap-0.5">

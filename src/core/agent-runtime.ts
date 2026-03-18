@@ -14,7 +14,7 @@ import type { EventLog } from './event-log.js';
 import type { ToolRegistry } from './tool-registry.js';
 import type { AgentLoopEventHandler, AgentLoopProvider, ToolDefinition } from './types.js';
 import type { AgentRegistry } from '../agents/registry.js';
-import type { AgentId, AgentProfile, AgentStepResult } from '../agents/types.js';
+import type { AgentProfile, AgentStepResult } from '../agents/types.js';
 import type { EmotionTracker, FrontalLobe, PersonaManager } from '../brain/types.js';
 import type { GuardRunner } from '../guards/guard-runner.js';
 import type { OutputDlpGuard } from '../guards/security/output-dlp.js';
@@ -65,7 +65,7 @@ export class AgentRuntime {
   }
 
   async run(params: {
-    agentId: AgentId;
+    agentId: string;
     message: string;
     sessionKey?: string;
     context?: string;
@@ -119,7 +119,7 @@ export class AgentRuntime {
     userId: string;
     threadId?: string;
   }): Promise<string> {
-    const agentId: AgentId = 'strategist';
+    const agentId: string = 'strategist';
 
     let sessionKey: string | undefined;
     if (params.threadId) {
@@ -142,7 +142,7 @@ export class AgentRuntime {
     return result.text;
   }
 
-  private wrapToolsWithGuards(tools: ToolDefinition[], agentId: AgentId): ToolDefinition[] {
+  private wrapToolsWithGuards(tools: ToolDefinition[], agentId: string): ToolDefinition[] {
     const guardedRegistry = new GuardedToolRegistry({
       registry: this.toolRegistry,
       guardRunner: this.guardRunner,
@@ -159,7 +159,8 @@ export class AgentRuntime {
   }
 
   private async assembleSystemPrompt(profile: AgentProfile, additionalContext?: string): Promise<string> {
-    let prompt = profile.systemPrompt;
+    const loaded = await this.agentRegistry.loadProfile(profile.id);
+    let prompt = loaded.systemPrompt;
 
     if (profile.id === 'strategist' && this.brain) {
       const [persona, frontalLobe, emotion] = await Promise.all([

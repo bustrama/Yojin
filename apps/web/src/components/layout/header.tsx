@@ -11,9 +11,7 @@ const pathToTitle: Record<string, string> = {
 };
 
 function getTitle(pathname: string): string {
-  // Exact match first
   if (pathToTitle[pathname]) return pathToTitle[pathname];
-  // Handle /portfolio/:symbol
   if (pathname.startsWith('/portfolio/')) return 'Portfolio';
   return 'Yojin';
 }
@@ -27,34 +25,53 @@ export default function Header() {
 
   return (
     <header className="flex items-center justify-between border-b border-border bg-bg-secondary px-4 py-2">
-      <h1 className="font-headline text-base text-text-primary">{title}</h1>
-
-      <div className="flex items-center gap-4">
-        {isSkills && (
-          <div className="flex gap-1 rounded-lg bg-bg-tertiary p-1">
-            <button
-              onClick={() => setSearchParams({})}
-              className={cn(
-                'rounded-md px-3 py-1 text-sm transition-colors',
-                skillsView === 'active' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
-              )}
-            >
-              Active
-            </button>
-            <button
-              onClick={() => setSearchParams({ view: 'builder' })}
-              className={cn(
-                'rounded-md px-3 py-1 text-sm transition-colors',
-                skillsView === 'builder'
-                  ? 'bg-bg-hover text-text-primary'
-                  : 'text-text-muted hover:text-text-secondary',
-              )}
-            >
-              Builder
-            </button>
-          </div>
-        )}
+      <div className="flex items-center gap-2.5 min-w-[200px]">
+        <h1 className="text-sm font-medium tracking-wide text-text-secondary uppercase">{title}</h1>
       </div>
+
+      {isSkills && (
+        <div className="flex gap-1 rounded-full bg-bg-tertiary p-1">
+          <button
+            onClick={() => setSearchParams({})}
+            className={cn(
+              'rounded-full px-4 py-1 text-sm transition-colors',
+              skillsView === 'active' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
+            )}
+          >
+            Active Skills
+          </button>
+          <button
+            onClick={() => setSearchParams({ view: 'builder' })}
+            className={cn(
+              'rounded-full px-4 py-1 text-sm transition-colors',
+              skillsView === 'builder' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
+            )}
+          >
+            Builder
+          </button>
+        </div>
+      )}
+
+      {isSkills ? (
+        <div className="flex items-center gap-2 min-w-[200px] justify-end">
+          <button className="p-2 rounded-lg border border-border text-text-muted hover:text-text-secondary hover:border-border-light transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+              />
+            </svg>
+          </button>
+          <button className="p-2 rounded-lg border border-border text-text-muted hover:text-text-secondary hover:border-border-light transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </button>
+        </div>
+      ) : (
+        <div className="min-w-[200px]" />
+      )}
     </header>
   );
 }

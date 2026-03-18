@@ -1,14 +1,11 @@
-import { loadAgentPrompt } from '../../brain/persona.js';
 import type { AgentProfile } from '../types.js';
 
-export async function createResearchAnalystProfile(dataRoot = '.'): Promise<AgentProfile> {
-  const systemPrompt = await loadAgentPrompt('research-analyst', dataRoot);
-
+export function createResearchAnalystProfile(): AgentProfile {
   return {
     id: 'research-analyst',
     name: 'Research Analyst',
+    role: 'analyst',
     description: 'Market intelligence — gathers, validates, and structures data from connected sources.',
-    systemPrompt,
     tools: [
       'equityGetProfile',
       'equityGetFinancials',
@@ -29,5 +26,6 @@ export async function createResearchAnalystProfile(dataRoot = '.'): Promise<Agen
       'enrichPortfolio',
     ],
     allowedActions: ['tool_call', 'network_request'],
+    capabilities: ['market-data', 'technicals', 'news', 'enrichment', 'symbol-resolution'],
   };
 }

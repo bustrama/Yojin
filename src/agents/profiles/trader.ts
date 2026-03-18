@@ -1,14 +1,11 @@
-import { loadAgentPrompt } from '../../brain/persona.js';
 import type { AgentProfile } from '../types.js';
 
-export async function createTraderProfile(dataRoot = '.'): Promise<AgentProfile> {
-  const systemPrompt = await loadAgentPrompt('trader', dataRoot);
-
+export function createTraderProfile(): AgentProfile {
   return {
     id: 'trader',
     name: 'Trader',
+    role: 'trader',
     description: 'Execution — scrapes platforms, tracks positions, executes approved trades.',
-    systemPrompt,
     tools: [
       'loginPlatform',
       'logoutPlatform',
@@ -18,5 +15,6 @@ export async function createTraderProfile(dataRoot = '.'): Promise<AgentProfile>
       'getPositionHistory',
     ],
     allowedActions: ['tool_call', 'trade'],
+    capabilities: ['platform-connection', 'position-fetching', 'trade-execution'],
   };
 }

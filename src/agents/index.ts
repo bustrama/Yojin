@@ -1,15 +1,17 @@
 export type {
   Agent,
   AgentContext,
-  AgentId,
   AgentProfile,
+  AgentRole,
   AgentStepResult,
+  LoadedAgentProfile,
   Workflow,
   WorkflowStage,
   WorkflowStep,
 } from './types.js';
-export { AGENT_IDS, AgentIdSchema, AgentProfileSchema } from './types.js';
+export { AgentProfileSchema, AgentRoleSchema } from './types.js';
 export { AgentRegistry } from './registry.js';
+export { createDefaultProfiles } from './defaults.js';
 export { Orchestrator, registerBuiltinWorkflows } from './orchestrator.js';
 export { createResearchAnalystProfile } from './profiles/research-analyst.js';
 export { createStrategistProfile } from './profiles/strategist.js';

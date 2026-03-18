@@ -60,14 +60,15 @@ describe('AgentRuntime', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'yojin-runtime-'));
     auditLog = new FileAuditLog(tempDir);
 
-    agentRegistry = new AgentRegistry('.');
+    agentRegistry = new AgentRegistry();
     const profile: AgentProfile = {
       id: 'strategist',
       name: 'Strategist',
+      role: 'strategist',
       description: 'Test strategist',
-      systemPrompt: '# Test Strategist\nYou are a test agent.',
       tools: ['echo'],
       allowedActions: ['tool_call'],
+      capabilities: ['reasoning'],
     };
     agentRegistry.register(profile);
 

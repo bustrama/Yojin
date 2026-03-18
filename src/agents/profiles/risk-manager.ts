@@ -1,14 +1,11 @@
-import { loadAgentPrompt } from '../../brain/persona.js';
 import type { AgentProfile } from '../types.js';
 
-export async function createRiskManagerProfile(dataRoot = '.'): Promise<AgentProfile> {
-  const systemPrompt = await loadAgentPrompt('risk-manager', dataRoot);
-
+export function createRiskManagerProfile(): AgentProfile {
   return {
     id: 'risk-manager',
     name: 'Risk Manager',
+    role: 'risk-manager',
     description: 'Portfolio risk analysis — exposure, concentration, correlation, earnings proximity.',
-    systemPrompt,
     tools: [
       'analyzeExposure',
       'getConcentrationScore',
@@ -18,5 +15,6 @@ export async function createRiskManagerProfile(dataRoot = '.'): Promise<AgentPro
       'generateRiskReport',
     ],
     allowedActions: ['tool_call'],
+    capabilities: ['exposure-analysis', 'concentration', 'correlation', 'earnings', 'drawdown'],
   };
 }
