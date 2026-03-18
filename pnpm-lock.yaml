@@ -42,7 +42,7 @@ importers:
         specifier: 4.12.8
         version: 4.12.8
       rehydra:
-        specifier: ^0.3.4
+        specifier: 0.3.4
         version: 0.3.4
       tslog:
         specifier: 4.10.2
