@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { cn } from '../../lib/utils';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 const timeRanges = ['1D', '1W', '1M', '3M', '1Y', 'ALL'] as const;
 type TimeRange = (typeof timeRanges)[number];
@@ -27,26 +27,37 @@ function generateMockData(days: number) {
       day: 'numeric',
     });
 
-    // Trending upward with some noise
     value += (Math.random() - 0.35) * 1200;
     value = Math.max(value, 104000);
     data.push({ date: label, value: Math.round(value * 100) / 100 });
   }
 
-  // Ensure the last value is close to $125k
   data[data.length - 1].value = 124850.32;
-
   return data;
 }
 
-export default function PortfolioChart() {
+const tooltipStyle = {
+  backgroundColor: 'var(--color-bg-card)',
+  border: '1px solid var(--color-border)',
+  borderRadius: '8px',
+  color: 'var(--color-text-primary)',
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts Formatter type is overly strict
+const formatValue: any = (value: number | string) => [
+  `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+  'Value',
+];
+
+export default function TotalValueChart() {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
   const chartData = useMemo(() => generateMockData(RANGE_DAYS[activeRange]), [activeRange]);
+  const baselineValue = chartData[0]?.value ?? 0;
 
   return (
-    <div className="flex min-h-[100px] flex-[1.5] flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
-      <div className="mb-1.5 flex flex-shrink-0 items-center justify-between">
-        <h3 className="text-sm font-medium text-text-primary">Portfolio Performance</h3>
+    <div className="flex min-h-[120px] flex-[1.5] flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
+      <div className="mb-1 flex flex-shrink-0 items-center justify-between">
+        <h3 className="text-sm font-medium text-text-primary">Total Value</h3>
         <div className="flex gap-0.5">
           {timeRanges.map((range) => (
             <button
@@ -64,41 +75,44 @@ export default function PortfolioChart() {
       </div>
       <div className="min-h-0 flex-1">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <defs>
-              <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="totalValueGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#FF5A5E" stopOpacity={0.3} />
                 <stop offset="100%" stopColor="#FF5A5E" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} opacity={0.4} />
             <XAxis
               dataKey="date"
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
-              axisLine={{ stroke: 'var(--color-border)' }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }}
+              axisLine={false}
               tickLine={false}
+              interval="preserveStartEnd"
             />
             <YAxis
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
-              axisLine={{ stroke: 'var(--color-border)' }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }}
+              axisLine={false}
               tickLine={false}
-              width={45}
+              width={40}
               domain={['dataMin - 2000', 'dataMax + 2000']}
               tickFormatter={(val: number) => `$${(val / 1000).toFixed(0)}k`}
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'var(--color-bg-card)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '8px',
-                color: 'var(--color-text-primary)',
-              }}
-              formatter={(value) => [
-                `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-                'Value',
-              ]}
+            <ReferenceLine
+              y={baselineValue}
+              stroke="var(--color-text-muted)"
+              strokeDasharray="4 4"
+              strokeOpacity={0.6}
             />
-            <Area type="monotone" dataKey="value" stroke="#FF5A5E" strokeWidth={2} fill="url(#portfolioGradient)" />
+            <Tooltip contentStyle={tooltipStyle} formatter={formatValue} />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke="#FF5A5E"
+              strokeWidth={2}
+              fill="url(#totalValueGrad)"
+              dot={false}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>

@@ -2,9 +2,9 @@ export default function RuleEditorView() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="font-headline text-lg text-text-primary">Rule Builder</h2>
+        <h2 className="font-headline text-lg text-text-primary">Skill Builder</h2>
         <button className="bg-accent-primary hover:bg-accent-secondary text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          Save Rule
+          Save Skill
         </button>
       </div>
 
@@ -57,7 +57,7 @@ export default function RuleEditorView() {
       </div>
 
       <p className="text-text-muted text-sm text-center">
-        Drag and drop to build custom automation rules (coming soon)
+        Drag and drop to build custom automation skills (coming soon)
       </p>
     </div>
   );
