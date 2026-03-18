@@ -22,6 +22,7 @@ import { createSubsystemLogger } from '../logging/logger.js';
 import type { SessionStore } from '../sessions/types.js';
 import type { ApprovalGate } from '../trust/approval/approval-gate.js';
 import { GuardedToolRegistry } from '../trust/guarded-tool-registry.js';
+import type { ChatPiiScanner } from '../trust/pii/chat-scanner.js';
 
 const DEFAULT_MODEL = 'claude-opus-4-6';
 
@@ -37,6 +38,7 @@ export interface AgentRuntimeOptions {
   approvalGate?: ApprovalGate;
   outputDlp?: OutputDlpGuard;
   dataRoot?: string;
+  piiScanner?: ChatPiiScanner;
   brain?: {
     persona: PersonaManager;
     frontalLobe: FrontalLobe;
@@ -53,6 +55,7 @@ export class AgentRuntime {
   private readonly guardedRegistry: GuardedToolRegistry;
   private readonly dataRoot: string;
   private readonly brain?: AgentRuntimeOptions['brain'];
+  private readonly piiScanner?: ChatPiiScanner;
 
   constructor(options: AgentRuntimeOptions) {
     this.agentRegistry = options.agentRegistry;
@@ -62,6 +65,7 @@ export class AgentRuntime {
     this.provider = options.provider;
     this.dataRoot = options.dataRoot ?? '.';
     this.brain = options.brain;
+    this.piiScanner = options.piiScanner;
     this.guardedRegistry = new GuardedToolRegistry({
       registry: options.toolRegistry,
       guardRunner: options.guardRunner,
@@ -103,6 +107,7 @@ export class AgentRuntime {
         systemPrompt,
         tools: guardedTools,
         onEvent: params.onEvent,
+        piiScanner: this.piiScanner,
       });
     } catch (err) {
       await this.eventLog.append({
@@ -138,16 +143,22 @@ export class AgentRuntime {
     };
   }
 
+  /** General-purpose chat system prompt — same as the CLI REPL. */
+  private static readonly CHAT_SYSTEM_PROMPT =
+    'You are Yojin, a personal AI finance agent. ' +
+    'CRITICAL: You MUST use your tools to perform actions. NEVER suggest CLI commands, bash snippets, or manual steps. ' +
+    'You do NOT have access to a terminal — you can ONLY act through tool calls. ' +
+    'When the user asks to store a credential, call store_credential. When they ask to check something, call the relevant tool. ' +
+    'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually.';
+
   async handleMessage(params: {
     message: string;
     channelId: string;
     userId: string;
     threadId?: string;
+    onEvent?: AgentLoopEventHandler;
   }): Promise<string> {
-    const agentId: string = 'strategist';
-
-    const profile = this.agentRegistry.get(agentId);
-    const model = profile?.model ?? DEFAULT_MODEL;
+    const model = DEFAULT_MODEL;
 
     let sessionKey: string | undefined;
     if (params.threadId) {
@@ -166,7 +177,54 @@ export class AgentRuntime {
       }
     }
 
-    const result = await this.run({ agentId, message: params.message, sessionKey });
+    // Use all available tools (same as CLI chat) — not scoped to a single agent.
+    const allTools = this.toolRegistry
+      .toSchemas()
+      .map((s) => this.toolRegistry.subset([s.name])[0])
+      .filter(Boolean);
+    const guardedTools = this.wrapToolsWithGuards(allTools, 'chat');
+
+    const history = sessionKey ? (await this.sessionStore.getHistory(sessionKey)).map((e) => e.message) : [];
+
+    await this.eventLog.append({
+      type: 'agent.run.start',
+      data: { agentId: 'chat', sessionKey: sessionKey ?? null },
+    });
+
+    let result;
+    try {
+      result = await runAgentLoop(params.message, history, {
+        provider: this.provider,
+        model,
+        systemPrompt: AgentRuntime.CHAT_SYSTEM_PROMPT,
+        tools: guardedTools,
+        onEvent: params.onEvent,
+        piiScanner: this.piiScanner,
+      });
+    } catch (err) {
+      await this.eventLog.append({
+        type: 'agent.run.error',
+        data: { agentId: 'chat', error: String(err) },
+      });
+      throw err;
+    }
+
+    if (sessionKey) {
+      for (const msg of result.messages.slice(history.length)) {
+        await this.sessionStore.append(sessionKey, msg);
+      }
+    }
+
+    await this.eventLog.append({
+      type: 'agent.run.complete',
+      data: { agentId: 'chat', iterations: result.iterations, usage: result.usage },
+    });
+
+    logger.info('Chat completed', {
+      iterations: result.iterations,
+      usage: result.usage,
+    });
+
     return result.text;
   }
 

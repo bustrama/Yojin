@@ -151,7 +151,7 @@ describe('ProviderRouter config loading', () => {
   it('loadConfig returns schema defaults when file is missing', async () => {
     const router = new ProviderRouter({ configPath: path.join(tmpDir, 'missing.json') });
     const config = await router.loadConfig();
-    expect(config.defaultProvider).toBe('anthropic');
+    expect(config.defaultProvider).toBe('claude-code');
     expect(config.defaultModel).toBe('claude-opus-4-6');
   });
 
@@ -194,7 +194,7 @@ describe('ProviderRouter config loading', () => {
     await rm(tmpDir, { recursive: true, force: true });
     // But since missing file returns defaults, loadConfig should still succeed
     const config = await router.loadConfig();
-    expect(config.defaultProvider).toBe('anthropic');
+    expect(config.defaultProvider).toBe('claude-code');
 
     router.stopConfigRefresh();
   });

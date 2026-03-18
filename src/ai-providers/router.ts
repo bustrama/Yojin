@@ -80,6 +80,29 @@ export class ProviderRouter {
     }
   }
 
+  async streamWithTools(params: {
+    model: string;
+    system?: string;
+    messages: AgentMessage[];
+    tools?: ToolSchema[];
+    maxTokens?: number;
+    onTextDelta?: (text: string) => void;
+    providerOverrides?: { provider?: string; model?: string };
+  }): Promise<{
+    content: ContentBlock[];
+    stopReason: string;
+    usage?: { inputTokens: number; outputTokens: number };
+  }> {
+    const { provider, model } = this.resolve(params.providerOverrides);
+
+    if (provider.streamWithTools) {
+      return provider.streamWithTools({ ...params, model });
+    }
+
+    // Fallback to non-streaming
+    return provider.completeWithTools({ ...params, model });
+  }
+
   async loadConfig(): Promise<AIProviderConfig> {
     // loadJsonConfig infers Zod input type (with optionals), but parse() applies defaults
     const config = (await loadJsonConfig(this.configPath, AIProviderConfigSchema)) as AIProviderConfig;
