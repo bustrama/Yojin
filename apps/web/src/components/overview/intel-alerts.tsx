@@ -34,8 +34,6 @@ const typeConfig: Record<AlertType, { variant: BadgeVariant; color: string; icon
   insight: { variant: 'success', color: 'text-success', iconBg: 'bg-success/10', sectionLabel: 'Insights' },
 };
 
-const TYPE_ORDER: AlertType[] = ['action', 'alert', 'insight'];
-
 /* ── Type icons (24×24 viewBox, Heroicons outline) ───────────────── */
 
 function ActionIcon({ className }: { className?: string }) {
@@ -222,96 +220,69 @@ export default function IntelAlerts() {
     });
   };
 
-  const groups = TYPE_ORDER.map((type) => ({
-    type,
-    config: typeConfig[type],
-    items: alerts.filter((a) => a.type === type),
-  })).filter((g) => g.items.length > 0);
-
   return (
     <>
-      <div className="space-y-5 p-3">
-        {groups.map((group) => {
-          const Icon = typeIcon[group.type];
+      <div className="space-y-1.5 p-3">
+        {alerts.map((alert) => {
+          const config = typeConfig[alert.type];
+          const Icon = typeIcon[alert.type];
+          const expanded = expandedKey === alert.title;
           return (
-            <div key={group.type}>
-              {/* Section header */}
-              <div className="mb-2 flex items-center gap-2">
-                <span className={cn('text-3xs font-semibold uppercase tracking-[0.15em]', group.config.color)}>
-                  {group.config.sectionLabel}
-                </span>
-                <div className="h-px flex-1 bg-border" />
+            <div
+              key={alert.title}
+              className={cn(
+                'cursor-pointer rounded-xl bg-bg-tertiary transition-all',
+                expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-hover',
+              )}
+              onClick={() => toggleExpand(alert.title)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={expanded}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleExpand(alert.title);
+                }
+              }}
+            >
+              {/* Card header */}
+              <div className="flex items-center gap-3 p-3">
+                <div className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg', config.iconBg)}>
+                  <Icon className={cn('h-4.5 w-4.5', config.color)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className={cn('text-3xs font-semibold uppercase tracking-[0.1em]', config.color)}>
+                    {alert.label}
+                  </span>
+                  <p className="text-xs font-medium leading-snug text-text-primary">{alert.title}</p>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-1 self-start pt-0.5">
+                  <span className="text-2xs text-text-muted">{alert.time}</span>
+                  <ChevronIcon expanded={expanded} />
+                </div>
               </div>
 
-              {/* Cards */}
-              <div className="space-y-1.5">
-                {group.items.map((alert) => {
-                  const expanded = expandedKey === alert.title;
-                  return (
-                    <div
-                      key={alert.title}
-                      className={cn(
-                        'cursor-pointer rounded-xl bg-bg-tertiary transition-all',
-                        expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-hover',
-                      )}
-                      onClick={() => toggleExpand(alert.title)}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={expanded}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          toggleExpand(alert.title);
-                        }
+              {/* Expandable preview */}
+              <div
+                className={cn(
+                  'grid transition-[grid-template-rows] duration-200 ease-out',
+                  expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                )}
+              >
+                <div className="overflow-hidden">
+                  <div className="border-t border-border/30 px-3 pb-3">
+                    <p className="mt-2 text-2xs leading-relaxed text-text-secondary">{alert.preview}</p>
+                    <button
+                      className="mt-2 text-2xs font-medium text-accent-primary transition-colors hover:text-accent-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetail(alert);
                       }}
                     >
-                      {/* Card header */}
-                      <div className="flex items-center gap-3 p-3">
-                        <div
-                          className={cn(
-                            'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg',
-                            group.config.iconBg,
-                          )}
-                        >
-                          <Icon className={cn('h-4.5 w-4.5', group.config.color)} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <span className={cn('text-3xs font-semibold uppercase tracking-[0.1em]', group.config.color)}>
-                            {alert.label}
-                          </span>
-                          <p className="text-xs font-medium leading-snug text-text-primary">{alert.title}</p>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-1 self-start pt-0.5">
-                          <span className="text-2xs text-text-muted">{alert.time}</span>
-                          <ChevronIcon expanded={expanded} />
-                        </div>
-                      </div>
-
-                      {/* Expandable preview */}
-                      <div
-                        className={cn(
-                          'grid transition-[grid-template-rows] duration-200 ease-out',
-                          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                        )}
-                      >
-                        <div className="overflow-hidden">
-                          <div className="border-t border-border/30 px-3 pb-3">
-                            <p className="mt-2 text-2xs leading-relaxed text-text-secondary">{alert.preview}</p>
-                            <button
-                              className="mt-2 text-2xs font-medium text-accent-primary transition-colors hover:text-accent-secondary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openDetail(alert);
-                              }}
-                            >
-                              View full analysis &rarr;
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      View full analysis &rarr;
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           );

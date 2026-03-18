@@ -101,8 +101,6 @@ const categoryIcon: Record<NewsCategory, React.FC<{ className?: string }>> = {
   Macro: MacroIcon,
 };
 
-const GROUP_ORDER: NewsCategory[] = ['Macro', 'Fundamentals', 'Sentiment', 'News', 'Filings', 'Socials'];
-
 /* ── Mock data ───────────────────────────────────────────────────── */
 
 const newsItems: FeedItem[] = [
@@ -288,96 +286,69 @@ export default function NewsFeed() {
     });
   };
 
-  const groups = GROUP_ORDER.map((cat) => ({
-    category: cat,
-    items: newsItems.filter((item) => item.tag === cat),
-  })).filter((g) => g.items.length > 0);
-
   return (
     <>
-      <div className="space-y-5 p-3">
-        {groups.map((group) => {
-          const config = categoryConfig[group.category];
-          const Icon = categoryIcon[group.category];
+      <div className="space-y-1.5 p-3">
+        {newsItems.map((item) => {
+          const config = categoryConfig[item.tag];
+          const Icon = categoryIcon[item.tag];
+          const expanded = expandedKey === item.title;
           return (
-            <div key={group.category}>
-              {/* Section header */}
-              <div className="mb-2 flex items-center gap-2">
-                <span className={cn('text-3xs font-semibold uppercase tracking-[0.15em]', config.color)}>
-                  {group.category}
-                </span>
-                <div className="h-px flex-1 bg-border" />
+            <div
+              key={item.title}
+              className={cn(
+                'cursor-pointer rounded-xl bg-bg-tertiary transition-all',
+                expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-hover',
+              )}
+              onClick={() => toggleExpand(item.title)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={expanded}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleExpand(item.title);
+                }
+              }}
+            >
+              {/* Card header */}
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <div className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg', config.iconBg)}>
+                  <Icon className={cn('h-4.5 w-4.5', config.color)} />
+                </div>
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <span className={cn('text-3xs font-semibold uppercase tracking-[0.1em]', config.color)}>
+                    {item.tag}
+                  </span>
+                  <p className="text-xs font-medium leading-snug text-text-primary">{item.title}</p>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-1 self-start">
+                  <span className="text-2xs text-text-muted">{item.time}</span>
+                  <ChevronIcon expanded={expanded} />
+                </div>
               </div>
 
-              {/* Cards */}
-              <div className="space-y-1.5">
-                {group.items.map((item) => {
-                  const expanded = expandedKey === item.title;
-                  return (
-                    <div
-                      key={item.title}
-                      className={cn(
-                        'cursor-pointer rounded-xl bg-bg-tertiary transition-all',
-                        expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-hover',
-                      )}
-                      onClick={() => toggleExpand(item.title)}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={expanded}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          toggleExpand(item.title);
-                        }
+              {/* Expandable preview */}
+              <div
+                className={cn(
+                  'grid transition-[grid-template-rows] duration-200 ease-out',
+                  expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                )}
+              >
+                <div className="overflow-hidden">
+                  <div className="border-t border-border/30 px-3 pb-3">
+                    <p className="mt-2 text-2xs leading-relaxed text-text-secondary">{item.preview}</p>
+                    <button
+                      className="mt-2 text-2xs font-medium text-accent-primary transition-colors hover:text-accent-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetail(item);
                       }}
                     >
-                      {/* Card header */}
-                      <div className="flex items-center gap-3 px-3 py-2.5">
-                        <div
-                          className={cn(
-                            'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg',
-                            config.iconBg,
-                          )}
-                        >
-                          <Icon className={cn('h-4.5 w-4.5', config.color)} />
-                        </div>
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <span className={cn('text-3xs font-semibold uppercase tracking-[0.1em]', config.color)}>
-                            {item.tag}
-                          </span>
-                          <p className="text-xs font-medium leading-snug text-text-primary">{item.title}</p>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-1 self-start">
-                          <span className="text-2xs text-text-muted">{item.time}</span>
-                          <ChevronIcon expanded={expanded} />
-                        </div>
-                      </div>
-
-                      {/* Expandable preview */}
-                      <div
-                        className={cn(
-                          'grid transition-[grid-template-rows] duration-200 ease-out',
-                          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                        )}
-                      >
-                        <div className="overflow-hidden">
-                          <div className="border-t border-border/30 px-3 pb-3">
-                            <p className="mt-2 text-2xs leading-relaxed text-text-secondary">{item.preview}</p>
-                            <button
-                              className="mt-2 text-2xs font-medium text-accent-primary transition-colors hover:text-accent-secondary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openDetail(item);
-                              }}
-                            >
-                              View full analysis &rarr;
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      View full analysis &rarr;
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           );

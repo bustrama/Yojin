@@ -68,9 +68,20 @@ export default function PortfolioValueStrip() {
   }
 
   if (error || !data?.portfolio) {
+    const placeholders: StatCard[] = [
+      { label: 'Total Value', value: 'N/A', change: null },
+      { label: "Today's P&L", value: 'N/A', change: null },
+      { label: 'Total Return', value: 'N/A', change: null },
+      { label: 'Positions', value: 'N/A', change: null },
+    ];
     return (
-      <div className="flex-shrink-0 rounded-lg border border-border bg-bg-card px-3 py-2 text-xs text-text-muted">
-        Unable to load portfolio data
+      <div className="grid flex-shrink-0 grid-cols-2 gap-1.5 md:grid-cols-3 lg:grid-cols-4">
+        {placeholders.map((stat) => (
+          <div key={stat.label} className="rounded-lg border border-border bg-bg-card px-3 py-2">
+            <p className="text-2xs uppercase tracking-wider text-text-secondary">{stat.label}</p>
+            <p className="mt-0.5 text-sm font-semibold text-text-muted">{stat.value}</p>
+          </div>
+        ))}
       </div>
     );
   }
