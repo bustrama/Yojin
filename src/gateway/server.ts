@@ -1,30 +1,30 @@
 /**
  * Gateway server — loads plugins, wires providers and channels,
- * and routes messages through the agent loop.
+ * and delegates message handling to AgentRuntime.
+ *
+ * The Gateway is a thin shell: plugin lifecycle + channel wiring.
+ * All agent logic (sessions, tools, guards) lives in AgentRuntime.
  */
 
 import { slackPlugin } from '../../channels/slack/index.js';
 import { webPlugin } from '../../channels/web/index.js';
 import { anthropicPlugin } from '../../providers/anthropic/index.js';
 import type { YojinConfig } from '../config/config.js';
-import { runAgentLoop } from '../core/agent-loop.js';
-import { starterTools } from '../core/starter-tools.js';
-import type { AgentLoopProvider, AgentMessage } from '../core/types.js';
+import type { AgentRuntime } from '../core/agent-runtime.js';
 import { getLogger } from '../logging/index.js';
 import { PluginRegistry } from '../plugins/registry.js';
 import type { IncomingMessage } from '../plugins/types.js';
 
 export class Gateway {
-  private registry: PluginRegistry;
-  private config: YojinConfig;
-  private log = getLogger().sub('gateway');
-  /** Per-thread conversation history with LRU eviction. */
-  private threadHistory = new Map<string, AgentMessage[]>();
-  private static readonly MAX_THREADS = 200;
+  private readonly registry: PluginRegistry;
+  private readonly config: YojinConfig;
+  private readonly agentRuntime: AgentRuntime;
+  private readonly log = getLogger().sub('gateway');
 
-  constructor(config: YojinConfig) {
+  constructor(config: YojinConfig, agentRuntime: AgentRuntime) {
     this.config = config;
     this.registry = new PluginRegistry();
+    this.agentRuntime = agentRuntime;
   }
 
   /** Load all built-in and discovered plugins. */
@@ -41,7 +41,7 @@ export class Gateway {
     await this.loadPlugins();
     await this.registry.initializeAll(this.config as unknown as Record<string, unknown>);
 
-    // Wire message handlers: channel → agent loop → channel
+    // Wire message handlers: channel → AgentRuntime → channel
     for (const channel of this.registry.getAllChannels()) {
       channel.messagingAdapter.onMessage(async (msg) => {
         await this.handleIncomingMessage(msg, channel.id);
@@ -54,31 +54,13 @@ export class Gateway {
     console.log(`Yojin gateway started — ${providers} provider(s), ${channels} channel(s)`);
   }
 
-  /** Route an incoming message through the agent loop. */
+  /** Route an incoming message through AgentRuntime. */
   private async handleIncomingMessage(msg: IncomingMessage, channelId: string): Promise<void> {
-    const providerId = this.config.defaultProvider ?? 'anthropic';
-    const provider = this.registry.getProvider(providerId);
-
-    if (!provider) {
-      this.log.error(`No provider found: ${providerId}`);
-      return;
-    }
-
     const channel = this.registry.getChannel(channelId);
     if (!channel) {
       this.log.error(`No channel found: ${channelId}`);
       return;
     }
-
-    // Check that the provider supports tool use
-    const loopProvider = provider as unknown as AgentLoopProvider;
-    if (typeof loopProvider.completeWithTools !== 'function') {
-      this.log.error(`Provider "${providerId}" does not support completeWithTools`);
-      return;
-    }
-
-    const model = this.config.defaultModel ?? provider.models[0]?.id ?? 'claude-sonnet-4-20250514';
-    const threadKey = `${channelId}:${msg.threadId ?? msg.userId}`;
 
     this.log.info(`Message from ${msg.userId} on ${channelId}`, {
       threadId: msg.threadId,
@@ -86,42 +68,17 @@ export class Gateway {
     });
 
     try {
-      const history = this.threadHistory.get(threadKey) ?? [];
-
-      const result = await runAgentLoop(msg.text, history, {
-        provider: loopProvider,
-        model,
-        tools: starterTools,
-        onEvent: (event) => {
-          if (event.type === 'action') {
-            this.log.info('Tool calls', {
-              tools: event.toolCalls.map((t) => t.name),
-            });
-          }
-        },
+      const responseText = await this.agentRuntime.handleMessage({
+        message: msg.text,
+        channelId,
+        userId: msg.userId,
+        threadId: msg.threadId,
       });
-
-      this.log.info('Agent loop complete', {
-        model,
-        iterations: result.iterations,
-        usage: result.usage,
-        responseLength: result.text.length,
-      });
-
-      // Update thread history (LRU: delete + re-insert moves key to end)
-      this.threadHistory.delete(threadKey);
-      this.threadHistory.set(threadKey, result.messages);
-
-      // Evict oldest threads when over capacity
-      if (this.threadHistory.size > Gateway.MAX_THREADS) {
-        const oldest = this.threadHistory.keys().next().value as string;
-        this.threadHistory.delete(oldest);
-      }
 
       await channel.messagingAdapter.sendMessage({
         channelId: msg.channelId,
         threadId: msg.threadId,
-        text: result.text,
+        text: responseText,
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);

@@ -4,6 +4,7 @@
 
 import type { ZodSchema } from 'zod';
 
+import type { AgentRuntime } from './agent-runtime.js';
 import type { EventLog } from './event-log.js';
 import type { ToolRegistry } from './tool-registry.js';
 import type { YojinConfig } from '../config/config.js';
@@ -152,4 +153,5 @@ export interface YojinContext {
   sessionStore: SessionStore;
   eventLog: EventLog;
   channelRouter: ChannelRouter;
+  agentRuntime?: AgentRuntime;
 }

@@ -4,8 +4,19 @@
 
 import { startChat } from './chat.js';
 import { setupToken } from './setup-token.js';
+import { AgentRegistry } from '../agents/registry.js';
+import { ClaudeCodeProvider } from '../ai-providers/claude-code.js';
+import { ProviderRouter } from '../ai-providers/router.js';
+import { VercelAIProvider } from '../ai-providers/vercel-ai.js';
 import { loadConfig } from '../config/config.js';
+import { AgentRuntime } from '../core/agent-runtime.js';
+import { EventLog } from '../core/event-log.js';
+import { starterTools } from '../core/starter-tools.js';
+import { ToolRegistry } from '../core/tool-registry.js';
 import { Gateway } from '../gateway/server.js';
+import { GuardRunner } from '../guards/guard-runner.js';
+import { JsonlSessionStore } from '../sessions/jsonl-store.js';
+import { FileAuditLog } from '../trust/audit/audit-log.js';
 import { runSecretCommand } from '../trust/vault/cli.js';
 
 export async function runMain(args: string[]): Promise<void> {
@@ -36,7 +47,34 @@ export async function runMain(args: string[]): Promise<void> {
 
 async function startGateway(): Promise<void> {
   const config = loadConfig();
-  const gateway = new Gateway(config);
+
+  // --- Composition root: wire AgentRuntime ---
+  const dataRoot = '.';
+  const auditLog = new FileAuditLog(`${dataRoot}/data/audit`);
+  const toolRegistry = new ToolRegistry();
+  for (const tool of starterTools) {
+    toolRegistry.register(tool);
+  }
+
+  const agentRegistry = new AgentRegistry(dataRoot);
+  await agentRegistry.loadAll();
+
+  const providerRouter = new ProviderRouter();
+  providerRouter.registerBackend(new ClaudeCodeProvider());
+  providerRouter.registerBackend(new VercelAIProvider());
+  await providerRouter.loadConfig();
+  providerRouter.startConfigRefresh();
+
+  const agentRuntime = new AgentRuntime({
+    agentRegistry,
+    toolRegistry,
+    guardRunner: new GuardRunner([], { auditLog }),
+    sessionStore: new JsonlSessionStore(`${dataRoot}/data/sessions`),
+    eventLog: new EventLog(`${dataRoot}/data/event-log`),
+    provider: providerRouter,
+  });
+
+  const gateway = new Gateway(config, agentRuntime);
 
   // Graceful shutdown
   const shutdown = async () => {
