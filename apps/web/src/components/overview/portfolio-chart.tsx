@@ -93,8 +93,8 @@ export default function PortfolioChart() {
                 borderRadius: '8px',
                 color: 'var(--color-text-primary)',
               }}
-              formatter={(value: number) => [
-                `$${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+              formatter={(value) => [
+                `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
                 'Value',
               ]}
             />
