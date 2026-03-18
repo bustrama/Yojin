@@ -13,6 +13,7 @@ import type { OutputDlpGuard } from '../guards/security/output-dlp.js';
 import type { ChannelRouter } from '../plugins/channel-router.js';
 import type { SessionStore } from '../sessions/types.js';
 import type { ApprovalGate } from '../trust/approval/approval-gate.js';
+import type { ChatPiiScanner } from '../trust/pii/chat-scanner.js';
 
 // ---------------------------------------------------------------------------
 // Tool definitions
@@ -104,6 +105,7 @@ export type AgentLoopEvent =
       truncatedChars: number;
     }
   | { type: 'compaction'; messagesBefore: number; messagesAfter: number; usedLlmSummary: boolean }
+  | { type: 'pii_redacted'; entitiesFound: number; typesFound: string[]; processingTimeMs: number }
   | { type: 'done'; text: string; iterations: number }
   | { type: 'error'; error: string; iterations: number }
   | { type: 'max_iterations'; iterations: number };
@@ -143,6 +145,8 @@ export interface AgentLoopOptions {
   approvalGate?: ApprovalGate;
   /** Agent identity — included in guard audit logs. */
   agentId?: string;
+  /** PII scanner for masking sensitive data in user messages before LLM. */
+  piiScanner?: ChatPiiScanner;
 }
 
 // ---------------------------------------------------------------------------
