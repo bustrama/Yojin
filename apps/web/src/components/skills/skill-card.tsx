@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils';
 const categoryColors: Record<SkillCategory, string> = {
   RISK: 'border-error text-error',
   PORTFOLIO: 'border-warning text-warning',
-  MARKET: 'border-[#a78bfa] text-[#a78bfa]',
+  MARKET: 'border-market text-market',
   RESEARCH: 'border-success text-success',
 };
 

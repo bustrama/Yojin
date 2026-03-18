@@ -18,6 +18,7 @@
   --color-warning: #d4a34a;
   --color-error: #e57373;
   --color-info: #7da9d4;
+  --color-market: #a78bfa;
   --font-headline: 'Young Serif', serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
@@ -48,6 +49,7 @@
     --color-warning: #b58a2b;
     --color-error: #d43d3d;
     --color-info: #3b7cb8;
+    --color-market: #7c5cbf;
   }
 
   ::-webkit-scrollbar {

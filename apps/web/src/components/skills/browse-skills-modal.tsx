@@ -29,7 +29,7 @@ const sidebarItems: { key: FilterCategory; label: string }[] = [
 const categoryBadge: Record<SkillCategory, string> = {
   RISK: 'bg-error/10 text-error',
   PORTFOLIO: 'bg-warning/10 text-warning',
-  MARKET: 'bg-[#a78bfa]/10 text-[#a78bfa]',
+  MARKET: 'bg-market/10 text-market',
   RESEARCH: 'bg-success/10 text-success',
 };
 
@@ -131,7 +131,7 @@ const iconBgs: Record<string, string> = {
   risk2: 'bg-[#e57373]/20 text-[#e57373]',
   portfolio1: 'bg-warning/20 text-warning',
   portfolio2: 'bg-[#d4a34a]/20 text-[#d4a34a]',
-  market1: 'bg-[#a78bfa]/20 text-[#a78bfa]',
+  market1: 'bg-market/20 text-market',
   market2: 'bg-[#8b7ad4]/20 text-[#8b7ad4]',
   research1: 'bg-success/20 text-success',
   research2: 'bg-[#4a9e72]/20 text-[#4a9e72]',

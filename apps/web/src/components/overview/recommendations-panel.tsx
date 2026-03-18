@@ -293,8 +293,8 @@ function ItemIcon({ icon, type }: { icon: IconName; type: ItemType }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-        <polyline points="16 7 22 7 22 13" />
+        <path d="M7 17 17 7" />
+        <polyline points="7 7 17 7 17 17" />
       </svg>
     ),
   };
@@ -395,7 +395,7 @@ export default function RecommendationsPanel() {
 
   const filteredItems = filterMap[activeFilter] ? items.filter((item) => item.type === filterMap[activeFilter]) : items;
 
-  const totalCount = items.length;
+  const totalCount = filteredItems.length;
 
   // Group filtered items by type, preserving section order
   const sections: { type: ItemType; items: RecommendationItem[] }[] = [];

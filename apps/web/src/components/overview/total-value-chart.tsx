@@ -1,53 +1,8 @@
 import { useMemo, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-
-const timeRanges = ['1D', '1W', '1M', '3M', '1Y', 'ALL'] as const;
-type TimeRange = (typeof timeRanges)[number];
-
-const RANGE_DAYS: Record<TimeRange, number> = {
-  '1D': 1,
-  '1W': 7,
-  '1M': 30,
-  '3M': 90,
-  '1Y': 365,
-  ALL: 730,
-};
-
-function generateMockData(days: number) {
-  const data: { date: string; value: number }[] = [];
-  let value = 106000;
-  const now = new Date();
-
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    const label = date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-
-    value += (Math.random() - 0.35) * 1200;
-    value = Math.max(value, 104000);
-    data.push({ date: label, value: Math.round(value * 100) / 100 });
-  }
-
-  data[data.length - 1].value = 124850.32;
-  return data;
-}
-
-const tooltipStyle = {
-  backgroundColor: 'var(--color-bg-card)',
-  border: '1px solid var(--color-border)',
-  borderRadius: '8px',
-  color: 'var(--color-text-primary)',
-};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts Formatter type is overly strict
-const formatValue: any = (value: number | string) => [
-  `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-  'Value',
-];
+import { timeRanges, RANGE_DAYS, generateMockData, tooltipStyle, formatValue } from '../../lib/mock-chart-data';
+import type { TimeRange } from '../../lib/mock-chart-data';
 
 export default function TotalValueChart() {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
