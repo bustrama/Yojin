@@ -405,5 +405,106 @@ export function buildAnthropicProvider(): ProviderPlugin & AgentLoopProvider {
         },
       };
     },
+
+    async streamWithTools(params: {
+      model: string;
+      system?: string;
+      messages: AgentMessage[];
+      tools?: ToolSchema[];
+      maxTokens?: number;
+      onTextDelta?: (text: string) => void;
+    }) {
+      if (authMode === 'cli') {
+        // CLI mode: no streaming, fall back to completeWithTools
+        return this.completeWithTools(params);
+      }
+
+      const useOAuth = authMode === 'oauth';
+      const remapName = useOAuth ? toOAuthToolName : (n: string) => n;
+      const unremapName = useOAuth ? fromOAuthToolName : (n: string) => n;
+
+      const apiMessages = params.messages.map((m) => {
+        if (typeof m.content === 'string') {
+          return { role: m.role as 'user' | 'assistant', content: m.content };
+        }
+        const blocks = m.content.map((block) => {
+          if (block.type === 'text') {
+            return { type: 'text' as const, text: block.text };
+          }
+          if (block.type === 'tool_use') {
+            return {
+              type: 'tool_use' as const,
+              id: block.id,
+              name: remapName(block.name),
+              input: block.input as Record<string, unknown>,
+            };
+          }
+          if (block.type === 'tool_result') {
+            return {
+              type: 'tool_result' as const,
+              tool_use_id: block.tool_use_id,
+              content: block.content,
+              ...(block.is_error ? { is_error: true as const } : {}),
+            };
+          }
+          return block;
+        });
+        return { role: m.role as 'user' | 'assistant', content: blocks };
+      });
+
+      const systemParam = useOAuth
+        ? [
+            { type: 'text' as const, text: OAUTH_SYSTEM_PREFIX.trim() },
+            ...(params.system ? [{ type: 'text' as const, text: params.system }] : []),
+          ]
+        : params.system;
+
+      const stream = client.messages.stream({
+        model: params.model,
+        max_tokens: params.maxTokens ?? 4096,
+        messages: apiMessages as Anthropic.MessageParam[],
+        ...(systemParam ? { system: systemParam } : {}),
+        ...(params.tools?.length
+          ? {
+              tools: params.tools.map((t) => ({
+                name: remapName(t.name),
+                description: t.description,
+                input_schema: cleanInputSchema(t.input_schema as Record<string, unknown>) as Anthropic.Tool.InputSchema,
+              })),
+            }
+          : {}),
+      });
+
+      // Emit text deltas as they arrive
+      stream.on('text', (text) => {
+        params.onTextDelta?.(text);
+      });
+
+      const finalMessage = await stream.finalMessage();
+
+      const content: ContentBlock[] = finalMessage.content.map((block) => {
+        if (block.type === 'text') {
+          return { type: 'text' as const, text: block.text };
+        }
+        if (block.type === 'tool_use') {
+          return {
+            type: 'tool_use' as const,
+            id: block.id,
+            name: unremapName(block.name),
+            input: block.input,
+          };
+        }
+        return { type: 'text' as const, text: '' };
+      });
+
+      return {
+        content,
+        stopReason: finalMessage.stop_reason ?? 'end_turn',
+        usage: {
+          inputTokens: finalMessage.usage.input_tokens,
+          outputTokens: finalMessage.usage.output_tokens,
+        },
+      };
+    },
   };
 }

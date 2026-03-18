@@ -98,6 +98,7 @@ export async function startChat(args: string[]): Promise<void> {
       rl.pause();
 
       try {
+        let streamingStarted = false;
         const result = await runAgentLoop(trimmed, history, {
           provider: loopProvider,
           model,
@@ -107,7 +108,18 @@ export async function startChat(args: string[]): Promise<void> {
           outputDlp,
           agentId,
           onEvent: (event) => {
+            if (event.type === 'text_delta') {
+              if (!streamingStarted) {
+                process.stdout.write('\x1b[33massistant:\x1b[0m ');
+                streamingStarted = true;
+              }
+              process.stdout.write(event.text);
+            }
             if (event.type === 'action') {
+              if (streamingStarted) {
+                process.stdout.write('\n');
+                streamingStarted = false;
+              }
               for (const call of event.toolCalls) {
                 const argStr = summarizeArgs(call.input);
                 process.stdout.write(`  \x1b[90m[tool] ${call.name}(${argStr})\x1b[0m\n`);
@@ -125,7 +137,9 @@ export async function startChat(args: string[]): Promise<void> {
 
         history = result.messages;
 
-        if (result.text) {
+        if (streamingStarted) {
+          process.stdout.write('\n\n');
+        } else if (result.text) {
           console.log(`\x1b[33massistant:\x1b[0m ${result.text}\n`);
         }
 
