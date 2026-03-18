@@ -80,8 +80,23 @@ export function mapEventToUpdates(event: AgentLoopEvent, sessionId: string): Acp
         },
       ];
 
-    case 'compaction':
     case 'error':
+      return [
+        {
+          sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: `Error: ${event.error}` },
+          },
+        },
+      ];
+
+    case 'compaction':
+      // Internal optimization, not relevant to ACP client
+      return [];
+
+    default:
+      event satisfies never;
       return [];
   }
 }

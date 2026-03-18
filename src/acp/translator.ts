@@ -1,9 +1,14 @@
+import { createRequire } from 'node:module';
+
 import type { AgentSideConnection } from '@agentclientprotocol/sdk';
 
 import { mapEventToUpdates } from './event-mapper.js';
 import type { RuntimeBridge } from './runtime-bridge.js';
 import type { AcpSessionStore } from './session-store.js';
 import { createSubsystemLogger } from '../logging/logger.js';
+
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require('../../package.json') as { version: string };
 
 const PROTOCOL_VERSION = 1;
 const logger = createSubsystemLogger('acp');
@@ -34,7 +39,7 @@ export class YojinAcpAgent {
       agentInfo: {
         name: 'yojin',
         title: 'Yojin — Personal AI Finance Agent',
-        version: '0.1.0',
+        version: PKG_VERSION,
       },
       authMethods: [],
     };
@@ -69,8 +74,8 @@ export class YojinAcpAgent {
     }
 
     const message = params.prompt
-      .filter((p) => p.type === 'text' && p.text)
-      .map((p) => p.text as string)
+      .filter((p): p is { type: string; text: string } => p.type === 'text' && !!p.text)
+      .map((p) => p.text)
       .join('\n');
 
     if (!message) {
@@ -83,7 +88,7 @@ export class YojinAcpAgent {
       const events = this.bridge.sendPrompt({
         message,
         channelId: 'acp',
-        userId: 'local',
+        userId: session.userId,
         threadId: session.threadId,
       });
 
@@ -95,6 +100,8 @@ export class YojinAcpAgent {
 
         if (event.type === 'max_iterations') {
           stopReason = 'max_iterations';
+        } else if (event.type === 'error') {
+          stopReason = 'error';
         }
       }
     } catch (err) {

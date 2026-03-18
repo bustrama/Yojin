@@ -4,6 +4,7 @@ export const AcpSessionSchema = z.object({
   sessionId: z.string().uuid(),
   threadId: z.string(),
   cwd: z.string(),
+  userId: z.string().default('local'),
   createdAt: z.number(),
 });
 

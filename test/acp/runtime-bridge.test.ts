@@ -39,7 +39,22 @@ describe('callbackToAsyncIterable', () => {
     expect(collected).toEqual(['a', 'b']);
   });
 
-  it('terminates on error', async () => {
+  it('yields queued items before throwing on error', async () => {
+    const { push, error, iterable } = callbackToAsyncIterable<string>();
+    push('a');
+    push('b');
+    error(new Error('boom'));
+
+    const collected: string[] = [];
+    await expect(async () => {
+      for await (const item of iterable) {
+        collected.push(item);
+      }
+    }).rejects.toThrow('boom');
+    expect(collected).toEqual(['a', 'b']);
+  });
+
+  it('terminates on error with empty queue', async () => {
     const { error, iterable } = callbackToAsyncIterable<string>();
     error(new Error('boom'));
 

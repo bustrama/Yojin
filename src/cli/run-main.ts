@@ -2,6 +2,8 @@
  * CLI main runner.
  */
 
+import { createRequire } from 'node:module';
+
 import { startChat } from './chat.js';
 import { setupToken } from './setup-token.js';
 import { LocalRuntimeBridge } from '../acp/runtime-bridge.js';
@@ -25,6 +27,9 @@ import { JsonlSessionStore } from '../sessions/jsonl-store.js';
 import { FileAuditLog } from '../trust/audit/audit-log.js';
 import { runSecretCommand } from '../trust/vault/cli.js';
 
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require('../../package.json') as { version: string };
+
 export async function runMain(args: string[]): Promise<void> {
   const command = args[0] ?? 'start';
 
@@ -45,7 +50,7 @@ export async function runMain(args: string[]): Promise<void> {
       await startAcp();
       break;
     case 'version':
-      console.log('yojin v0.1.0');
+      console.log(`yojin v${PKG_VERSION}`);
       break;
     case 'help':
     default:
@@ -115,12 +120,12 @@ async function startAcp(): Promise<void> {
   const acpSessionStore = new AcpSessionStore(`${dataRoot}/data/acp`);
   const { shutdown } = startAcpServer({ bridge, sessionStore: acpSessionStore });
 
-  const gracefulShutdown = () => {
-    shutdown();
+  const gracefulShutdown = async () => {
+    await shutdown();
     process.exit(0);
   };
-  process.on('SIGINT', gracefulShutdown);
-  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', () => void gracefulShutdown());
+  process.on('SIGTERM', () => void gracefulShutdown());
 }
 
 function printHelp(): void {

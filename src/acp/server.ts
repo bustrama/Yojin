@@ -16,7 +16,12 @@ export interface AcpServerOptions {
   stdout?: NodeJS.WritableStream;
 }
 
-export function startAcpServer(options: AcpServerOptions): { shutdown: () => void } {
+export interface AcpServerHandle {
+  shutdown: () => Promise<void>;
+  connection: AgentSideConnection;
+}
+
+export function startAcpServer(options: AcpServerOptions): AcpServerHandle {
   const { bridge, sessionStore } = options;
   const stdin = options.stdin ?? process.stdin;
   const stdout = options.stdout ?? process.stdout;
@@ -25,7 +30,7 @@ export function startAcpServer(options: AcpServerOptions): { shutdown: () => voi
   const input = Readable.toWeb(stdin as NodeJS.ReadableStream) as ReadableStream<Uint8Array>;
   const stream = ndJsonStream(output, input);
 
-  new AgentSideConnection((conn: AgentSideConnection) => {
+  const connection = new AgentSideConnection((conn: AgentSideConnection) => {
     const agent = new YojinAcpAgent(bridge, sessionStore, conn);
     logger.info('ACP connection established');
     return agent;
@@ -33,12 +38,10 @@ export function startAcpServer(options: AcpServerOptions): { shutdown: () => voi
 
   logger.info('ACP server started on stdio');
 
-  const shutdown = () => {
+  const shutdown = async () => {
     logger.info('ACP server shutting down');
-    for (const session of sessionStore.list()) {
-      bridge.abort(session.threadId);
-    }
+    await Promise.all(sessionStore.list().map((session) => bridge.abort(session.threadId)));
   };
 
-  return { shutdown };
+  return { shutdown, connection };
 }

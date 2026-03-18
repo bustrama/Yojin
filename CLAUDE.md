@@ -57,7 +57,8 @@ data/
 ├── event-log/       # events.jsonl
 ├── news-archive/    # Persistent news archive (JSONL)
 ├── audit/           # Security audit log (security.jsonl — append-only, never truncated)
-└── cron/            # Job state
+├── cron/            # Job state
+└── acp/             # ACP session mappings (sessions.json)
 ```
 
 ## Commands

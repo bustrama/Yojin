@@ -101,10 +101,14 @@ describe('mapEventToUpdates', () => {
     expect(updates).toHaveLength(0);
   });
 
-  it('returns empty for error events', () => {
+  it('maps error to agent_message_chunk with error message', () => {
     const event: AgentLoopEvent = { type: 'error', error: 'boom', iterations: 1 };
     const updates = mapEventToUpdates(event, SESSION_ID);
-    expect(updates).toHaveLength(0);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].update).toMatchObject({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'Error: boom' },
+    });
   });
 
   it('maps max_iterations to agent_message_chunk', () => {

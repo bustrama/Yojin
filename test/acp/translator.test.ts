@@ -102,6 +102,20 @@ describe('YojinAcpAgent', () => {
     ).rejects.toThrow('Unknown session');
   });
 
+  it('prompt throws for empty text content', async () => {
+    const bridge = mockBridge();
+    const conn = mockConnection();
+    const agent = createAgent(bridge, store, conn);
+
+    const session = await agent.newSession({ cwd: '/tmp' });
+    await expect(
+      agent.prompt({
+        sessionId: session.sessionId,
+        prompt: [{ type: 'image' }],
+      }),
+    ).rejects.toThrow('Empty prompt');
+  });
+
   it('cancel aborts the runtime bridge using threadId', async () => {
     const bridge = mockBridge();
     const conn = mockConnection();
