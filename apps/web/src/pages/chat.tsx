@@ -37,7 +37,7 @@ async function sendChatMessage(message: string, threadId: string): Promise<{ thr
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [threadId] = useState(() => `web-${Date.now()}`);
+  const [threadId] = useState(() => `web-${crypto.randomUUID()}`);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
