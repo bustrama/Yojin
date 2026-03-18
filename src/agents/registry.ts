@@ -80,7 +80,9 @@ export class AgentRegistry {
    */
   getToolsForAgent(id: string, toolRegistry: ToolRegistry): ToolDefinition[] {
     const profile = this.profiles.get(id);
-    if (!profile) return [];
+    if (!profile) {
+      throw new Error(`Agent profile not found: ${id}`);
+    }
     return toolRegistry.subset(profile.tools);
   }
 }

@@ -133,5 +133,6 @@ describe('check_api_health', () => {
     const result = await tool.execute({ sourceId: 'crasher' });
     expect(result.content).toContain('UNREACHABLE');
     expect(result.content).toContain('Unexpected crash');
+    expect(result.isError).toBe(true);
   });
 });

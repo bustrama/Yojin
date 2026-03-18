@@ -74,11 +74,19 @@ export function createErrorAnalysisTools(options: ErrorAnalysisOptions): ToolDef
         return { content: reason, isError: true };
       }
 
-      const healthResults = await dataSourceRegistry.healthCheckAll();
       let unhealthyCount = 0;
 
       for (const source of sources) {
-        const health = healthResults.get(source.id);
+        let health: { healthy: boolean; latencyMs: number; error?: string } | undefined;
+        try {
+          health = await source.healthCheck();
+        } catch (err) {
+          health = {
+            healthy: false,
+            latencyMs: -1,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
         const healthy = health?.healthy ?? false;
         if (!healthy) unhealthyCount++;
 

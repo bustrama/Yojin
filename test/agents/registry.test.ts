@@ -150,10 +150,10 @@ describe('AgentRegistry', () => {
     expect(tools[0].name).toBe('exists');
   });
 
-  it('getToolsForAgent returns empty array for unknown agent', () => {
+  it('getToolsForAgent throws for unknown agent', () => {
     const agentRegistry = new AgentRegistry();
     const toolRegistry = new ToolRegistry();
 
-    expect(agentRegistry.getToolsForAgent('nonexistent', toolRegistry)).toEqual([]);
+    expect(() => agentRegistry.getToolsForAgent('nonexistent', toolRegistry)).toThrow('not found');
   });
 });

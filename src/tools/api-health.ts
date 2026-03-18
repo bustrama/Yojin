@@ -50,6 +50,7 @@ export function createApiHealthTools(options: ApiHealthOptions): ToolDefinition[
           const msg = err instanceof Error ? err.message : String(err);
           return {
             content: `UNREACHABLE — ${source.name} (${source.id})\n  Error: ${msg}`,
+            isError: true,
           };
         }
       }

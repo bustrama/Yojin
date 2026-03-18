@@ -72,7 +72,7 @@ export function createPortfolioReasoningTools(options: PortfolioReasoningOptions
       lines.push('');
 
       // Append to existing memory rather than replacing
-      const updatedMemory = existingMemory.trim().endsWith('No active reasoning chains yet.')
+      const updatedMemory = existingMemory.trim().endsWith('Awaiting first portfolio analysis.')
         ? lines.join('\n')
         : `${existingMemory}\n\n---\n\n${lines.join('\n')}`;
 
