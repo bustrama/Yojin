@@ -206,8 +206,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             'A message is still being processed. Your image was not included — please re-attach it after the response completes.',
           );
         }
+        // Don't append to messages here — processQueue does it when the message is actually sent.
         queueRef.current.push(content);
-        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content }]);
       } else {
         setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content }]);
         processMessage(content, image);

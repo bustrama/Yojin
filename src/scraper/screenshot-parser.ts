@@ -224,6 +224,7 @@ const EXPECTED_FIELDS = [
   'marketValue',
   'unrealizedPnl',
   'unrealizedPnlPercent',
+  'assetClass',
 ] as const;
 const COMPLETENESS_WEIGHT = 0.7;
 const CONSISTENCY_WEIGHT = 0.3;

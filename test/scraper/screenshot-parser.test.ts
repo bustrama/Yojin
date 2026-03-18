@@ -118,11 +118,12 @@ describe('computeConfidence', () => {
         marketValue: 1750,
         unrealizedPnl: 250,
         unrealizedPnlPercent: 16.67,
+        assetClass: 'EQUITY',
       },
     ];
     const { overall, perPosition } = computeConfidence(positions);
     expect(overall).toBe(1);
-    expect(perPosition[0].fieldsExtracted).toBe(7);
+    expect(perPosition[0].fieldsExtracted).toBe(8);
     expect(perPosition[0].consistencyCheck).toBe(true);
   });
 
@@ -154,7 +155,7 @@ describe('computeConfidence', () => {
     ];
     const { perPosition } = computeConfidence(positions);
     expect(perPosition[0].consistencyCheck).toBe(false);
-    expect(perPosition[0].confidence).toBe(0.7); // 7/7 completeness * 0.7 + 0 consistency * 0.3
+    expect(perPosition[0].confidence).toBe(0.61); // 7/8 completeness * 0.7 + 0 consistency * 0.3
   });
 
   it('passes consistency check within tolerance', () => {
@@ -186,6 +187,7 @@ describe('computeConfidence', () => {
         marketValue: 67000,
         unrealizedPnl: 37000,
         unrealizedPnlPercent: 123,
+        assetClass: 'CRYPTO',
       },
       {
         symbol: 'DOGE',

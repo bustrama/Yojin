@@ -16,6 +16,8 @@ export interface ScreenshotConnectorParams {
   provider: AgentLoopProvider;
   model: string;
   platformHint?: Platform;
+  /** Max tokens for the vision response (default 4096). */
+  maxTokens?: number;
 }
 
 export class ScreenshotConnector implements PlatformConnector {
