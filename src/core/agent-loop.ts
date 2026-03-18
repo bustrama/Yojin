@@ -60,6 +60,7 @@ export async function runAgentLoop(
     outputDlp,
     approvalGate,
     agentId,
+    piiScanner,
   } = options;
 
   const registry = new ToolRegistry();
@@ -86,7 +87,26 @@ export async function runAgentLoop(
   const maxToolResultChars = memory?.maxToolResultChars ?? budget.maxToolResultChars();
 
   const toolSchemas = registry.toSchemas();
-  let messages: AgentMessage[] = [...history, { role: 'user', content: userMessage }];
+
+  // ── PII: scrub sensitive data from user message before LLM ──────
+  let messageForLlm = userMessage;
+  let piiMap: import('rehydra').EncryptedPIIMap | undefined;
+
+  if (piiScanner) {
+    const scrubResult = await piiScanner.scrub(userMessage);
+    if (scrubResult.entitiesFound > 0) {
+      messageForLlm = scrubResult.sanitized;
+      piiMap = scrubResult.piiMap;
+      emit(onEvent, {
+        type: 'pii_redacted',
+        entitiesFound: scrubResult.entitiesFound,
+        typesFound: scrubResult.typesFound,
+        processingTimeMs: scrubResult.processingTimeMs,
+      });
+    }
+  }
+
+  let messages: AgentMessage[] = [...history, { role: 'user', content: messageForLlm }];
   const totalUsage = { inputTokens: 0, outputTokens: 0 };
   let compactions = 0;
 
@@ -144,9 +164,11 @@ export async function runAgentLoop(
 
     // No tool calls → done
     if (toolUseBlocks.length === 0) {
-      emit(onEvent, { type: 'done', text: thoughtText, iterations });
+      // Rehydrate PII tags in the final response so the user sees original values
+      const finalText = piiScanner && piiMap ? await piiScanner.restore(thoughtText, piiMap) : thoughtText;
+      emit(onEvent, { type: 'done', text: finalText, iterations });
       messages.push({ role: 'assistant', content: response.content });
-      return { text: thoughtText, messages, iterations, usage: totalUsage, compactions };
+      return { text: finalText, messages, iterations, usage: totalUsage, compactions };
     }
 
     // ── Action: execute tool calls ────────────────────────────────────
