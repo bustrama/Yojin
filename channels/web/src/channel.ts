@@ -94,28 +94,33 @@ export function buildWebChannel(): ChannelPlugin {
 
       // Chat endpoint — POST message, get response
       app.post('/api/chat', async (c) => {
-        const body = await c.req.json<{ message: string; threadId?: string }>();
-        const threadId = body.threadId ?? `web-${Date.now()}`;
-
-        const incoming: IncomingMessage = {
-          channelId: 'web',
-          threadId,
-          userId: 'web-user',
-          text: body.message,
-          timestamp: new Date().toISOString(),
-        };
-
-        const responsePromise = createResponsePromise(threadId);
-
-        for (const handler of messageHandlers) {
-          await handler(incoming);
-        }
-
         try {
-          const response = await responsePromise;
-          return c.json({ threadId, response });
-        } catch {
-          return c.json({ error: 'Request timed out' }, 504);
+          const body = await c.req.json<{ message: string; threadId?: string }>();
+          const threadId = body.threadId ?? `web-${Date.now()}`;
+
+          const incoming: IncomingMessage = {
+            channelId: 'web',
+            threadId,
+            userId: 'web-user',
+            text: body.message,
+            timestamp: new Date().toISOString(),
+          };
+
+          const responsePromise = createResponsePromise(threadId);
+
+          for (const handler of messageHandlers) {
+            await handler(incoming);
+          }
+
+          try {
+            const response = await responsePromise;
+            return c.json({ threadId, response });
+          } catch {
+            return c.json({ error: 'Request timed out' }, 504);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Internal server error';
+          return c.json({ error: message }, 500);
         }
       });
 
