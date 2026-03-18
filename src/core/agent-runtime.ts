@@ -143,6 +143,7 @@ export class AgentRuntime {
     channelId: string;
     userId: string;
     threadId?: string;
+    onEvent?: AgentLoopEventHandler;
   }): Promise<string> {
     const agentId: string = 'strategist';
 
@@ -166,7 +167,12 @@ export class AgentRuntime {
       }
     }
 
-    const result = await this.run({ agentId, message: params.message, sessionKey });
+    const result = await this.run({
+      agentId,
+      message: params.message,
+      sessionKey,
+      onEvent: params.onEvent,
+    });
     return result.text;
   }
 

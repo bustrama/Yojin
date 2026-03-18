@@ -108,6 +108,9 @@ importers:
       graphql:
         specifier: 16.13.1
         version: 16.13.1
+      graphql-sse:
+        specifier: ^2.6.0
+        version: 2.6.0(graphql@16.13.1)
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -2160,6 +2163,12 @@ packages:
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
+
+  graphql-sse@2.6.0:
+    resolution: {integrity: sha512-BXT5Rjv9UFunjQsmN9WWEIq+TFNhgYibgwo1xkXLxzguQVyOd6paJ4v5DlL9K5QplS0w74bhF+aUiqaGXZBaug==}
+    engines: {node: '>=12'}
+    peerDependencies:
+      graphql: '>=0.11 <=16'
 
   graphql-yoga@5.18.1:
     resolution: {integrity: sha512-GiDSlvibfY/vyurbkBOKMO+adF6bTCzKr80FYWta59s1Lx87oVo8T6Nu/0hrxrGv0SrAUkqUpcpr4Ee7XlYmBw==}
@@ -5378,6 +5387,10 @@ snapshots:
   gopd@1.2.0: {}
 
   graceful-fs@4.2.11: {}
+
+  graphql-sse@2.6.0(graphql@16.13.1):
+    dependencies:
+      graphql: 16.13.1
 
   graphql-yoga@5.18.1(graphql@16.13.1):
     dependencies:

@@ -8,6 +8,7 @@ import { createSchema, createYoga } from 'graphql-yoga';
 import type { Hono } from 'hono';
 
 import { alertsQuery, createAlertMutation, dismissAlertMutation } from './resolvers/alerts.js';
+import { onChatMessageSubscription, sendMessageMutation } from './resolvers/chat.js';
 import { onAlertSubscription, onPortfolioUpdateSubscription, onPriceMoveSubscription } from './resolvers/live.js';
 import { newsQuery, quoteQuery, sectorExposureQuery } from './resolvers/market.js';
 import {
@@ -36,11 +37,13 @@ const schema = createSchema({
       refreshPositions: refreshPositionsMutation,
       createAlert: createAlertMutation,
       dismissAlert: dismissAlertMutation,
+      sendMessage: sendMessageMutation,
     },
     Subscription: {
       onAlert: onAlertSubscription,
       onPortfolioUpdate: onPortfolioUpdateSubscription,
       onPriceMove: onPriceMoveSubscription,
+      onChatMessage: onChatMessageSubscription,
     },
   },
 });

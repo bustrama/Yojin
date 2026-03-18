@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
+import { useMutation, useSubscription } from 'urql';
 import MorningBriefing from '../components/chat/morning-briefing';
 import QueryBuilder from '../components/chat/query-builder';
 import ChatInput from '../components/chat/chat-input';
@@ -10,32 +11,40 @@ interface Message {
   content: string;
 }
 
-async function sendChatMessage(message: string, threadId: string): Promise<{ threadId: string; response: string }> {
-  let res: Response;
-  try {
-    res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, threadId }),
-    });
-  } catch {
-    throw new Error('Cannot reach the backend. Is the server running? (pnpm dev)');
+const SEND_MESSAGE_MUTATION = `
+  mutation SendMessage($threadId: String!, $message: String!) {
+    sendMessage(threadId: $threadId, message: $message) {
+      threadId
+      messageId
+    }
   }
+`;
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `Request failed (${res.status})`);
+const CHAT_SUBSCRIPTION = `
+  subscription OnChatMessage($threadId: String!) {
+    onChatMessage(threadId: $threadId) {
+      type
+      threadId
+      delta
+      messageId
+      content
+      error
+    }
   }
+`;
 
-  const data = (await res.json()) as { threadId: string; response: string };
-  if (typeof data.response !== 'string') {
-    throw new Error('Unexpected response format from server');
-  }
-  return data;
+interface ChatEvent {
+  type: 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'ERROR';
+  threadId: string;
+  delta?: string;
+  messageId?: string;
+  content?: string;
+  error?: string;
 }
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [streamingContent, setStreamingContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [threadId] = useState(() => `web-${crypto.randomUUID()}`);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -44,7 +53,44 @@ export default function Chat() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages, isLoading, streamingContent]);
+
+  // Subscribe to chat events (SSE via GraphQL subscription)
+  const handleSubscription = useCallback((_prev: unknown, data: { onChatMessage: ChatEvent }) => {
+    const event = data.onChatMessage;
+
+    if (event.type === 'TEXT_DELTA' && event.delta) {
+      setStreamingContent((prev) => prev + event.delta);
+    } else if (event.type === 'MESSAGE_COMPLETE' && event.content) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: event.messageId ?? crypto.randomUUID(),
+          role: 'assistant',
+          content: event.content ?? '',
+        },
+      ]);
+      setStreamingContent('');
+      setIsLoading(false);
+    } else if (event.type === 'ERROR') {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Sorry, something went wrong. ${event.error ?? ''}`,
+        },
+      ]);
+      setStreamingContent('');
+      setIsLoading(false);
+    }
+
+    return data;
+  }, []);
+
+  useSubscription({ query: CHAT_SUBSCRIPTION, variables: { threadId } }, handleSubscription);
+
+  const [, sendMessage] = useMutation(SEND_MESSAGE_MUTATION);
 
   const handleSend = useCallback(
     async (content: string) => {
@@ -55,28 +101,22 @@ export default function Chat() {
       };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
+      setStreamingContent('');
 
-      try {
-        const { response } = await sendChatMessage(content, threadId);
-        const assistantMessage: Message = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: response,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      } catch (err) {
-        const errorText = err instanceof Error ? err.message : 'Something went wrong';
-        const errorMessage: Message = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `Sorry, I couldn't process that request. ${errorText}`,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      } finally {
+      const result = await sendMessage({ threadId, message: content });
+      if (result.error) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: `Sorry, I couldn't process that request. ${result.error?.message ?? ''}`,
+          },
+        ]);
         setIsLoading(false);
       }
     },
-    [threadId],
+    [threadId, sendMessage],
   );
 
   const handleQuerySelect = useCallback(
@@ -95,7 +135,10 @@ export default function Chat() {
           {messages.map((msg) => (
             <ChatMessage key={msg.id} id={msg.id} role={msg.role} content={msg.content} />
           ))}
-          {isLoading && (
+          {/* Streaming response */}
+          {streamingContent && <ChatMessage id="streaming" role="assistant" content={streamingContent} />}
+          {/* Loading indicator (before first delta arrives) */}
+          {isLoading && !streamingContent && (
             <div className="flex gap-3">
               <img
                 src="/yojin_inverse_avatar.png"

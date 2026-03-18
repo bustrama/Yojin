@@ -204,6 +204,43 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
+  # Chat
+  # ---------------------------------------------------------------------------
+
+  enum ChatRole {
+    USER
+    ASSISTANT
+  }
+
+  enum ChatEventType {
+    TEXT_DELTA
+    MESSAGE_COMPLETE
+    ERROR
+  }
+
+  type ChatMessage {
+    id: ID!
+    threadId: String!
+    role: ChatRole!
+    content: String!
+    timestamp: String!
+  }
+
+  type ChatEvent {
+    type: ChatEventType!
+    threadId: String!
+    delta: String
+    messageId: String
+    content: String
+    error: String
+  }
+
+  type SendMessagePayload {
+    threadId: String!
+    messageId: String!
+  }
+
+  # ---------------------------------------------------------------------------
   # Inputs
   # ---------------------------------------------------------------------------
 
@@ -233,11 +270,13 @@ export const typeDefs = /* GraphQL */ `
     refreshPositions(platform: Platform!): PortfolioSnapshot!
     createAlert(rule: AlertRuleInput!): Alert!
     dismissAlert(id: ID!): Alert!
+    sendMessage(threadId: String!, message: String!): SendMessagePayload!
   }
 
   type Subscription {
     onAlert: Alert!
     onPortfolioUpdate: PortfolioSnapshot!
     onPriceMove(symbol: String!, threshold: Float!): PriceEvent!
+    onChatMessage(threadId: String!): ChatEvent!
   }
 `;
