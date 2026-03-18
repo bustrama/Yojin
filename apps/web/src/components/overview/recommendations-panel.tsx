@@ -342,7 +342,7 @@ function RecommendationCard({
           </span>
           <p className="text-xs font-medium leading-tight text-text-primary truncate">{item.title}</p>
         </div>
-        <span className="flex-shrink-0 text-mini text-text-muted">{item.time}</span>
+        <span className="flex-shrink-0 text-2xs text-text-muted">{item.time}</span>
       </div>
 
       {/* Expanded content */}
@@ -375,10 +375,10 @@ function RecommendationCard({
 
             {/* Action buttons */}
             <div className="mt-3 flex gap-2">
-              <button className="flex-1 rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary">
+              <button className="flex-1 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary">
                 Dismiss
               </button>
-              <button className="flex-1 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-secondary">
+              <button className="flex-1 rounded-lg bg-accent-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-secondary">
                 {item.primaryAction}
               </button>
             </div>
@@ -414,7 +414,7 @@ export default function RecommendationsPanel() {
       <div className="px-4 pt-3.5 pb-1">
         <div className="flex items-center justify-between">
           <h2 className="text-2xs font-medium tracking-wide text-text-secondary uppercase">Recommendations</h2>
-          <span className="text-mini tabular-nums text-text-muted">{totalCount} items</span>
+          <span className="text-2xs tabular-nums text-text-muted">{totalCount} items</span>
         </div>
       </div>
 

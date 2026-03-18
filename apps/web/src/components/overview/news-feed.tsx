@@ -1,3 +1,5 @@
+import Badge from '../common/badge';
+import type { BadgeVariant } from '../common/badge';
 import { cn } from '../../lib/utils';
 
 export interface FeedItem {
@@ -79,15 +81,15 @@ export const intelItems: FeedItem[] = [
   },
 ];
 
-const tagColors: Record<string, string> = {
-  Economy: 'bg-info/10 text-info',
-  Earnings: 'bg-success/10 text-success',
-  Market: 'bg-accent-primary/10 text-accent-primary',
-  Tech: 'bg-accent-secondary/10 text-accent-secondary',
-  Global: 'bg-warning/10 text-warning',
-  Action: 'bg-accent-primary/10 text-accent-primary',
-  Alert: 'bg-warning/10 text-warning',
-  Insight: 'bg-success/10 text-success',
+const tagVariant: Record<string, BadgeVariant> = {
+  Economy: 'info',
+  Earnings: 'success',
+  Market: 'accent',
+  Tech: 'accent',
+  Global: 'warning',
+  Action: 'accent',
+  Alert: 'warning',
+  Insight: 'success',
 };
 
 export function FeedList({ items }: { items: FeedItem[] }) {
@@ -99,15 +101,10 @@ export function FeedList({ items }: { items: FeedItem[] }) {
             <span className="font-medium">{item.source}</span>
             <span>{item.time}</span>
           </div>
-          <p className="mt-0.5 text-2xs leading-snug text-text-primary">{item.title}</p>
-          <span
-            className={cn(
-              'mt-1 inline-block rounded-full px-1.5 py-px text-2xs font-medium',
-              tagColors[item.tag] ?? 'bg-bg-tertiary text-text-muted',
-            )}
-          >
+          <p className="mt-0.5 text-xs leading-snug text-text-primary">{item.title}</p>
+          <Badge variant={tagVariant[item.tag] ?? 'neutral'} className="mt-1">
             {item.tag}
-          </span>
+          </Badge>
         </div>
       ))}
     </div>

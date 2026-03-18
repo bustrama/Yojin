@@ -68,7 +68,7 @@ export default function Sidebar() {
   const logoSrc = resolved === 'dark' ? '/yojin_logo_white.png' : '/yojin_logo.png';
 
   return (
-    <aside className="flex w-[180px] flex-shrink-0 flex-col border-r border-border bg-bg-secondary">
+    <aside className="flex w-[200px] flex-shrink-0 flex-col border-r border-border bg-bg-secondary">
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4">
         <img
@@ -94,7 +94,7 @@ export default function Sidebar() {
             to={item.path}
             end={item.path === '/'}
             className={({ isActive }) =>
-              `flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              `flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
                 isActive
                   ? 'border-l-2 border-accent-primary bg-accent-glow text-accent-secondary'
                   : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'

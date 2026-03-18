@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { cn } from '../../lib/utils.js';
+import Badge from '../common/badge.js';
+import type { BadgeVariant } from '../common/badge.js';
 import Modal from '../common/modal.js';
 import type { SkillCategory } from './types.js';
 
@@ -27,11 +29,11 @@ const sidebarItems: { key: FilterCategory; label: string }[] = [
   { key: 'RESEARCH', label: 'Research' },
 ];
 
-const categoryBadge: Record<SkillCategory, string> = {
-  RISK: 'bg-error/10 text-error',
-  PORTFOLIO: 'bg-warning/10 text-warning',
-  MARKET: 'bg-market/10 text-market',
-  RESEARCH: 'bg-success/10 text-success',
+const categoryVariant: Record<SkillCategory, BadgeVariant> = {
+  RISK: 'error',
+  PORTFOLIO: 'warning',
+  MARKET: 'market',
+  RESEARCH: 'success',
 };
 
 function IconShield() {
@@ -325,14 +327,9 @@ export default function BrowseSkillsModal({ open, onClose }: BrowseSkillsModalPr
                   <div className="min-w-0 flex-1">
                     <div className="text-text-primary font-medium text-sm transition-colors">{t.name}</div>
                     <div className="text-text-muted text-xs mt-0.5 leading-relaxed">{t.description}</div>
-                    <span
-                      className={cn(
-                        'inline-block mt-2 rounded px-2 py-0.5 text-2xs font-medium',
-                        categoryBadge[t.category],
-                      )}
-                    >
+                    <Badge variant={categoryVariant[t.category]} className="mt-2 rounded">
                       {t.category.charAt(0) + t.category.slice(1).toLowerCase()}
-                    </span>
+                    </Badge>
                   </div>
                 </button>
               ))}

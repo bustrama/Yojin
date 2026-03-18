@@ -79,13 +79,13 @@ export default function AllocationChart() {
           <AreaChart data={data} stackOffset="expand" margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="month"
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               interval="preserveStartEnd"
             />
             <YAxis
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               width={32}

@@ -22,8 +22,10 @@ export default function PortfolioValueStrip() {
       {stats.map((stat) => (
         <div key={stat.label} className="rounded-lg border border-border bg-bg-card px-3 py-2">
           <p className="text-2xs uppercase tracking-wider text-text-muted">{stat.label}</p>
-          <p className="mt-0.5 text-xs font-semibold text-text-primary">{stat.value}</p>
-          {stat.change && <p className={cn('text-2xs', stat.positive ? 'text-success' : 'text-error')}>{stat.change}</p>}
+          <p className="mt-0.5 text-sm font-semibold text-text-primary">{stat.value}</p>
+          {stat.change && (
+            <p className={cn('text-2xs', stat.positive ? 'text-success' : 'text-error')}>{stat.change}</p>
+          )}
         </div>
       ))}
     </div>

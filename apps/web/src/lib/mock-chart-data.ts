@@ -37,7 +37,7 @@ export const tooltipStyle = {
   border: '1px solid var(--color-border)',
   borderRadius: '8px',
   color: 'var(--color-text-primary)',
-  fontSize: '11px',
+  fontSize: '12px',
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts Formatter type is overly strict

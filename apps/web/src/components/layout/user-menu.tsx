@@ -53,7 +53,7 @@ export default function UserMenu() {
             {/* Profile */}
             <button
               onClick={() => goTo('/profile')}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
             >
               <svg
                 className="w-3.5 h-3.5 flex-shrink-0"
@@ -74,7 +74,7 @@ export default function UserMenu() {
             {/* Settings */}
             <button
               onClick={() => goTo('/settings')}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
             >
               <svg
                 className="w-3.5 h-3.5 flex-shrink-0"
@@ -96,7 +96,7 @@ export default function UserMenu() {
             {/* Theme — hover submenu */}
             <div className="relative" onMouseEnter={() => setThemeOpen(true)} onMouseLeave={() => setThemeOpen(false)}>
               <button
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
                 onClick={() => setThemeOpen(!themeOpen)}
               >
                 <svg
@@ -151,7 +151,7 @@ export default function UserMenu() {
                         setThemeOpen(false);
                       }}
                       className={cn(
-                        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors',
+                        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors',
                         theme === opt.value
                           ? 'text-text-primary bg-bg-hover'
                           : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
@@ -180,7 +180,7 @@ export default function UserMenu() {
               onClick={() => {
                 /* TODO: call signOut() */
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-error hover:bg-error/10 transition-colors"
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-error hover:bg-error/10 transition-colors"
             >
               <svg
                 className="w-4 h-4 flex-shrink-0"
@@ -204,7 +204,7 @@ export default function UserMenu() {
       {/* Trigger: user avatar row */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2.5 rounded-lg bg-accent-primary/5 px-2.5 py-2 hover:bg-accent-primary/10 transition-colors"
+        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 hover:bg-bg-hover transition-colors"
       >
         <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-accent-primary/15 text-2xs font-medium text-accent-primary">
           DS

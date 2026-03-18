@@ -12,14 +12,14 @@ export default function Skills() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="grid grid-cols-3 items-center px-6 pt-6 pb-6">
-        <h1 className="text-sm font-semibold text-text-primary">{view === 'active' ? 'Active Skills' : 'Builder'}</h1>
+        <h1 className="text-lg font-semibold text-text-primary">{view === 'active' ? 'Active Skills' : 'Builder'}</h1>
 
         <div className="flex justify-center">
           <div className="flex gap-1 rounded-full bg-bg-tertiary p-1">
             <button
               onClick={() => setSearchParams({})}
               className={cn(
-                'rounded-full px-3 py-1 text-xs transition-colors',
+                'rounded-full px-3 py-1 text-sm transition-colors',
                 view === 'active' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
               )}
             >
@@ -28,7 +28,7 @@ export default function Skills() {
             <button
               onClick={() => setSearchParams({ view: 'builder' })}
               className={cn(
-                'rounded-full px-3 py-1 text-xs transition-colors',
+                'rounded-full px-3 py-1 text-sm transition-colors',
                 view === 'builder' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
               )}
             >

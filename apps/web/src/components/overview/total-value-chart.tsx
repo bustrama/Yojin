@@ -40,13 +40,13 @@ export default function TotalValueChart() {
             <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} opacity={0.4} />
             <XAxis
               dataKey="date"
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               interval="preserveStartEnd"
             />
             <YAxis
-              tick={{ fill: 'var(--color-text-muted)', fontSize: 9 }}
+              tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               width={40}

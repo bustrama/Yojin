@@ -22,13 +22,14 @@
   --color-accent-dark: #b30004;
   --font-headline: 'Young Serif', serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-size-2xs: 9px;
-  --font-size-mini: 10px;
+  --text-2xs: 11px;
+  --text-3xs: 9px;
+  --text-badge: 10px;
 }
 
 @layer base {
   html {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   body {
