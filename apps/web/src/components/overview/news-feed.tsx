@@ -1,6 +1,5 @@
 import Badge from '../common/badge';
 import type { BadgeVariant } from '../common/badge';
-import { cn } from '../../lib/utils';
 
 export interface FeedItem {
   source: string;
