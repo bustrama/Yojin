@@ -122,7 +122,7 @@ export async function startChat(args: string[]): Promise<void> {
   await pluginRegistry.initializeAll(config as unknown as Record<string, unknown>);
 
   const providerId = parseFlag(args, '--provider') ?? config.defaultProvider ?? 'anthropic';
-  const model = parseFlag(args, '--model') ?? config.defaultModel ?? 'claude-sonnet-4-20250514';
+  const model = parseFlag(args, '--model') ?? config.defaultModel ?? 'claude-opus-4-6';
 
   const provider = pluginRegistry.getProvider(providerId);
   if (!provider) {

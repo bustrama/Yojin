@@ -30,22 +30,22 @@ import type {
 
 const ANTHROPIC_MODELS: ProviderModel[] = [
   {
-    id: 'claude-opus-4-20250514',
-    name: 'Claude Opus 4',
+    id: 'claude-opus-4-6',
+    name: 'Claude Opus 4.6',
     contextWindow: 200_000,
     maxOutputTokens: 32_000,
     capabilities: ['text', 'vision', 'tool_use'],
   },
   {
-    id: 'claude-sonnet-4-20250514',
-    name: 'Claude Sonnet 4',
+    id: 'claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
     contextWindow: 200_000,
     maxOutputTokens: 16_000,
     capabilities: ['text', 'vision', 'tool_use'],
   },
   {
-    id: 'claude-haiku-4-20250514',
-    name: 'Claude Haiku 4',
+    id: 'claude-haiku-4-5-20251001',
+    name: 'Claude Haiku 4.5',
     contextWindow: 200_000,
     maxOutputTokens: 8_000,
     capabilities: ['text', 'vision', 'tool_use'],
@@ -330,9 +330,9 @@ export function buildAnthropicProvider(): ProviderPlugin & AgentLoopProvider {
 
     resolveModel(modelRef: string): ProviderModel | undefined {
       const aliases: Record<string, string> = {
-        opus: 'claude-opus-4-20250514',
-        sonnet: 'claude-sonnet-4-20250514',
-        haiku: 'claude-haiku-4-20250514',
+        opus: 'claude-opus-4-6',
+        sonnet: 'claude-sonnet-4-6',
+        haiku: 'claude-haiku-4-5-20251001',
       };
       const resolved = aliases[modelRef] ?? modelRef;
       return ANTHROPIC_MODELS.find((m) => m.id === resolved);
