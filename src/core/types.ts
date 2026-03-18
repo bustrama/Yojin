@@ -94,6 +94,7 @@ export interface AgentMessage {
 
 export type AgentLoopEvent =
   | { type: 'thought'; text: string }
+  | { type: 'text_delta'; text: string }
   | { type: 'action'; toolCalls: ToolCall[] }
   | { type: 'observation'; results: ToolCallResult[] }
   | {
@@ -155,6 +156,20 @@ export interface AgentLoopProvider {
     messages: AgentMessage[];
     tools?: ToolSchema[];
     maxTokens?: number;
+  }): Promise<{
+    content: ContentBlock[];
+    stopReason: string;
+    usage?: { inputTokens: number; outputTokens: number };
+  }>;
+
+  /** Streaming variant — yields text deltas, resolves to the same shape. */
+  streamWithTools?(params: {
+    model: string;
+    system?: string;
+    messages: AgentMessage[];
+    tools?: ToolSchema[];
+    maxTokens?: number;
+    onTextDelta?: (text: string) => void;
   }): Promise<{
     content: ContentBlock[];
     stopReason: string;
