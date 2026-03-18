@@ -160,7 +160,7 @@ export const OpenBBConfigSchema = z.object({
 export type OpenBBConfig = z.infer<typeof OpenBBConfigSchema>;
 
 export const AIProviderConfigSchema = z.object({
-  defaultProvider: z.string().default('anthropic'),
+  defaultProvider: z.string().default('claude-code'),
   defaultModel: z.string().default('claude-opus-4-6'),
   fallbackProvider: z.string().optional(),
   fallbackModel: z.string().optional(),

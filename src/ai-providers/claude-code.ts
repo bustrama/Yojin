@@ -1,13 +1,20 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import Anthropic from '@anthropic-ai/sdk';
 
 import { toAnthropicMessages } from './anthropic-messages.js';
 import type { AIProvider } from './types.js';
+import { getTokenManager } from '../auth/token-manager.js';
 import type { AgentMessage, ContentBlock, ToolSchema } from '../core/types.js';
 
 const execFileAsync = promisify(execFile);
+
+/** Check whether an error indicates an expired/invalid OAuth token (401). */
+function isAuthError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('401') || msg.includes('authentication_error') || msg.includes('OAuth token has expired');
+}
 
 /**
  * ClaudeCodeProvider — two auth modes:
@@ -64,14 +71,8 @@ export class ClaudeCodeProvider implements AIProvider {
       return this.completeWithSdk(this.client, params);
     }
 
-    // CLI mode: cannot forward tool schemas — OAuth tokens don't work against the API.
-    if (params.tools && params.tools.length > 0) {
-      throw new Error(
-        'ClaudeCodeProvider CLI mode (CLAUDE_CODE_OAUTH_TOKEN) does not support tool schemas. ' +
-          'Set ANTHROPIC_API_KEY to enable tool use.',
-      );
-    }
-
+    // CLI mode: strip tools — OAuth tokens don't work against the API directly,
+    // so we run text-only via `claude -p` subprocess (same as `pnpm chat`).
     return this.completeWithCli(params);
   }
 
@@ -130,26 +131,80 @@ export class ClaudeCodeProvider implements AIProvider {
             .map((b) => (b as { text: string }).text)
             .join('\n') ?? '');
 
-    const args = ['-p', promptText, '--output-format', 'json', '--model', params.model];
-    if (params.system) args.push('--system-prompt', params.system);
+    // Prepend system prompt to user message to avoid CLI arg length issues.
+    // The `--system-prompt` flag can't handle large multi-line prompts reliably.
+    const fullPrompt = params.system ? `${params.system}\n\n---\n\nUser message:\n${promptText}` : promptText;
+
+    const args = ['-p', fullPrompt, '--output-format', 'json', '--model', params.model];
     if (params.maxTokens) args.push('--max-tokens', String(params.maxTokens));
 
-    const { stdout } = await execFileAsync('claude', args, {
-      timeout: 120_000,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-
-    let result: { result?: string; cost_usd?: number; duration_ms?: number; num_turns?: number };
-    try {
-      result = JSON.parse(stdout) as typeof result;
-    } catch {
-      throw new Error(`ClaudeCodeProvider: unexpected CLI output (not JSON): ${stdout.slice(0, 200)}`);
-    }
+    const result = await this.execCliWithRefresh(args);
 
     return {
       content: [{ type: 'text', text: result.result ?? '' }],
       stopReason: 'end_turn',
       usage: { inputTokens: 0, outputTokens: 0 },
     };
+  }
+
+  /**
+   * Execute the claude CLI. On 401 (expired token), attempt a token refresh
+   * and retry once.
+   */
+  private async execCliWithRefresh(
+    args: string[],
+  ): Promise<{ result?: string; cost_usd?: number; duration_ms?: number; num_turns?: number }> {
+    try {
+      return await this.execCli(args);
+    } catch (error) {
+      if (!isAuthError(error)) throw error;
+
+      const tokenManager = getTokenManager();
+      if (!tokenManager.hasRefreshToken()) throw error;
+
+      // Refresh the token and retry
+      await tokenManager.refresh();
+      return this.execCli(args);
+    }
+  }
+
+  private execCli(
+    args: string[],
+  ): Promise<{ result?: string; cost_usd?: number; duration_ms?: number; num_turns?: number }> {
+    return new Promise((resolve, reject) => {
+      const child = spawn('claude', args, {
+        timeout: 120_000,
+        cwd: '/tmp', // Avoid loading project CLAUDE.md — agent has its own system prompt
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+
+      child.on('error', (err) => reject(err));
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`claude CLI exited with code ${code}: ${stderr || stdout.slice(0, 500)}`));
+          return;
+        }
+        try {
+          resolve(
+            JSON.parse(stdout) as { result?: string; cost_usd?: number; duration_ms?: number; num_turns?: number },
+          );
+        } catch {
+          reject(new Error(`ClaudeCodeProvider: unexpected CLI output (not JSON): ${stdout.slice(0, 200)}`));
+        }
+      });
+
+      // Close stdin immediately — we don't pipe input
+      child.stdin.end();
+    });
   }
 }
