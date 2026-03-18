@@ -1,41 +1,24 @@
-import { useLocation, useSearchParams } from 'react-router';
-import { cn } from '../../lib/utils';
+import { useSearchParams } from 'react-router';
+import { cn } from '../lib/utils';
 
-const pathToTitle: Record<string, string> = {
-  '/': 'Overview',
-  '/chat': 'Chat',
-  '/portfolio': 'Portfolio',
-  '/skills': 'Skills',
-  '/profile': 'Profile',
-  '/settings': 'Settings',
-};
+import ActiveRulesView from '../components/skills/active-rules-view.js';
+import RuleEditorView from '../components/skills/rule-editor-view.js';
 
-function getTitle(pathname: string): string {
-  if (pathToTitle[pathname]) return pathToTitle[pathname];
-  if (pathname.startsWith('/portfolio/')) return 'Portfolio';
-  return 'Yojin';
-}
-
-export default function Header() {
-  const location = useLocation();
-  const title = getTitle(location.pathname);
-  const isSkills = location.pathname === '/skills';
+export default function Skills() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const skillsView = searchParams.get('view') === 'builder' ? 'builder' : 'active';
+  const view = searchParams.get('view') === 'builder' ? 'builder' : 'active';
 
   return (
-    <header className="flex items-center justify-between border-b border-border bg-bg-secondary px-4 py-2">
-      <div className="flex items-center gap-2.5 min-w-[200px]">
-        <h1 className="text-sm font-medium tracking-wide text-text-secondary uppercase">{title}</h1>
-      </div>
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <header className="flex items-center justify-between border-b border-border bg-bg-secondary px-4 py-2">
+        <h1 className="text-sm font-medium tracking-wide text-text-secondary uppercase min-w-[200px]">Skills</h1>
 
-      {isSkills && (
         <div className="flex gap-1 rounded-full bg-bg-tertiary p-1">
           <button
             onClick={() => setSearchParams({})}
             className={cn(
               'rounded-full px-4 py-1 text-sm transition-colors',
-              skillsView === 'active' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
+              view === 'active' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
             )}
           >
             Active Skills
@@ -44,15 +27,13 @@ export default function Header() {
             onClick={() => setSearchParams({ view: 'builder' })}
             className={cn(
               'rounded-full px-4 py-1 text-sm transition-colors',
-              skillsView === 'builder' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
+              view === 'builder' ? 'bg-bg-hover text-text-primary' : 'text-text-muted hover:text-text-secondary',
             )}
           >
             Builder
           </button>
         </div>
-      )}
 
-      {isSkills ? (
         <div className="flex items-center gap-2 min-w-[200px] justify-end">
           <button className="p-2 rounded-lg border border-border text-text-muted hover:text-text-secondary hover:border-border-light transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -69,9 +50,9 @@ export default function Header() {
             </svg>
           </button>
         </div>
-      ) : (
-        <div className="min-w-[200px]" />
-      )}
-    </header>
+      </header>
+
+      <div className="flex-1 overflow-auto p-6">{view === 'active' ? <ActiveRulesView /> : <RuleEditorView />}</div>
+    </div>
   );
 }

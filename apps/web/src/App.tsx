@@ -4,7 +4,7 @@ import { graphqlClient } from './lib/graphql';
 import { ThemeProvider } from './lib/theme';
 import AppShell from './components/layout/app-shell';
 import Position from './pages/position';
-import Skills from './pages/alerts';
+import Skills from './pages/skills';
 import Chat from './pages/chat';
 import Profile from './pages/profile';
 import Settings from './pages/settings';
