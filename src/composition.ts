@@ -266,7 +266,10 @@ function createVaultLockedStubs(): ToolDefinition[] {
   return [
     {
       name: 'store_credential',
-      description: 'Store a credential in the encrypted vault.',
+      description:
+        'Securely collect and store a credential from the user. ' +
+        'The value is entered directly by the user in the terminal (hidden input) ' +
+        'and stored in the encrypted vault. The actual value is NEVER returned to you.',
       parameters: z.object({
         key: z.string(),
         description: z.string(),
@@ -277,7 +280,7 @@ function createVaultLockedStubs(): ToolDefinition[] {
     },
     {
       name: 'check_credential',
-      description: 'Check if a credential exists in the vault.',
+      description: 'Check if a named credential exists in the vault. Returns true/false, never the value.',
       parameters: z.object({ key: z.string() }),
       async execute(): Promise<ToolResult> {
         return { content: VAULT_LOCKED_MSG, isError: true };
@@ -285,7 +288,7 @@ function createVaultLockedStubs(): ToolDefinition[] {
     },
     {
       name: 'list_credentials',
-      description: 'List stored credential names.',
+      description: 'List all stored credential names. Never returns values.',
       parameters: z.object({}),
       async execute(): Promise<ToolResult> {
         return { content: VAULT_LOCKED_MSG, isError: true };

@@ -102,9 +102,20 @@ class ThinkingSpinner {
 export async function startChat(args: string[]): Promise<void> {
   const log = getLogger().sub('chat');
 
-  // Build the full dependency graph
+  // Parse flags before buildContext() to avoid prompting for vault passphrase
+  // when args are invalid (e.g. --agent nonexistent)
+  const agentId = parseFlag(args, '--agent');
+  const systemPrompt = parseFlag(args, '--system');
+
+  // Build the full dependency graph (may prompt for vault passphrase via TTY)
   const services = await buildContext();
   const { config, toolRegistry, guardRunner, outputDlp, pluginRegistry } = services;
+
+  // Validate agent early — before loading provider plugins
+  if (agentId && services.agentRegistry.getAll().every((a) => a.id !== agentId)) {
+    console.error(`${c.red}error:${c.reset} Agent "${agentId}" not found`);
+    process.exit(1);
+  }
 
   // Load the anthropic provider
   pluginRegistry.loadPlugin(anthropicPlugin);
@@ -112,8 +123,6 @@ export async function startChat(args: string[]): Promise<void> {
 
   const providerId = parseFlag(args, '--provider') ?? config.defaultProvider ?? 'anthropic';
   const model = parseFlag(args, '--model') ?? config.defaultModel ?? 'claude-sonnet-4-20250514';
-  const systemPrompt = parseFlag(args, '--system');
-  const agentId = parseFlag(args, '--agent');
 
   const provider = pluginRegistry.getProvider(providerId);
   if (!provider) {
