@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 interface QuerySuggestion {
+  id: string;
   icon: ReactNode;
   label: string;
   query: string;
@@ -8,11 +9,12 @@ interface QuerySuggestion {
 
 interface QueryBuilderProps {
   suggestions?: QuerySuggestion[];
-  onSelect: (query: string) => void;
+  onSelect: (id: string) => void;
 }
 
 const defaultSuggestions: QuerySuggestion[] = [
   {
+    id: 'portfolio',
     icon: (
       <svg
         width="15"
@@ -31,6 +33,7 @@ const defaultSuggestions: QuerySuggestion[] = [
     query: 'How is my portfolio performing today?',
   },
   {
+    id: 'risk',
     icon: (
       <svg
         width="15"
@@ -50,6 +53,7 @@ const defaultSuggestions: QuerySuggestion[] = [
     query: 'Analyze my current risk exposure',
   },
   {
+    id: 'positions',
     icon: (
       <svg
         width="15"
@@ -69,6 +73,7 @@ const defaultSuggestions: QuerySuggestion[] = [
     query: 'Show me my top performing positions',
   },
   {
+    id: 'trends',
     icon: (
       <svg
         width="15"
@@ -92,9 +97,22 @@ export default function QueryBuilder({ suggestions = defaultSuggestions, onSelec
   return (
     <div>
       {/* Header with star icon */}
-      <div className="mb-4 flex items-center justify-center gap-2.5">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-accent-primary">
-          <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zM12 14l1.5 4.5L18 20l-4.5 1.5L12 26l-1.5-4.5L6 20l4.5-1.5L12 14z" />
+      <div className="my-8 flex items-center justify-center gap-2.5">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-accent-primary">
+          <path
+            d="M12 2l.9 2.8a2 2 0 001.3 1.3L17 7l-2.8.9a2 2 0 00-1.3 1.3L12 12l-.9-2.8a2 2 0 00-1.3-1.3L7 7l2.8-.9a2 2 0 001.3-1.3L12 2z"
+            fill="currentColor"
+          />
+          <path
+            d="M18 14l.6 1.8a1 1 0 00.6.6L21 17l-1.8.6a1 1 0 00-.6.6L18 20l-.6-1.8a1 1 0 00-.6-.6L15 17l1.8-.6a1 1 0 00.6-.6L18 14z"
+            fill="currentColor"
+            opacity="0.7"
+          />
+          <path
+            d="M7 16l.4 1.2a1 1 0 00.4.4L9 18l-1.2.4a1 1 0 00-.4.4L7 20l-.4-1.2a1 1 0 00-.4-.4L5 18l1.2-.4a1 1 0 00.4-.4L7 16z"
+            fill="currentColor"
+            opacity="0.5"
+          />
         </svg>
         <h2 className="text-base font-semibold text-text-primary">Let&apos;s knock something off your list</h2>
       </div>
@@ -104,7 +122,7 @@ export default function QueryBuilder({ suggestions = defaultSuggestions, onSelec
         {suggestions.map((s) => (
           <button
             key={s.label}
-            onClick={() => onSelect(s.query)}
+            onClick={() => onSelect(s.id)}
             className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-border/60 bg-bg-secondary px-3.5 py-2.5 text-left transition-all hover:border-border-light hover:bg-bg-hover"
           >
             <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-bg-tertiary text-text-muted">

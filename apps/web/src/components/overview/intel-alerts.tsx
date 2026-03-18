@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import type { BadgeVariant } from '../common/badge';
+import Button from '../common/button';
 import FeedDetailModal from './feed-detail-modal';
 import type { FeedDetailData } from './feed-detail-modal';
 import { cn } from '../../lib/utils';
@@ -181,23 +183,10 @@ const alerts: Alert[] = [
 
 /* ── Components ──────────────────────────────────────────────────── */
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      className={cn('h-3 w-3 text-text-muted transition-transform duration-200', expanded && 'rotate-180')}
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5 6 7.5 9 4.5" />
-    </svg>
-  );
-}
-
 export default function IntelAlerts() {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [modalData, setModalData] = useState<FeedDetailData | null>(null);
+  const navigate = useNavigate();
 
   const toggleExpand = (key: string) => {
     setExpandedKey(expandedKey === key ? null : key);
@@ -222,7 +211,7 @@ export default function IntelAlerts() {
 
   return (
     <>
-      <div className="space-y-1.5 p-3">
+      <div className="space-y-3.5 p-3">
         {alerts.map((alert) => {
           const config = typeConfig[alert.type];
           const Icon = typeIcon[alert.type];
@@ -231,8 +220,8 @@ export default function IntelAlerts() {
             <div
               key={alert.title}
               className={cn(
-                'cursor-pointer rounded-xl bg-bg-tertiary transition-all',
-                expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-hover',
+                'cursor-pointer rounded-xl border border-border bg-bg-tertiary transition-all',
+                expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-tertiary',
               )}
               onClick={() => toggleExpand(alert.title)}
               role="button"
@@ -246,20 +235,17 @@ export default function IntelAlerts() {
               }}
             >
               {/* Card header */}
-              <div className="flex items-center gap-3 p-3">
-                <div className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg', config.iconBg)}>
+              <div className="flex items-center gap-3 px-2.5 py-2">
+                <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg', config.iconBg)}>
                   <Icon className={cn('h-4.5 w-4.5', config.color)} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <span className={cn('text-3xs font-semibold uppercase tracking-[0.1em]', config.color)}>
                     {alert.label}
                   </span>
-                  <p className="text-xs font-medium leading-snug text-text-primary">{alert.title}</p>
+                  <p className="truncate text-xs font-medium leading-snug text-text-primary">{alert.title}</p>
                 </div>
-                <div className="flex flex-shrink-0 items-center gap-1 self-start pt-0.5">
-                  <span className="text-2xs text-text-muted">{alert.time}</span>
-                  <ChevronIcon expanded={expanded} />
-                </div>
+                <span className="flex-shrink-0 text-2xs text-text-muted">{alert.time}</span>
               </div>
 
               {/* Expandable preview */}
@@ -271,16 +257,33 @@ export default function IntelAlerts() {
               >
                 <div className="overflow-hidden">
                   <div className="border-t border-border/30 px-3 pb-3">
-                    <p className="mt-2 text-2xs leading-relaxed text-text-secondary">{alert.preview}</p>
-                    <button
-                      className="mt-2 text-2xs font-medium text-accent-primary transition-colors hover:text-accent-secondary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openDetail(alert);
-                      }}
-                    >
-                      View full analysis &rarr;
-                    </button>
+                    <p className="mt-2 text-xs leading-relaxed text-text-secondary">{alert.preview}</p>
+                    <div className="mt-4 flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDetail(alert);
+                        }}
+                      >
+                        View full analysis
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/chat', {
+                            state: {
+                              preset: `Analyze this ${alert.label.toLowerCase()}: "${alert.title}" — ${alert.description}`,
+                            },
+                          });
+                        }}
+                      >
+                        Add to Chat
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

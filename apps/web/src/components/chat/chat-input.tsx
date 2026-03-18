@@ -5,10 +5,16 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  initialValue?: string;
 }
 
-export default function ChatInput({ onSend, disabled, placeholder = 'How can I help you today?' }: ChatInputProps) {
-  const [value, setValue] = useState('');
+export default function ChatInput({
+  onSend,
+  disabled,
+  placeholder = 'How can I help you today?',
+  initialValue,
+}: ChatInputProps) {
+  const [value, setValue] = useState(initialValue ?? '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

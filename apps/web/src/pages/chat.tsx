@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import MorningBriefing from '../components/chat/morning-briefing';
 import QueryBuilder from '../components/chat/query-builder';
+import WaterfallFlow from '../components/chat/waterfall-flow';
 import ChatInput from '../components/chat/chat-input';
 import ChatMessage from '../components/chat/chat-message';
 import ChatAvatar from '../components/chat/chat-avatar';
@@ -139,8 +141,21 @@ function renderMessage(msg: Message) {
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [threadId] = useState(() => `web-${crypto.randomUUID()}`);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Read preset message from location state (e.g. from "Add to Chat" on intel cards)
+  const [presetMessage] = useState<string | undefined>(() => (location.state as { preset?: string } | null)?.preset);
+
+  // Clear location state so refreshing doesn't re-populate
+  useEffect(() => {
+    if (presetMessage) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [presetMessage, navigate, location.pathname]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -150,6 +165,7 @@ export default function Chat() {
 
   const handleSend = useCallback(
     async (content: string) => {
+      setActiveCategory(null);
       const userMessage: TextMessage = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -199,12 +215,21 @@ export default function Chat() {
     setMessages((prev) => [...prev, userMsg, briefingMsg]);
   }, []);
 
-  const handleQuerySelect = useCallback(
+  const handleQuerySelect = useCallback((categoryId: string) => {
+    setActiveCategory(categoryId);
+  }, []);
+
+  const handleWaterfallComplete = useCallback(
     (query: string) => {
+      setActiveCategory(null);
       handleSend(query);
     },
     [handleSend],
   );
+
+  const handleWaterfallCancel = useCallback(() => {
+    setActiveCategory(null);
+  }, []);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -234,11 +259,19 @@ export default function Chat() {
         </div>
       </div>
 
-      {/* Query builder — shown when no user messages */}
+      {/* Query builder / waterfall — shown when no user messages */}
       {messages.length === 0 && (
         <div className="px-6 pb-4 pt-2">
           <div className="mx-auto max-w-3xl">
-            <QueryBuilder onSelect={handleQuerySelect} />
+            {activeCategory ? (
+              <WaterfallFlow
+                categoryId={activeCategory}
+                onComplete={handleWaterfallComplete}
+                onCancel={handleWaterfallCancel}
+              />
+            ) : (
+              <QueryBuilder onSelect={handleQuerySelect} />
+            )}
           </div>
         </div>
       )}
@@ -246,7 +279,7 @@ export default function Chat() {
       {/* Chat input — pinned bottom */}
       <div className="px-6 pb-6">
         <div className="mx-auto max-w-3xl">
-          <ChatInput onSend={handleSend} disabled={isLoading} />
+          <ChatInput onSend={handleSend} disabled={isLoading} initialValue={presetMessage} />
         </div>
       </div>
     </div>
