@@ -166,6 +166,12 @@ function buildApiMessages(messages: AgentMessage[], remapName: (n: string) => st
           ...(block.is_error ? { is_error: true as const } : {}),
         };
       }
+      if (block.type === 'image') {
+        return {
+          type: 'image' as const,
+          source: block.source,
+        };
+      }
       return block;
     });
     return { role: m.role as 'user' | 'assistant', content: blocks };

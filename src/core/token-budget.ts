@@ -50,6 +50,9 @@ export class TokenBudget {
       case 'tool_result':
         // tool results are more token-dense
         return Math.ceil((block.content.length / TOOL_RESULT_CHARS_PER_TOKEN) * SAFETY_MARGIN);
+      case 'image':
+        // Base64 image data — estimate from the encoded string length
+        return this.estimateStringTokens(block.source.data);
     }
   }
 

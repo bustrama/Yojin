@@ -82,7 +82,16 @@ export interface ToolResultBlock {
   is_error?: boolean;
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
+export interface ImageBlock {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+    data: string;
+  };
+}
+
+export type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock;
 
 export interface AgentMessage {
   role: 'user' | 'assistant';
