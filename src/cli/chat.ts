@@ -1,9 +1,8 @@
 /**
  * Interactive terminal chat — full agent loop with tool execution.
  *
- * Uses buildContext() to wire all tools (credentials, brain, security audit,
- * etc.) and runAgentLoop() for the TAO cycle. Tool calls are displayed
- * inline for visibility.
+ * Claude Code-inspired UX: animated thinking spinner, streaming text,
+ * color-coded tool calls, and clear state transitions.
  */
 
 import { createInterface } from 'node:readline';
@@ -13,6 +12,92 @@ import { buildContext } from '../composition.js';
 import { runAgentLoop } from '../core/agent-loop.js';
 import type { AgentLoopProvider, AgentMessage, ToolDefinition } from '../core/types.js';
 import { getLogger } from '../logging/index.js';
+
+// ---------------------------------------------------------------------------
+// Terminal colors & formatting
+// ---------------------------------------------------------------------------
+
+const c = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  italic: '\x1b[3m',
+  cyan: '\x1b[36m',
+  yellow: '\x1b[33m',
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+  gray: '\x1b[90m',
+  white: '\x1b[37m',
+  warmOrange: '\x1b[38;5;173m',
+  goldBold: '\x1b[1;33m',
+  clearLine: '\x1b[2K\r',
+};
+
+// ---------------------------------------------------------------------------
+// Thinking spinner (Claude Code style)
+// ---------------------------------------------------------------------------
+
+const SPINNER_CHARS = ['·', '✢', '✳', '✶', '✻', '✽', '✶', '✳', '✢'];
+const BRAILLE_SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+const THINKING_VERBS = [
+  'Thinking',
+  'Analyzing',
+  'Reasoning',
+  'Considering',
+  'Processing',
+  'Evaluating',
+  'Examining',
+  'Reflecting',
+  'Computing',
+  'Strategizing',
+  'Synthesizing',
+  'Deliberating',
+  'Assessing',
+  'Formulating',
+  'Contemplating',
+];
+
+class ThinkingSpinner {
+  private interval: ReturnType<typeof setInterval> | null = null;
+  private frame = 0;
+  private verb: string;
+
+  constructor() {
+    this.verb = THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)];
+  }
+
+  start(): void {
+    this.verb = THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)];
+    this.frame = 0;
+    this.render();
+    this.interval = setInterval(() => this.render(), 80);
+  }
+
+  stop(): void {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+    // Clear the spinner line
+    process.stdout.write(c.clearLine);
+    // Clear terminal title
+    process.stdout.write('\x1b]0;\x07');
+  }
+
+  private render(): void {
+    const spinChar = SPINNER_CHARS[this.frame % SPINNER_CHARS.length];
+    const braille = BRAILLE_SPINNER[this.frame % BRAILLE_SPINNER.length];
+    process.stdout.write(`${c.clearLine}  ${c.warmOrange}${this.verb}${spinChar}${c.reset}`);
+    // Update terminal title with braille spinner
+    process.stdout.write(`\x1b]0;${braille} Yojin\x07`);
+    this.frame++;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Chat entry point
+// ---------------------------------------------------------------------------
 
 export async function startChat(args: string[]): Promise<void> {
   const log = getLogger().sub('chat');
@@ -32,14 +117,14 @@ export async function startChat(args: string[]): Promise<void> {
 
   const provider = pluginRegistry.getProvider(providerId);
   if (!provider) {
-    console.error(`Provider "${providerId}" not found`);
+    console.error(`${c.red}error:${c.reset} Provider "${providerId}" not found`);
     process.exit(1);
   }
 
   // Verify the provider supports tool use
   const loopProvider = provider as unknown as AgentLoopProvider;
   if (typeof loopProvider.completeWithTools !== 'function') {
-    console.error(`Provider "${providerId}" does not support completeWithTools — tool use unavailable`);
+    console.error(`${c.red}error:${c.reset} Provider "${providerId}" does not support tool use`);
     process.exit(1);
   }
 
@@ -57,7 +142,7 @@ export async function startChat(args: string[]): Promise<void> {
     const agentRegistry = services.agentRegistry;
     tools = agentRegistry.getToolsForAgent(agentId, toolRegistry);
     if (tools.length === 0) {
-      console.error(`Agent "${agentId}" not found or has no tools`);
+      console.error(`${c.red}error:${c.reset} Agent "${agentId}" not found or has no tools`);
       process.exit(1);
     }
     // Load agent system prompt if no --system override
@@ -69,12 +154,7 @@ export async function startChat(args: string[]): Promise<void> {
     // All tools
     tools = toolRegistry
       .toSchemas()
-      .map((schema) => {
-        // Reconstruct ToolDefinition from registry for runAgentLoop
-        // The registry holds the full definitions; toSchemas() gives schemas.
-        // We need the actual ToolDefinition[] for the agent loop.
-        return toolRegistry.subset([schema.name])[0];
-      })
+      .map((schema) => toolRegistry.subset([schema.name])[0])
       .filter(Boolean);
   }
 
@@ -86,12 +166,15 @@ export async function startChat(args: string[]): Promise<void> {
   let history: AgentMessage[] = [];
 
   log.info('Chat session started', { provider: providerId, model, tools: tools.length, agent: agentId });
-  console.log(`\nYojin Chat \u2014 ${provider.label} / ${model} (${tools.length} tools)`);
-  if (agentId) console.log(`Agent: ${agentId}`);
-  console.log('Type your message. "exit" or Ctrl+C to quit.\n');
+
+  // Header
+  const modelShort = model.replace('claude-', '').replace('-20250514', '');
+  console.log(`\n${c.goldBold}Yojin${c.reset} ${c.dim}\u2014 ${modelShort} \u2022 ${tools.length} tools${c.reset}`);
+  if (agentId) console.log(`${c.dim}Agent: ${agentId}${c.reset}`);
+  console.log(`${c.dim}Type your message. "exit" or Ctrl+C to quit.${c.reset}\n`);
 
   const ask = (): void => {
-    rl.question('\x1b[36myou:\x1b[0m ', async (input) => {
+    rl.question(`${c.cyan}${c.bold}> ${c.reset}`, async (input) => {
       const trimmed = input.trim();
       if (!trimmed || trimmed === 'exit' || trimmed === 'quit') {
         rl.close();
@@ -100,11 +183,17 @@ export async function startChat(args: string[]): Promise<void> {
       }
 
       // Pause readline during agent loop to avoid stdin conflicts
-      // (readSecretFromTty and readline both use process.stdin)
       rl.pause();
 
+      const spinner = new ThinkingSpinner();
+      let streamingStarted = false;
+      let spinnerActive = false;
+
       try {
-        let streamingStarted = false;
+        // Start thinking spinner
+        spinner.start();
+        spinnerActive = true;
+
         const result = await runAgentLoop(trimmed, history, {
           provider: loopProvider,
           model,
@@ -115,38 +204,74 @@ export async function startChat(args: string[]): Promise<void> {
           agentId,
           onEvent: (event) => {
             if (event.type === 'text_delta') {
+              if (spinnerActive) {
+                spinner.stop();
+                spinnerActive = false;
+              }
               if (!streamingStarted) {
-                process.stdout.write('\x1b[33massistant:\x1b[0m ');
+                process.stdout.write(`\n${c.yellow}${c.bold}assistant${c.reset}\n`);
                 streamingStarted = true;
               }
               process.stdout.write(event.text);
             }
             if (event.type === 'action') {
+              if (spinnerActive) {
+                spinner.stop();
+                spinnerActive = false;
+              }
               if (streamingStarted) {
                 process.stdout.write('\n');
                 streamingStarted = false;
               }
               for (const call of event.toolCalls) {
                 const argStr = summarizeArgs(call.input);
-                process.stdout.write(`  \x1b[90m[tool] ${call.name}(${argStr})\x1b[0m\n`);
+                const args = argStr ? `${c.dim}(${argStr})${c.reset}` : '';
+                process.stdout.write(`  ${c.warmOrange}\u25CB${c.reset} ${c.white}${call.name}${c.reset}${args}\n`);
               }
+              // Restart spinner while tools execute
+              spinner.start();
+              spinnerActive = true;
             }
             if (event.type === 'observation') {
-              for (const r of event.results) {
-                const preview = r.result.content.slice(0, 120).replace(/\n/g, ' ');
-                const icon = r.result.isError ? '\x1b[31m\u2717\x1b[0m' : '\x1b[32m\u2713\x1b[0m';
-                process.stdout.write(`  \x1b[90m[tool] ${icon} ${preview}\x1b[0m\n`);
+              if (spinnerActive) {
+                spinner.stop();
+                spinnerActive = false;
               }
+              for (const r of event.results) {
+                const preview = r.result.content.slice(0, 80).replace(/\n/g, ' ');
+                if (r.result.isError) {
+                  process.stdout.write(`  ${c.red}\u2717 ${r.name}${c.reset} ${c.dim}${preview}${c.reset}\n`);
+                } else {
+                  process.stdout.write(`  ${c.green}\u2713 ${r.name}${c.reset} ${c.dim}${preview}${c.reset}\n`);
+                }
+              }
+              // Restart spinner while LLM processes results
+              spinner.start();
+              spinnerActive = true;
             }
           },
         });
+
+        // Stop spinner if still active
+        if (spinnerActive) {
+          spinner.stop();
+          spinnerActive = false;
+        }
 
         history = result.messages;
 
         if (streamingStarted) {
           process.stdout.write('\n\n');
         } else if (result.text) {
-          console.log(`\x1b[33massistant:\x1b[0m ${result.text}\n`);
+          process.stdout.write(`\n${c.yellow}${c.bold}assistant${c.reset}\n${result.text}\n\n`);
+        }
+
+        // Usage footer
+        if (result.usage.inputTokens > 0) {
+          const totalTokens = result.usage.inputTokens + result.usage.outputTokens;
+          process.stdout.write(
+            `${c.dim}  ${result.iterations} step${result.iterations > 1 ? 's' : ''} \u2022 ${formatTokens(totalTokens)} tokens${c.reset}\n\n`,
+          );
         }
 
         log.info('Agent loop complete', {
@@ -155,9 +280,12 @@ export async function startChat(args: string[]): Promise<void> {
           responseLength: result.text.length,
         });
       } catch (err) {
+        if (spinnerActive) {
+          spinner.stop();
+        }
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`Agent loop error: ${msg}`);
-        console.error(`\n\x1b[31merror:\x1b[0m ${msg}\n`);
+        console.error(`\n${c.red}${c.bold}error${c.reset} ${msg}\n`);
       }
 
       rl.resume();
@@ -166,13 +294,19 @@ export async function startChat(args: string[]): Promise<void> {
   };
 
   rl.on('close', () => {
+    // Restore terminal title
+    process.stdout.write('\x1b]0;\x07');
     log.info('Chat session ended', { turns: history.length });
-    console.log('\nbye!');
+    console.log(`\n${c.dim}bye!${c.reset}`);
     process.exit(0);
   });
 
   ask();
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /** Summarize tool call arguments for compact display. */
 function summarizeArgs(input: unknown): string {
@@ -182,10 +316,17 @@ function summarizeArgs(input: unknown): string {
   return entries
     .map(([k, v]) => {
       const s = typeof v === 'string' ? v : JSON.stringify(v);
-      const truncated = s.length > 40 ? s.slice(0, 37) + '...' : s;
+      const truncated = s.length > 30 ? s.slice(0, 27) + '\u2026' : s;
       return `${k}: ${truncated}`;
     })
     .join(', ');
+}
+
+/** Format token count with k/M suffixes. */
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
 }
 
 function parseFlag(args: string[], flag: string): string | undefined {
