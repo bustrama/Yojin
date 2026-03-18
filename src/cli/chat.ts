@@ -45,7 +45,11 @@ export async function startChat(args: string[]): Promise<void> {
 
   // Resolve tools: if --agent specified, scope to that agent's tool set
   let tools: ToolDefinition[];
-  let resolvedSystemPrompt = systemPrompt;
+  let resolvedSystemPrompt =
+    systemPrompt ??
+    'You are Yojin, a personal AI finance agent. ' +
+      'You have tools available — always use them to perform actions rather than explaining how to do things manually. ' +
+      'When the user asks you to store credentials, check data, or perform any action you have a tool for, call the tool directly.';
 
   if (agentId) {
     const agentRegistry = services.agentRegistry;
