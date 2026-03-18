@@ -20,6 +20,7 @@ import { getPostureConfig } from '../guards/posture.js';
 import { createDefaultGuards } from '../guards/registry.js';
 import { JsonlSessionStore } from '../sessions/jsonl-store.js';
 import { FileAuditLog } from '../trust/audit/audit-log.js';
+import { ChatPiiScanner } from '../trust/pii/chat-scanner.js';
 import { runSecretCommand } from '../trust/vault/cli.js';
 
 export async function runMain(args: string[]): Promise<void> {
@@ -75,6 +76,11 @@ async function startGateway(): Promise<void> {
   const guardRunner = new GuardRunner(guards, { auditLog, posture: 'local' });
   guardRunner.freeze();
 
+  const piiScanner = new ChatPiiScanner({
+    auditLog,
+    enableNer: process.env.YOJIN_PII_NER === '1',
+  });
+
   const agentRuntime = new AgentRuntime({
     agentRegistry,
     toolRegistry,
@@ -83,6 +89,7 @@ async function startGateway(): Promise<void> {
     eventLog: new EventLog(`${dataRoot}/data/event-log`),
     provider: providerRouter,
     outputDlp,
+    piiScanner,
     dataRoot,
   });
 

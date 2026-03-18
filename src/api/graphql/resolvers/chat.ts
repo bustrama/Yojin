@@ -35,6 +35,9 @@ export function sendMessageMutation(
   // Fire-and-forget: run agent in background, stream events via pubsub
   void (async () => {
     try {
+      // Emit thinking state immediately
+      pubsub.publish(`chat:${threadId}`, { type: 'THINKING', threadId } satisfies ChatEvent);
+
       // runtime is guaranteed non-null — checked above before the void IIFE
       await (runtime as AgentRuntime).handleMessage({
         message,
@@ -43,20 +46,32 @@ export function sendMessageMutation(
         threadId,
         onEvent: (event: AgentLoopEvent) => {
           if (event.type === 'text_delta') {
-            const chatEvent: ChatEvent = {
+            pubsub.publish(`chat:${threadId}`, {
               type: 'TEXT_DELTA',
               threadId,
               delta: event.text,
-            };
-            pubsub.publish(`chat:${threadId}`, chatEvent);
+            } satisfies ChatEvent);
+          } else if (event.type === 'action') {
+            for (const call of event.toolCalls) {
+              pubsub.publish(`chat:${threadId}`, {
+                type: 'TOOL_USE',
+                threadId,
+                toolName: call.name,
+              } satisfies ChatEvent);
+            }
+          } else if (event.type === 'pii_redacted') {
+            pubsub.publish(`chat:${threadId}`, {
+              type: 'PII_REDACTED',
+              threadId,
+              piiTypesFound: event.typesFound,
+            } satisfies ChatEvent);
           } else if (event.type === 'done') {
-            const chatEvent: ChatEvent = {
+            pubsub.publish(`chat:${threadId}`, {
               type: 'MESSAGE_COMPLETE',
               threadId,
               messageId,
               content: event.text,
-            };
-            pubsub.publish(`chat:${threadId}`, chatEvent);
+            } satisfies ChatEvent);
           }
         },
       });

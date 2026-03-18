@@ -172,7 +172,7 @@ export interface AlertRuleInput {
 // ---------------------------------------------------------------------------
 
 export type ChatRole = 'USER' | 'ASSISTANT';
-export type ChatEventType = 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'ERROR';
+export type ChatEventType = 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR';
 
 export interface ChatMessage {
   id: string;
@@ -189,4 +189,6 @@ export interface ChatEvent {
   messageId?: string;
   content?: string;
   error?: string;
+  toolName?: string;
+  piiTypesFound?: string[];
 }

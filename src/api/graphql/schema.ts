@@ -213,8 +213,11 @@ export const typeDefs = /* GraphQL */ `
   }
 
   enum ChatEventType {
+    THINKING
+    TOOL_USE
     TEXT_DELTA
     MESSAGE_COMPLETE
+    PII_REDACTED
     ERROR
   }
 
@@ -233,6 +236,8 @@ export const typeDefs = /* GraphQL */ `
     messageId: String
     content: String
     error: String
+    toolName: String
+    piiTypesFound: [String!]
   }
 
   type SendMessagePayload {
