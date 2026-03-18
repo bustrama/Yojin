@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import TotalValueChart from './total-value-chart';
 
 const meta: Meta<typeof TotalValueChart> = {
-  title: 'Charts/TotalValueChart',
+  title: 'Overview/TotalValueChart',
   component: TotalValueChart,
   decorators: [
     (Story) => (
