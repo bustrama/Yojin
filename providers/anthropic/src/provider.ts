@@ -92,7 +92,7 @@ function fromOAuthToolName(name: string): string {
  * are valid JSON Schema but not accepted by the Messages API.
  */
 function cleanInputSchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const { $schema: _schema, ...rest } = schema;
+  const { $schema: _schema, additionalProperties: _additionalProperties, ...rest } = schema;
   return rest;
 }
 
