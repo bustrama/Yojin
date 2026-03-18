@@ -434,7 +434,7 @@ export function buildAnthropicProvider(): ProviderPlugin & AgentLoopProvider {
       if (authMode === 'cli') {
         log.warn(
           'CLI mode: completeWithTools falls back to single-turn text completion — ' +
-            'conversation history, system prompt and tools are not forwarded.',
+            'conversation history, system prompt, tools, and image blocks are not forwarded.',
         );
         const lastUser = params.messages.filter((m) => m.role === 'user').pop();
         const prompt =

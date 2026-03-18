@@ -12,7 +12,7 @@
 import { runAgentLoop } from './agent-loop.js';
 import type { EventLog } from './event-log.js';
 import type { ToolRegistry } from './tool-registry.js';
-import type { AgentLoopEventHandler, AgentLoopProvider, ToolDefinition } from './types.js';
+import type { AgentLoopEventHandler, AgentLoopProvider, AgentMessage, ToolDefinition } from './types.js';
 import type { AgentRegistry } from '../agents/registry.js';
 import type { AgentProfile, AgentStepResult } from '../agents/types.js';
 import type { EmotionTracker, FrontalLobe, PersonaManager } from '../brain/types.js';
@@ -227,7 +227,9 @@ export class AgentRuntime {
 
     if (sessionKey) {
       for (const msg of result.messages.slice(history.length)) {
-        await this.sessionStore.append(sessionKey, msg);
+        // Strip base64 image data before persisting — re-sending full images
+        // on every subsequent turn would exhaust the context window and bloat storage.
+        await this.sessionStore.append(sessionKey, AgentRuntime.stripImageData(msg));
       }
     }
 
@@ -251,6 +253,21 @@ export class AgentRuntime {
         return this.guardedRegistry.execute(tool.name, params, { agentId });
       },
     }));
+  }
+
+  /**
+   * Replace ImageBlock entries with a lightweight text stub so we don't
+   * persist (and re-send) large base64 payloads in session history.
+   */
+  private static stripImageData(msg: AgentMessage): AgentMessage {
+    if (typeof msg.content === 'string') return msg;
+    const stripped = msg.content.map((block) => {
+      if (block.type === 'image') {
+        return { type: 'text' as const, text: '[Image attached]' };
+      }
+      return block;
+    });
+    return { ...msg, content: stripped };
   }
 
   private async assembleSystemPrompt(profile: AgentProfile, additionalContext?: string): Promise<string> {
