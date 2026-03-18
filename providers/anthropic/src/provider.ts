@@ -11,7 +11,8 @@
  * This enables full tool_use support without spawning a subprocess.
  */
 
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
+import { platform } from 'node:os';
 
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -84,6 +85,25 @@ function toOAuthToolName(name: string): string {
 function fromOAuthToolName(name: string): string {
   if (name.startsWith(MCP_TOOL_PREFIX)) return name.slice(MCP_TOOL_PREFIX.length);
   return name;
+}
+
+/**
+ * Attempt to read Claude Code OAuth token from macOS Keychain.
+ * Returns the access token or null if unavailable.
+ */
+function readTokenFromKeychain(): string | null {
+  if (platform() !== 'darwin') return null;
+  try {
+    const raw = execSync('security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null', {
+      encoding: 'utf8',
+      timeout: 3000,
+    }).trim();
+    const parsed = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string } };
+    const token = parsed.claudeAiOauth?.accessToken;
+    return token && isOAuthToken(token) ? token : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -166,7 +186,6 @@ export function buildAnthropicProvider(): ProviderPlugin & AgentLoopProvider {
 
       if (oauthToken && isOAuthToken(oauthToken)) {
         // OAuth mode: use Bearer auth with Claude Code identity headers.
-        // This enables full tool_use support via the Messages API.
         authMode = 'oauth';
         client = new Anthropic({
           apiKey: null,
@@ -174,18 +193,32 @@ export function buildAnthropicProvider(): ProviderPlugin & AgentLoopProvider {
           defaultHeaders: OAUTH_HEADERS,
         });
         log.info('Using OAuth mode (CLAUDE_CODE_OAUTH_TOKEN → Bearer auth)');
-      } else if (oauthToken) {
-        // Non-standard OAuth token — fall back to CLI subprocess
-        authMode = 'cli';
-        log.info('Using CLI mode (CLAUDE_CODE_OAUTH_TOKEN)');
       } else if (apiKey) {
         authMode = 'api_key';
         client = new Anthropic({ apiKey });
         log.info('Using API key mode');
       } else {
-        authMode = 'api_key';
-        client = new Anthropic();
-        log.warn('No credentials found, using SDK defaults');
+        // Try macOS Keychain as fallback (reads Claude Code's stored OAuth token)
+        const keychainToken = readTokenFromKeychain();
+        if (keychainToken) {
+          authMode = 'oauth';
+          client = new Anthropic({
+            apiKey: null,
+            authToken: keychainToken,
+            defaultHeaders: OAUTH_HEADERS,
+          });
+          log.info('Using OAuth mode (macOS Keychain → Bearer auth)');
+        } else if (oauthToken) {
+          // Non-standard OAuth token — fall back to CLI subprocess
+          authMode = 'cli';
+          log.info('Using CLI mode (CLAUDE_CODE_OAUTH_TOKEN)');
+        } else {
+          log.error(
+            'No credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, ' +
+              'or log in to Claude Code (the token is read from macOS Keychain).',
+          );
+          throw new Error('No Anthropic credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN.');
+        }
       }
     },
 
