@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '../../lib/utils';
 import { useAddManualPosition } from '../../api';
-import type { AssetClass } from '../../api';
+import type { AssetClass, Platform } from '../../api';
 
 /* ─── Form state ─── */
 
@@ -54,6 +54,19 @@ function inferAssetClass(symbol: string): AssetClass {
   return CRYPTO_SYMBOLS.has(symbol.toUpperCase()) ? 'CRYPTO' : 'EQUITY';
 }
 
+const ACCOUNT_TO_PLATFORM: Record<string, Platform> = {
+  IBKR: 'INTERACTIVE_BROKERS',
+  Robinhood: 'ROBINHOOD',
+  Coinbase: 'COINBASE',
+  Schwab: 'SCHWAB',
+  Binance: 'BINANCE',
+  Fidelity: 'FIDELITY',
+};
+
+function inferPlatform(account: string): Platform {
+  return ACCOUNT_TO_PLATFORM[account] ?? 'MANUAL';
+}
+
 /* ─── Component ─── */
 
 interface ManualPositionFlowProps {
@@ -67,8 +80,16 @@ export default function ManualPositionFlow({ onComplete, onCancel }: ManualPosit
   const [error, setError] = useState('');
   const [stepKey, setStepKey] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [{ fetching }, addManualPosition] = useAddManualPosition();
+
+  // Clean up dismiss timer on unmount
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
 
   // Auto-focus input on step change
   useEffect(() => {
@@ -143,6 +164,7 @@ export default function ManualPositionFlow({ onComplete, onCancel }: ManualPosit
         quantity,
         costBasis,
         assetClass: inferAssetClass(symbol),
+        platform: inferPlatform(formData.account),
       },
     });
 
@@ -155,7 +177,7 @@ export default function ManualPositionFlow({ onComplete, onCancel }: ManualPosit
     setStepKey((k) => k + 1);
 
     // Auto-dismiss after showing success
-    setTimeout(() => onComplete(), 2000);
+    dismissTimerRef.current = setTimeout(() => onComplete(), 2000);
   }, [formData, addManualPosition, onComplete]);
 
   const handleKeyDown = useCallback(

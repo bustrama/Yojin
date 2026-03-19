@@ -113,6 +113,10 @@ function computeCountdown(minutesInDay: number, hours: [number, number], phase: 
     return fmtDuration(hours[0] - minutesInDay, 'Opens');
   }
 
+  if (phase === 'after-hours') {
+    return `Opens tomorrow ${formatHour(hours[0])}`;
+  }
+
   return `Opens ${formatHour(hours[0])}`;
 }
 

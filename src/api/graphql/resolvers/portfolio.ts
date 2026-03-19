@@ -94,7 +94,7 @@ export async function addManualPositionMutation(
 ): Promise<PortfolioSnapshot> {
   if (!snapshotStore) throw new Error('Snapshot store not available');
 
-  const { symbol, name, quantity, costBasis, assetClass } = args.input;
+  const { symbol, name, quantity, costBasis, assetClass, platform } = args.input;
 
   const newPosition: Position = {
     symbol: symbol.toUpperCase(),
@@ -106,13 +106,17 @@ export async function addManualPositionMutation(
     unrealizedPnl: 0,
     unrealizedPnlPercent: 0,
     assetClass: (assetClass as AssetClass) ?? 'EQUITY',
-    platform: 'MANUAL',
+    platform: (platform as Position['platform']) ?? 'MANUAL',
   };
 
-  // Merge with existing positions from the latest snapshot
+  // Merge with existing positions, replacing any existing entry for the same symbol
   const existing = await snapshotStore.getLatest();
   const existingPositions = existing?.positions ?? [];
-  const mergedPositions = [...existingPositions, newPosition];
+  const existingIdx = existingPositions.findIndex((p) => p.symbol === newPosition.symbol);
+  const mergedPositions =
+    existingIdx !== -1
+      ? existingPositions.map((p, i) => (i === existingIdx ? newPosition : p))
+      : [...existingPositions, newPosition];
 
   const snapshot = await snapshotStore.save({ positions: mergedPositions, platform: 'MANUAL' });
   pubsub.publish('portfolioUpdate', snapshot);

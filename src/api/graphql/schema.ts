@@ -20,6 +20,9 @@ export const typeDefs = /* GraphQL */ `
     INTERACTIVE_BROKERS
     ROBINHOOD
     COINBASE
+    SCHWAB
+    BINANCE
+    FIDELITY
     MANUAL
   }
 
@@ -262,6 +265,7 @@ export const typeDefs = /* GraphQL */ `
     quantity: Float!
     costBasis: Float!
     assetClass: AssetClass
+    platform: Platform
   }
 
   # ---------------------------------------------------------------------------

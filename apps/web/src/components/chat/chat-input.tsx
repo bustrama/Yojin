@@ -144,7 +144,16 @@ export default function ChatInput({
       )}
 
       {image && showPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowPreview(false)}>
+        <div
+          role="dialog"
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+          className="fixed inset-0 z-50 flex items-center justify-center outline-none"
+          onClick={() => setShowPreview(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowPreview(false);
+          }}
+        >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div className="relative max-h-[80vh] max-w-[80vw]" onClick={(e) => e.stopPropagation()}>
             <img src={image.preview} alt={image.name} className="max-h-[80vh] max-w-[80vw] rounded-lg object-contain" />
