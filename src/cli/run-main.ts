@@ -2,6 +2,8 @@
  * CLI main runner.
  */
 
+import { spawn } from 'node:child_process';
+
 import { startChat } from './chat.js';
 import { setupToken } from './setup-token.js';
 import { createDefaultProfiles } from '../agents/defaults.js';
@@ -27,18 +29,29 @@ export async function runMain(args: string[]): Promise<void> {
   const command = args[0] ?? 'start';
 
   switch (command) {
+    // --- User-facing commands ---
     case 'start':
       await startGateway();
       break;
     case 'chat':
       await startChat(args.slice(1));
       break;
-    case 'secret':
-      await runSecretCommand(args.slice(1));
-      break;
+    case 'setup':
     case 'setup-token':
       await setupToken(args.slice(1));
       break;
+
+    // --- Developer commands ---
+    case 'serve':
+      await startGateway();
+      break;
+    case 'web':
+      await startFrontend();
+      break;
+    case 'secret':
+      await runSecretCommand(args.slice(1));
+      break;
+
     case 'version':
       console.log('yojin v0.1.0');
       break;
@@ -106,23 +119,31 @@ async function startGateway(): Promise<void> {
   await gateway.start();
 }
 
+function startFrontend(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('pnpm', ['--filter', '@yojin/web', 'dev'], {
+      stdio: 'inherit',
+      shell: true,
+    });
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Frontend exited with code ${code}`))));
+    child.on('error', reject);
+  });
+}
+
 function printHelp(): void {
   console.log(`
-yojin — Multi-LLM, multi-channel AI agent platform
+Yojin — Your personal AI finance agent
 
-Usage:
-  yojin start                        Start the gateway server (default)
-  yojin chat [options]               Interactive terminal chat
-    --model <model>                    Model to use (default: claude-opus-4-6)
-    --provider <id>                    Provider to use (default: anthropic)
-    --system <prompt>                  System prompt
-  yojin secret set <key>             Store a secret (hidden TTY input)
-  yojin secret show <key>            Reveal a secret (TTY + confirmation)
-  yojin secret list                  List secret names (never values)
-  yojin secret delete <key>          Delete a secret
-  yojin setup-token [--method M]     Acquire a Claude OAuth token
-                                     Methods: oauth, cli, paste
-  yojin version                      Print version
-  yojin help                         Show this help message
+Commands:
+  yojin                Start Yojin (server + dashboard)
+  yojin chat           Chat with Yojin in your terminal
+  yojin setup          Connect your Claude account
+
+Advanced:
+  yojin serve          Start the server only (no dashboard)
+  yojin web            Start the dashboard only
+  yojin secret <cmd>   Manage stored credentials
+  yojin version        Print version
+  yojin help           Show this message
 `);
 }
