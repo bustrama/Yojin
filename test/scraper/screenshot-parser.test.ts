@@ -454,8 +454,12 @@ describe('Zod schemas', () => {
       expect(PlatformSchema.parse('MANUAL')).toBe('MANUAL');
     });
 
+    it('accepts custom platform strings', () => {
+      expect(PlatformSchema.safeParse('KRAKEN').success).toBe(true);
+      expect(PlatformSchema.safeParse('Alpaca').success).toBe(true);
+    });
+
     it('rejects invalid platforms', () => {
-      expect(PlatformSchema.safeParse('KRAKEN').success).toBe(false);
       expect(PlatformSchema.safeParse('').success).toBe(false);
       expect(PlatformSchema.safeParse(123).success).toBe(false);
     });
