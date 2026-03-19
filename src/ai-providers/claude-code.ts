@@ -74,9 +74,17 @@ function fromOAuthToolName(name: string): string {
   return name;
 }
 
-/** Strip JSON Schema metadata that the Anthropic API rejects. */
+/** Strip JSON Schema metadata that the Anthropic API rejects (recursive for nested objects). */
 function cleanInputSchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const { $schema: _schema, additionalProperties: _additionalProperties, ...rest } = schema;
+  const { $schema: _s, additionalProperties: _ap, ...rest } = schema;
+  if (rest.properties && typeof rest.properties === 'object') {
+    rest.properties = Object.fromEntries(
+      Object.entries(rest.properties as Record<string, unknown>).map(([k, v]) => [
+        k,
+        typeof v === 'object' && v !== null ? cleanInputSchema(v as Record<string, unknown>) : v,
+      ]),
+    );
+  }
   return rest;
 }
 
@@ -399,6 +407,26 @@ export class ClaudeCodeProvider implements AIProvider {
     });
   }
 
+  /**
+   * Re-read the OAuth token from its original source and rebuild the SDK client.
+   * Returns true if a fresh token was obtained.
+   */
+  private async refreshOAuthToken(): Promise<boolean> {
+    const envToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+    if (envToken && isOAuthToken(envToken)) {
+      this.client = new Anthropic({ apiKey: null, authToken: envToken, defaultHeaders: OAUTH_HEADERS });
+      logger.info('Refreshed OAuth client (env var)');
+      return true;
+    }
+    const keychainToken = await readTokenFromKeychain();
+    if (keychainToken) {
+      this.client = new Anthropic({ apiKey: null, authToken: keychainToken, defaultHeaders: OAUTH_HEADERS });
+      logger.info('Refreshed OAuth client (macOS Keychain)');
+      return true;
+    }
+    return false;
+  }
+
   private async completeWithOAuth(
     client: Anthropic,
     params: {
@@ -410,12 +438,22 @@ export class ClaudeCodeProvider implements AIProvider {
     },
   ): Promise<{ content: ContentBlock[]; stopReason: string; usage?: { inputTokens: number; outputTokens: number } }> {
     const request = this.buildOAuthRequest(params);
-    const response = await client.messages.create(request);
-    return {
-      content: this.mapOAuthResponse(response.content),
-      stopReason: response.stop_reason ?? 'end_turn',
-      usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
-    };
+    try {
+      const response = await client.messages.create(request);
+      return {
+        content: this.mapOAuthResponse(response.content),
+        stopReason: response.stop_reason ?? 'end_turn',
+        usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+      };
+    } catch (err) {
+      if (!isAuthError(err) || !(await this.refreshOAuthToken()) || !this.client) throw err;
+      const response = await this.client.messages.create(request);
+      return {
+        content: this.mapOAuthResponse(response.content),
+        stopReason: response.stop_reason ?? 'end_turn',
+        usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+      };
+    }
   }
 
   private async streamWithOAuth(
@@ -430,18 +468,26 @@ export class ClaudeCodeProvider implements AIProvider {
     },
   ): Promise<{ content: ContentBlock[]; stopReason: string; usage?: { inputTokens: number; outputTokens: number } }> {
     const request = this.buildOAuthRequest(params);
-    const stream = client.messages.stream(request);
-
-    stream.on('text', (text) => {
-      params.onTextDelta?.(text);
-    });
-
-    const response = await stream.finalMessage();
-    return {
-      content: this.mapOAuthResponse(response.content),
-      stopReason: response.stop_reason ?? 'end_turn',
-      usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
-    };
+    try {
+      const stream = client.messages.stream(request);
+      stream.on('text', (text) => params.onTextDelta?.(text));
+      const response = await stream.finalMessage();
+      return {
+        content: this.mapOAuthResponse(response.content),
+        stopReason: response.stop_reason ?? 'end_turn',
+        usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+      };
+    } catch (err) {
+      if (!isAuthError(err) || !(await this.refreshOAuthToken()) || !this.client) throw err;
+      const stream = this.client.messages.stream(request);
+      stream.on('text', (text) => params.onTextDelta?.(text));
+      const response = await stream.finalMessage();
+      return {
+        content: this.mapOAuthResponse(response.content),
+        stopReason: response.stop_reason ?? 'end_turn',
+        usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+      };
+    }
   }
 
   // ---------------------------------------------------------------------------

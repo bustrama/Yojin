@@ -17,7 +17,7 @@ process.on('unhandledRejection', (reason) => {
 // to keep the server alive on older versions.
 process.on('uncaughtException', (err) => {
   if (err && 'code' in err && (err as NodeJS.ErrnoException).code === 'ERR_INVALID_STATE') {
-    console.warn('[uncaughtException] Ignored ReadableStream close race (Node <22.12 bug)');
+    console.warn('[uncaughtException] Ignored ERR_INVALID_STATE (likely SSE close race)', err.stack);
     return;
   }
   console.error('[uncaughtException]', err);
