@@ -147,7 +147,7 @@ Commands:
   yojin setup          Connect your Claude account
 
 Advanced:
-  yojin serve          Start the server only (no dashboard)
+  yojin serve          Alias for start
   yojin web            Start the dashboard only
   yojin secret <cmd>   Manage stored credentials
   yojin acp            Start ACP (Agent Client Protocol) server

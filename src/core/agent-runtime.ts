@@ -193,10 +193,7 @@ export class AgentRuntime {
     }
 
     // Use all available tools (same as CLI chat) — not scoped to a single agent.
-    const allTools = this.toolRegistry
-      .toSchemas()
-      .map((s) => this.toolRegistry.subset([s.name])[0])
-      .filter(Boolean);
+    const allTools = this.toolRegistry.all();
     const guardedTools = this.wrapToolsWithGuards(allTools, 'chat');
 
     const history = sessionKey ? (await this.sessionStore.getHistory(sessionKey)).map((e) => e.message) : [];
