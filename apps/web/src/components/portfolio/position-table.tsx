@@ -12,6 +12,11 @@ const PLATFORM_LABELS: Record<string, string> = {
   INTERACTIVE_BROKERS: 'IBKR',
   ROBINHOOD: 'Robinhood',
   COINBASE: 'Coinbase',
+  SCHWAB: 'Schwab',
+  BINANCE: 'Binance',
+  FIDELITY: 'Fidelity',
+  POLYMARKET: 'Polymarket',
+  PHANTOM: 'Phantom',
   MANUAL: 'Manual',
 };
 

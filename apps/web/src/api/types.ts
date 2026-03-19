@@ -10,7 +10,16 @@
 // ---------------------------------------------------------------------------
 
 export type AssetClass = 'EQUITY' | 'CRYPTO' | 'BOND' | 'COMMODITY' | 'CURRENCY' | 'OTHER';
-export type Platform = 'INTERACTIVE_BROKERS' | 'ROBINHOOD' | 'COINBASE' | 'SCHWAB' | 'BINANCE' | 'FIDELITY' | 'MANUAL';
+export type Platform =
+  | 'INTERACTIVE_BROKERS'
+  | 'ROBINHOOD'
+  | 'COINBASE'
+  | 'SCHWAB'
+  | 'BINANCE'
+  | 'FIDELITY'
+  | 'POLYMARKET'
+  | 'PHANTOM'
+  | 'MANUAL';
 export type AlertStatus = 'ACTIVE' | 'TRIGGERED' | 'DISMISSED';
 export type AlertRuleType =
   | 'PRICE_MOVE'

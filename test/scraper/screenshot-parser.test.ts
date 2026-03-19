@@ -439,6 +439,47 @@ describe('ScreenshotConnector', () => {
     const textBlock = blocks.find((b) => b.type === 'text');
     expect(textBlock?.text).toContain('ROBINHOOD');
   });
+
+  it('implements TieredPlatformConnector — tier is screenshot', () => {
+    const connector = new ScreenshotConnector({
+      imageData: DUMMY_IMAGE,
+      mediaType: 'image/png',
+      provider: mockProvider(VALID_RESPONSE),
+      model: 'claude-sonnet-4-6',
+    });
+    expect(connector.tier).toBe('screenshot');
+  });
+
+  it('isAvailable always returns true', async () => {
+    const connector = new ScreenshotConnector({
+      imageData: DUMMY_IMAGE,
+      mediaType: 'image/png',
+      provider: mockProvider(VALID_RESPONSE),
+      model: 'claude-sonnet-4-6',
+    });
+    expect(await connector.isAvailable()).toBe(true);
+  });
+
+  it('connect returns success', async () => {
+    const connector = new ScreenshotConnector({
+      imageData: DUMMY_IMAGE,
+      mediaType: 'image/png',
+      provider: mockProvider(VALID_RESPONSE),
+      model: 'claude-sonnet-4-6',
+    });
+    const result = await connector.connect([]);
+    expect(result).toEqual({ success: true });
+  });
+
+  it('disconnect is a no-op', async () => {
+    const connector = new ScreenshotConnector({
+      imageData: DUMMY_IMAGE,
+      mediaType: 'image/png',
+      provider: mockProvider(VALID_RESPONSE),
+      model: 'claude-sonnet-4-6',
+    });
+    await expect(connector.disconnect()).resolves.toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -448,14 +489,23 @@ describe('ScreenshotConnector', () => {
 describe('Zod schemas', () => {
   describe('PlatformSchema', () => {
     it('accepts valid platforms', () => {
-      expect(PlatformSchema.parse('COINBASE')).toBe('COINBASE');
-      expect(PlatformSchema.parse('ROBINHOOD')).toBe('ROBINHOOD');
-      expect(PlatformSchema.parse('INTERACTIVE_BROKERS')).toBe('INTERACTIVE_BROKERS');
-      expect(PlatformSchema.parse('MANUAL')).toBe('MANUAL');
+      for (const p of [
+        'COINBASE',
+        'ROBINHOOD',
+        'INTERACTIVE_BROKERS',
+        'SCHWAB',
+        'BINANCE',
+        'FIDELITY',
+        'POLYMARKET',
+        'PHANTOM',
+        'MANUAL',
+      ]) {
+        expect(PlatformSchema.parse(p)).toBe(p);
+      }
     });
 
     it('rejects invalid platforms', () => {
-      expect(PlatformSchema.safeParse('BINANCE').success).toBe(false);
+      expect(PlatformSchema.safeParse('KRAKEN').success).toBe(false);
       expect(PlatformSchema.safeParse('').success).toBe(false);
       expect(PlatformSchema.safeParse(123).success).toBe(false);
     });

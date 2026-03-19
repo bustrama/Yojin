@@ -61,6 +61,8 @@ const ACCOUNT_TO_PLATFORM: Record<string, Platform> = {
   Schwab: 'SCHWAB',
   Binance: 'BINANCE',
   Fidelity: 'FIDELITY',
+  Polymarket: 'POLYMARKET',
+  Phantom: 'PHANTOM',
 };
 
 function inferPlatform(account: string): Platform {

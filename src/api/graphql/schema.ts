@@ -23,7 +23,16 @@ export const typeDefs = /* GraphQL */ `
     SCHWAB
     BINANCE
     FIDELITY
+    POLYMARKET
+    PHANTOM
     MANUAL
+  }
+
+  enum IntegrationTier {
+    CLI
+    API
+    UI
+    SCREENSHOT
   }
 
   enum AlertStatus {
