@@ -28,7 +28,7 @@ const DEFAULT_CONFIG: TokenBudgetConfig = {
 };
 
 export class TokenBudget {
-  private config: TokenBudgetConfig;
+  private readonly config: TokenBudgetConfig;
 
   constructor(config?: Partial<TokenBudgetConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };

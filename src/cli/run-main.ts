@@ -29,6 +29,7 @@ export async function runMain(args: string[]): Promise<void> {
   switch (command) {
     // --- User-facing commands ---
     case 'start':
+    case 'serve':
       await startGateway();
       break;
     case 'chat':
@@ -37,11 +38,6 @@ export async function runMain(args: string[]): Promise<void> {
     case 'setup':
     case 'setup-token':
       await setupToken(args.slice(1));
-      break;
-
-    // --- Developer commands ---
-    case 'serve':
-      await startGateway();
       break;
     case 'web':
       await startFrontend();
