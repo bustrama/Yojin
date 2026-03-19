@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 export type AssetClass = 'EQUITY' | 'CRYPTO' | 'BOND' | 'COMMODITY' | 'CURRENCY' | 'OTHER';
-export type Platform = 'INTERACTIVE_BROKERS' | 'ROBINHOOD' | 'COINBASE' | 'MANUAL';
+export type Platform = 'INTERACTIVE_BROKERS' | 'ROBINHOOD' | 'COINBASE' | 'SCHWAB' | 'BINANCE' | 'FIDELITY' | 'MANUAL';
 export type AlertStatus = 'ACTIVE' | 'TRIGGERED' | 'DISMISSED';
 export type AlertRuleType =
   | 'PRICE_MOVE'
@@ -47,6 +47,14 @@ export interface PortfolioSnapshot {
   totalPnlPercent: number;
   timestamp: string;
   platform: Platform | null;
+}
+
+export interface PortfolioHistoryPoint {
+  timestamp: string;
+  totalValue: number;
+  totalCost: number;
+  totalPnl: number;
+  totalPnlPercent: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +196,10 @@ export interface PositionsQueryResult {
   positions: Position[];
 }
 
+export interface PortfolioHistoryQueryResult {
+  portfolioHistory: PortfolioHistoryPoint[];
+}
+
 export interface EnrichedSnapshotQueryResult {
   enrichedSnapshot: EnrichedSnapshot | null;
 }
@@ -226,6 +238,23 @@ export interface CreateAlertMutationResult {
 
 export interface DismissAlertMutationResult {
   dismissAlert: Alert;
+}
+
+export interface ManualPositionInput {
+  symbol: string;
+  name?: string;
+  quantity: number;
+  costBasis: number;
+  assetClass?: AssetClass;
+  platform?: Platform;
+}
+
+export interface AddManualPositionMutationResult {
+  addManualPosition: PortfolioSnapshot;
+}
+
+export interface AddManualPositionVariables {
+  input: ManualPositionInput;
 }
 
 // ---------------------------------------------------------------------------

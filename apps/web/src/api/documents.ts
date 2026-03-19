@@ -100,6 +100,18 @@ export const POSITIONS_QUERY = gql`
   ${POSITION_FIELDS}
 `;
 
+export const PORTFOLIO_HISTORY_QUERY = gql`
+  query PortfolioHistory {
+    portfolioHistory {
+      timestamp
+      totalValue
+      totalCost
+      totalPnl
+      totalPnlPercent
+    }
+  }
+`;
+
 export const ENRICHED_SNAPSHOT_QUERY = gql`
   query EnrichedSnapshot {
     enrichedSnapshot {
@@ -245,6 +257,24 @@ export const DISMISS_ALERT_MUTATION = gql`
     }
   }
   ${ALERT_FIELDS}
+`;
+
+export const ADD_MANUAL_POSITION_MUTATION = gql`
+  mutation AddManualPosition($input: ManualPositionInput!) {
+    addManualPosition(input: $input) {
+      id
+      positions {
+        ...PositionFields
+      }
+      totalValue
+      totalCost
+      totalPnl
+      totalPnlPercent
+      timestamp
+      platform
+    }
+  }
+  ${POSITION_FIELDS}
 `;
 
 // ---------------------------------------------------------------------------

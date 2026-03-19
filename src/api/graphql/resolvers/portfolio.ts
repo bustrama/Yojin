@@ -7,7 +7,15 @@
 
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import { pubsub } from '../pubsub.js';
-import type { EnrichedPosition, EnrichedSnapshot, Platform, PortfolioSnapshot, Position } from '../types.js';
+import type {
+  AssetClass,
+  EnrichedPosition,
+  EnrichedSnapshot,
+  Platform,
+  PortfolioHistoryPoint,
+  PortfolioSnapshot,
+  Position,
+} from '../types.js';
 
 let snapshotStore: PortfolioSnapshotStore | undefined;
 
@@ -49,6 +57,18 @@ export async function positionsQuery(): Promise<Position[]> {
   return snapshot.positions;
 }
 
+export async function portfolioHistoryQuery(): Promise<PortfolioHistoryPoint[]> {
+  if (!snapshotStore) return [];
+  const snapshots = await snapshotStore.getAll();
+  return snapshots.map((s) => ({
+    timestamp: s.timestamp,
+    totalValue: s.totalValue,
+    totalCost: s.totalCost,
+    totalPnl: s.totalPnl,
+    totalPnlPercent: s.totalPnlPercent,
+  }));
+}
+
 export async function enrichedSnapshotQuery(): Promise<EnrichedSnapshot> {
   const snapshot = await getSnapshot();
   const enriched: EnrichedPosition[] = snapshot.positions.map((p) => ({
@@ -79,6 +99,50 @@ export async function enrichedSnapshotQuery(): Promise<EnrichedSnapshot> {
 // ---------------------------------------------------------------------------
 // Mutation resolvers
 // ---------------------------------------------------------------------------
+
+interface ManualPositionInput {
+  symbol: string;
+  name?: string;
+  quantity: number;
+  costBasis: number;
+  assetClass?: string;
+  platform?: string;
+}
+
+export async function addManualPositionMutation(
+  _parent: unknown,
+  args: { input: ManualPositionInput },
+): Promise<PortfolioSnapshot> {
+  if (!snapshotStore) throw new Error('Snapshot store not available');
+
+  const { symbol, name, quantity, costBasis, assetClass, platform } = args.input;
+
+  const newPosition: Position = {
+    symbol: symbol.toUpperCase(),
+    name: name ?? symbol.toUpperCase(),
+    quantity,
+    costBasis,
+    currentPrice: costBasis,
+    marketValue: quantity * costBasis,
+    unrealizedPnl: 0,
+    unrealizedPnlPercent: 0,
+    assetClass: (assetClass as AssetClass) ?? 'EQUITY',
+    platform: (platform as Position['platform']) ?? 'MANUAL',
+  };
+
+  // Merge with existing positions, replacing any existing entry for the same symbol
+  const existing = await snapshotStore.getLatest();
+  const existingPositions = existing?.positions ?? [];
+  const existingIdx = existingPositions.findIndex((p) => p.symbol === newPosition.symbol);
+  const mergedPositions =
+    existingIdx !== -1
+      ? existingPositions.map((p, i) => (i === existingIdx ? newPosition : p))
+      : [...existingPositions, newPosition];
+
+  const snapshot = await snapshotStore.save({ positions: mergedPositions, platform: 'MANUAL' });
+  pubsub.publish('portfolioUpdate', snapshot);
+  return snapshot;
+}
 
 export async function refreshPositionsMutation(
   _parent: unknown,

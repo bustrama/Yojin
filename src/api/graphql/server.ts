@@ -19,7 +19,9 @@ import {
 import { onAlertSubscription, onPortfolioUpdateSubscription, onPriceMoveSubscription } from './resolvers/live.js';
 import { newsQuery, quoteQuery, sectorExposureQuery } from './resolvers/market.js';
 import {
+  addManualPositionMutation,
   enrichedSnapshotQuery,
+  portfolioHistoryQuery,
   portfolioQuery,
   positionsQuery,
   refreshPositionsMutation,
@@ -33,6 +35,7 @@ const schema = createSchema({
     Query: {
       portfolio: portfolioQuery,
       positions: positionsQuery,
+      portfolioHistory: portfolioHistoryQuery,
       enrichedSnapshot: enrichedSnapshotQuery,
       riskReport: riskReportQuery,
       alerts: alertsQuery,
@@ -44,6 +47,7 @@ const schema = createSchema({
     },
     Mutation: {
       refreshPositions: refreshPositionsMutation,
+      addManualPosition: addManualPositionMutation,
       createAlert: createAlertMutation,
       dismissAlert: dismissAlertMutation,
       sendMessage: sendMessageMutation,
