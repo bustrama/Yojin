@@ -7,15 +7,9 @@ import ChatInput from '../components/chat/chat-input';
 import ChatMessage from '../components/chat/chat-message';
 import ChatAvatar from '../components/chat/chat-avatar';
 import RichCard from '../components/chat/rich-card';
+import { useChatContext } from '../lib/chat-context';
 
-/* ─── Message types ─── */
-
-interface TextMessage {
-  id: string;
-  role: 'assistant' | 'user';
-  type: 'text';
-  content: string;
-}
+/* ─── Message types for local-only UI messages (briefings, rich cards) ─── */
 
 interface BriefingMessage {
   id: string;
@@ -23,33 +17,7 @@ interface BriefingMessage {
   type: 'briefing';
 }
 
-type Message = TextMessage | BriefingMessage;
-
-/* ─── API call ─── */
-
-async function sendChatMessage(message: string, threadId: string): Promise<{ threadId: string; response: string }> {
-  let res: Response;
-  try {
-    res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, threadId }),
-    });
-  } catch {
-    throw new Error('Cannot reach the backend. Is the server running? (pnpm dev)');
-  }
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `Request failed (${res.status})`);
-  }
-
-  const data = (await res.json()) as { threadId: string; response: string };
-  if (typeof data.response !== 'string') {
-    throw new Error('Unexpected response format from server');
-  }
-  return data;
-}
+type LocalMessage = BriefingMessage;
 
 /* ─── Mock briefing rich card ─── */
 
@@ -118,31 +86,12 @@ function FullBriefingCard() {
   );
 }
 
-/* ─── Render a single message ─── */
-
-function renderMessage(msg: Message) {
-  if (msg.role === 'user') {
-    return <ChatMessage key={msg.id} role="user" content={(msg as TextMessage).content} />;
-  }
-
-  if (msg.type === 'briefing') {
-    return (
-      <ChatMessage key={msg.id} role="assistant">
-        <FullBriefingCard />
-      </ChatMessage>
-    );
-  }
-
-  return <ChatMessage key={msg.id} role="assistant" content={(msg as TextMessage).content} />;
-}
-
 /* ─── Page ─── */
 
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const { messages, streamingContent, isLoading, isThinking, activeTools, sendMessage } = useChatContext();
+  const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [threadId] = useState(() => `web-${crypto.randomUUID()}`);
   const scrollRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -161,59 +110,27 @@ export default function Chat() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages, localMessages, isLoading, streamingContent, isThinking, activeTools]);
 
   const handleSend = useCallback(
-    async (content: string) => {
+    (content: string) => {
       setActiveCategory(null);
-      const userMessage: TextMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        type: 'text',
-        content,
-      };
-      setMessages((prev) => [...prev, userMessage]);
-      setIsLoading(true);
-
-      try {
-        const { response } = await sendChatMessage(content, threadId);
-        const assistantMessage: TextMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          type: 'text',
-          content: response,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      } catch (err) {
-        const errorText = err instanceof Error ? err.message : 'Something went wrong';
-        const errorMessage: TextMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          type: 'text',
-          content: `Sorry, I couldn't process that request. ${errorText}`,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      } finally {
-        setIsLoading(false);
-      }
+      sendMessage(content);
     },
-    [threadId],
+    [sendMessage],
   );
 
   const handleViewFullBriefing = useCallback(() => {
-    const userMsg: TextMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      type: 'text',
-      content: 'Show me my full morning briefing',
-    };
+    // Send user message through the real chat context
+    sendMessage('Show me my full morning briefing');
+    // Add a local briefing card
     const briefingMsg: BriefingMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
       type: 'briefing',
     };
-    setMessages((prev) => [...prev, userMsg, briefingMsg]);
-  }, []);
+    setLocalMessages((prev) => [...prev, briefingMsg]);
+  }, [sendMessage]);
 
   const handleQuerySelect = useCallback((categoryId: string) => {
     setActiveCategory(categoryId);
@@ -222,9 +139,9 @@ export default function Chat() {
   const handleWaterfallComplete = useCallback(
     (query: string) => {
       setActiveCategory(null);
-      handleSend(query);
+      sendMessage(query);
     },
-    [handleSend],
+    [sendMessage],
   );
 
   const handleWaterfallCancel = useCallback(() => {
@@ -241,18 +158,70 @@ export default function Chat() {
             <MorningBriefing onViewFull={handleViewFullBriefing} />
           </ChatMessage>
 
-          {messages.map(renderMessage)}
+          {/* Server messages (from chat context) */}
+          {messages.map((msg) => (
+            <ChatMessage
+              key={msg.id}
+              id={msg.id}
+              role={msg.role}
+              content={msg.content}
+              piiProtected={msg.piiProtected}
+              piiTypes={msg.piiTypes}
+            />
+          ))}
 
-          {/* Loading indicator */}
-          {isLoading && (
+          {/* Local-only messages (briefing rich cards) */}
+          {localMessages.map((msg) => (
+            <ChatMessage key={msg.id} role="assistant">
+              <FullBriefingCard />
+            </ChatMessage>
+          ))}
+
+          {/* Streaming response */}
+          {streamingContent && <ChatMessage id="streaming" role="assistant" content={streamingContent} />}
+
+          {/* Loading / thinking / tool indicators */}
+          {isLoading && !streamingContent && (
             <div className="flex items-start gap-3">
               <ChatAvatar />
-              <div className="rounded-2xl rounded-tl-sm border border-border bg-bg-card px-4 py-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.3s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
-                </div>
+              <div className="flex flex-col gap-2">
+                {isThinking && (
+                  <div className="inline-flex items-center gap-2 rounded-full border border-border bg-bg-card px-3 py-1.5">
+                    <div className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary" />
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary [animation-delay:0.2s]" />
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary [animation-delay:0.4s]" />
+                    </div>
+                    <span className="text-xs text-text-secondary">Thinking</span>
+                  </div>
+                )}
+
+                {activeTools.map((tool, i) => (
+                  <div
+                    key={`${tool}-${i}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-bg-card px-3 py-1.5"
+                  >
+                    <svg className="h-3.5 w-3.5 animate-spin text-accent-primary" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    <span className="font-mono text-xs text-text-secondary">{tool}</span>
+                  </div>
+                ))}
+
+                {!isThinking && activeTools.length === 0 && (
+                  <div className="rounded-2xl rounded-tl-sm border border-border bg-bg-card px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.3s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

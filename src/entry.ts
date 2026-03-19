@@ -7,6 +7,11 @@ import { initLogger } from './logging/index.js';
 
 const args = process.argv.slice(2);
 
+// Prevent unhandled rejections from crashing the server (e.g. CLI subprocess failures)
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+
 // Hide console logs during interactive chat so they don't interfere
 const isChat = args[0] === 'chat';
 const logger = initLogger({ consoleStyle: isChat ? 'hidden' : undefined });

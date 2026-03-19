@@ -166,3 +166,29 @@ export interface AlertRuleInput {
   threshold?: number;
   direction?: 'UP' | 'DOWN' | 'BOTH';
 }
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+export type ChatRole = 'USER' | 'ASSISTANT';
+export type ChatEventType = 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR';
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  role: ChatRole;
+  content: string;
+  timestamp: string;
+}
+
+export interface ChatEvent {
+  type: ChatEventType;
+  threadId: string;
+  delta?: string;
+  messageId?: string;
+  content?: string;
+  error?: string;
+  toolName?: string;
+  piiTypesFound?: string[];
+}

@@ -1,5 +1,12 @@
-import { Client, fetchExchange } from 'urql';
+import { Client, fetchExchange, subscriptionExchange } from 'urql';
 import { cacheExchange } from '@urql/exchange-graphcache';
+import { createClient as createSSEClient } from 'graphql-sse';
+
+const graphqlUrl = (import.meta.env.VITE_GRAPHQL_URL as string | undefined) ?? '/graphql';
+
+const sseClient = createSSEClient({
+  url: graphqlUrl,
+});
 
 /**
  * Normalized cache configuration.
@@ -46,15 +53,24 @@ const cache = cacheExchange({
 /**
  * Exchange pipeline (order matters):
  *
- * 1. cache  — normalized cache, deduplicates in-flight requests
- * 2. fetch  — HTTP transport
- *
- * To extend later:
- * - Insert `retryExchange` before fetch for transient failure resilience
- * - Insert `subscriptionExchange` (SSE) after fetch for real-time data
- * - Insert `authExchange` before fetch for token management
+ * 1. cache          — normalized graphcache, deduplicates in-flight requests
+ * 2. fetch          — HTTP transport
+ * 3. subscription   — SSE transport for real-time streaming
  */
 export const graphqlClient = new Client({
-  url: import.meta.env.VITE_GRAPHQL_URL ?? '/graphql',
-  exchanges: [cache, fetchExchange],
+  url: graphqlUrl,
+  exchanges: [
+    cache,
+    fetchExchange,
+    subscriptionExchange({
+      forwardSubscription(request) {
+        return {
+          subscribe(sink) {
+            const unsubscribe = sseClient.subscribe({ ...request, query: request.query ?? '' }, sink);
+            return { unsubscribe };
+          },
+        };
+      },
+    }),
+  ],
 });

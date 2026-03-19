@@ -85,7 +85,7 @@ describe('Config schemas have sensible defaults', () => {
   it('AIProviderConfigSchema', () => {
     const config = AIProviderConfigSchema.parse({});
     expect(config).toBeDefined();
-    expect(config.defaultProvider).toBe('anthropic');
+    expect(config.defaultProvider).toBe('claude-code');
   });
 
   it('GuardConfigSchema', () => {
