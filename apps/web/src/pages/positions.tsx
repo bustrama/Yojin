@@ -15,7 +15,7 @@ export default function Positions() {
   const [{ data, fetching, error }] = usePositions();
   const [filter, setFilter] = useState<FilterValue>('ALL');
 
-  const positions = data?.positions ?? [];
+  const positions = useMemo(() => data?.positions ?? [], [data?.positions]);
 
   const counts = useMemo(() => {
     const result: Record<FilterValue, number> = {
