@@ -158,8 +158,12 @@ export class AgentRuntime {
     'You do NOT have access to a terminal — you can ONLY act through tool calls. ' +
     'When the user asks to store a credential, call store_credential. When they ask to check something, call the relevant tool. ' +
     'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually. ' +
-    'You can see images that users attach to their messages. When a user sends an image (e.g. a portfolio screenshot), ' +
-    'analyze it directly — describe what you see, extract any visible data, and respond accordingly.';
+    'You can see images that users attach to their messages. When a user sends a portfolio screenshot from any platform ' +
+    '(Coinbase, Robinhood, Interactive Brokers, etc.), you MUST: ' +
+    '1) Extract all visible positions (symbol, quantity, cost basis, current price, market value, P&L). ' +
+    '2) Call save_portfolio_positions with the extracted data and detected platform to persist the portfolio. ' +
+    '3) Summarize what was saved. ' +
+    'Always call save_portfolio_positions — never just describe the screenshot without saving.';
 
   async handleMessage(params: {
     message: string;

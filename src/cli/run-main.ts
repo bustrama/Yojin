@@ -65,7 +65,11 @@ export async function runMain(args: string[]): Promise<void> {
  * This gives gateway, ACP, and any future entry point the full tool set,
  * brain integration, vault, guards, and PII scanner.
  */
-async function buildFullRuntime(): Promise<{ agentRuntime: AgentRuntime; dataRoot: string }> {
+async function buildFullRuntime(): Promise<{
+  agentRuntime: AgentRuntime;
+  dataRoot: string;
+  services: Awaited<ReturnType<typeof buildContext>>;
+}> {
   const dataRoot = '.';
   const services = await buildContext({ dataRoot });
 
@@ -90,15 +94,17 @@ async function buildFullRuntime(): Promise<{ agentRuntime: AgentRuntime; dataRoo
     dataRoot,
   });
 
-  return { agentRuntime, dataRoot };
+  return { agentRuntime, dataRoot, services };
 }
 
 async function startGateway(): Promise<void> {
-  const { agentRuntime } = await buildFullRuntime();
+  const { agentRuntime, services } = await buildFullRuntime();
   const { loadConfig } = await import('../config/config.js');
   const config = loadConfig();
 
-  const gateway = new Gateway(config, agentRuntime);
+  const gateway = new Gateway(config, agentRuntime, {
+    snapshotStore: services.snapshotStore,
+  });
 
   // Graceful shutdown
   const shutdown = async () => {

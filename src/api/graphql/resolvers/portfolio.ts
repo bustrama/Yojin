@@ -1,99 +1,67 @@
 /**
  * Portfolio resolvers — portfolio, positions, enrichedSnapshot, refreshPositions.
+ *
+ * Reads from PortfolioSnapshotStore when data is available, falls back to
+ * empty state when no snapshots have been imported yet.
  */
 
+import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import { pubsub } from '../pubsub.js';
 import type { EnrichedPosition, EnrichedSnapshot, Platform, PortfolioSnapshot, Position } from '../types.js';
 
+let snapshotStore: PortfolioSnapshotStore | undefined;
+
+/** Called once during server startup to inject the store. */
+export function setSnapshotStore(store: PortfolioSnapshotStore): void {
+  snapshotStore = store;
+}
+
 // ---------------------------------------------------------------------------
-// Stub data — replaced by real services when available
+// Helpers
 // ---------------------------------------------------------------------------
 
-const stubPositions: Position[] = [
-  {
-    symbol: 'AAPL',
-    name: 'Apple Inc.',
-    quantity: 50,
-    costBasis: 145.0,
-    currentPrice: 178.5,
-    marketValue: 8925.0,
-    unrealizedPnl: 1675.0,
-    unrealizedPnlPercent: 23.1,
-    sector: 'Technology',
-    assetClass: 'EQUITY',
-    platform: 'INTERACTIVE_BROKERS',
-  },
-  {
-    symbol: 'MSFT',
-    name: 'Microsoft Corp.',
-    quantity: 30,
-    costBasis: 310.0,
-    currentPrice: 415.2,
-    marketValue: 12456.0,
-    unrealizedPnl: 3156.0,
-    unrealizedPnlPercent: 33.94,
-    sector: 'Technology',
-    assetClass: 'EQUITY',
-    platform: 'INTERACTIVE_BROKERS',
-  },
-  {
-    symbol: 'BTC',
-    name: 'Bitcoin',
-    quantity: 0.5,
-    costBasis: 42000.0,
-    currentPrice: 67500.0,
-    marketValue: 33750.0,
-    unrealizedPnl: 12750.0,
-    unrealizedPnlPercent: 60.71,
-    sector: undefined,
-    assetClass: 'CRYPTO',
-    platform: 'COINBASE',
-  },
-];
+const EMPTY_SNAPSHOT: PortfolioSnapshot = {
+  id: 'empty',
+  positions: [],
+  totalValue: 0,
+  totalCost: 0,
+  totalPnl: 0,
+  totalPnlPercent: 0,
+  timestamp: new Date().toISOString(),
+  platform: null,
+};
 
-function buildSnapshot(platform?: Platform): PortfolioSnapshot {
-  const positions = platform ? stubPositions.filter((p) => p.platform === platform) : stubPositions;
-  const totalValue = positions.reduce((sum, p) => sum + p.marketValue, 0);
-  const totalCost = positions.reduce((sum, p) => sum + p.costBasis * p.quantity, 0);
-  const totalPnl = totalValue - totalCost;
-
-  return {
-    id: `snap-${Date.now()}`,
-    positions,
-    totalValue,
-    totalCost,
-    totalPnl,
-    totalPnlPercent: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
-    timestamp: new Date().toISOString(),
-    platform: platform ?? null,
-  };
+async function getSnapshot(): Promise<PortfolioSnapshot> {
+  if (!snapshotStore) return EMPTY_SNAPSHOT;
+  return (await snapshotStore.getLatest()) ?? EMPTY_SNAPSHOT;
 }
 
 // ---------------------------------------------------------------------------
 // Query resolvers
 // ---------------------------------------------------------------------------
 
-export function portfolioQuery(): PortfolioSnapshot {
-  return buildSnapshot();
+export async function portfolioQuery(): Promise<PortfolioSnapshot> {
+  return getSnapshot();
 }
 
-export function positionsQuery(): Position[] {
-  return stubPositions;
+export async function positionsQuery(): Promise<Position[]> {
+  const snapshot = await getSnapshot();
+  return snapshot.positions;
 }
 
-export function enrichedSnapshotQuery(): EnrichedSnapshot {
-  const snapshot = buildSnapshot();
+export async function enrichedSnapshotQuery(): Promise<EnrichedSnapshot> {
+  const snapshot = await getSnapshot();
   const enriched: EnrichedPosition[] = snapshot.positions.map((p) => ({
     ...p,
-    sentimentScore: 0.72,
-    sentimentLabel: 'Bullish',
-    analystRating: 'Buy',
-    targetPrice: p.currentPrice * 1.15,
-    peRatio: 28.5,
-    dividendYield: 0.5,
-    beta: 1.1,
-    fiftyTwoWeekHigh: p.currentPrice * 1.2,
-    fiftyTwoWeekLow: p.currentPrice * 0.7,
+    sentimentScore: undefined,
+    sentimentLabel: undefined,
+    analystRating: undefined,
+    targetPrice: undefined,
+    peRatio: undefined,
+    dividendYield: undefined,
+    beta: undefined,
+    fiftyTwoWeekHigh: undefined,
+    fiftyTwoWeekLow: undefined,
   }));
 
   return {
@@ -112,8 +80,30 @@ export function enrichedSnapshotQuery(): EnrichedSnapshot {
 // Mutation resolvers
 // ---------------------------------------------------------------------------
 
-export function refreshPositionsMutation(_parent: unknown, args: { platform: Platform }): PortfolioSnapshot {
-  const snapshot = buildSnapshot(args.platform);
+export async function refreshPositionsMutation(
+  _parent: unknown,
+  args: { platform: Platform },
+): Promise<PortfolioSnapshot> {
+  const snapshot = await getSnapshot();
+  // Filter by platform if specified and we have data
+  if (args.platform && snapshot.positions.length > 0) {
+    const filtered = snapshot.positions.filter((p) => p.platform === args.platform);
+    const totalValue = filtered.reduce((sum, p) => sum + p.marketValue, 0);
+    const totalCost = filtered.reduce((sum, p) => sum + p.costBasis * p.quantity, 0);
+    const totalPnl = totalValue - totalCost;
+    const result: PortfolioSnapshot = {
+      ...snapshot,
+      id: `snap-${Date.now()}`,
+      positions: filtered,
+      totalValue,
+      totalCost,
+      totalPnl,
+      totalPnlPercent: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
+      platform: args.platform,
+    };
+    pubsub.publish('portfolioUpdate', result);
+    return result;
+  }
   pubsub.publish('portfolioUpdate', snapshot);
   return snapshot;
 }

@@ -121,14 +121,14 @@ export class ClaudeCodeProvider implements AIProvider {
 
   private client: Anthropic | null = null;
   private authMode: 'api_key' | 'oauth' | 'cli' = 'cli';
+  /** Tracks where the OAuth token was sourced so refresh only retries viable paths. */
+  private oauthSource: 'env' | 'keychain' | null = null;
 
   constructor() {
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
     if (apiKey) {
       this.authMode = 'api_key';
       this.client = new Anthropic({ apiKey });
-    } else if (process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) {
-      this.authMode = 'cli';
     }
   }
 
@@ -145,6 +145,7 @@ export class ClaudeCodeProvider implements AIProvider {
     const envToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
     if (envToken && isOAuthToken(envToken)) {
       this.authMode = 'oauth';
+      this.oauthSource = 'env';
       this.client = new Anthropic({
         apiKey: null,
         authToken: envToken,
@@ -158,6 +159,7 @@ export class ClaudeCodeProvider implements AIProvider {
     const keychainToken = await readTokenFromKeychain();
     if (keychainToken) {
       this.authMode = 'oauth';
+      this.oauthSource = 'keychain';
       this.client = new Anthropic({
         apiKey: null,
         authToken: keychainToken,
@@ -408,15 +410,14 @@ export class ClaudeCodeProvider implements AIProvider {
   }
 
   /**
-   * Re-read the OAuth token from its original source and rebuild the SDK client.
-   * Returns true if a fresh token was obtained.
+   * Re-read the OAuth token and rebuild the SDK client.
+   * Only Keychain tokens can be refreshed (Claude Code CLI may have renewed them).
+   * Env-var tokens are static for the process lifetime — retrying would be a no-op.
    */
   private async refreshOAuthToken(): Promise<boolean> {
-    const envToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
-    if (envToken && isOAuthToken(envToken)) {
-      this.client = new Anthropic({ apiKey: null, authToken: envToken, defaultHeaders: OAUTH_HEADERS });
-      logger.info('Refreshed OAuth client (env var)');
-      return true;
+    if (this.oauthSource === 'env') {
+      logger.warn('OAuth token from env var expired — cannot refresh a static env var');
+      return false;
     }
     const keychainToken = await readTokenFromKeychain();
     if (keychainToken) {

@@ -27,10 +27,12 @@ import type { OutputDlpGuard } from './guards/security/output-dlp.js';
 import type { PostureName } from './guards/types.js';
 import { getLogger } from './logging/index.js';
 import { PluginRegistry } from './plugins/registry.js';
+import { PortfolioSnapshotStore } from './portfolio/snapshot-store.js';
 import { createApiHealthTools } from './tools/api-health.js';
 import { createBrainTools } from './tools/brain-tools.js';
 import { createErrorAnalysisTools } from './tools/error-analysis.js';
 import { createPortfolioReasoningTools } from './tools/portfolio-reasoning.js';
+import { createPortfolioTools } from './tools/portfolio-tools.js';
 import { createSecurityAuditTools } from './tools/security-audit.js';
 import { FileAuditLog } from './trust/audit/audit-log.js';
 import { ChatPiiScanner } from './trust/pii/chat-scanner.js';
@@ -61,6 +63,7 @@ export interface YojinServices {
   pluginRegistry: PluginRegistry;
   dataSourceRegistry: DataSourceRegistry;
   personaManager: PersonaManager;
+  snapshotStore: PortfolioSnapshotStore;
   piiScanner: ChatPiiScanner;
   brain: {
     persona: PersonaManager;
@@ -193,6 +196,9 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   // 6. DataSourceRegistry (empty — no sources registered yet)
   const dataSourceRegistry = new DataSourceRegistry();
 
+  // 6b. Portfolio snapshot store
+  const snapshotStore = new PortfolioSnapshotStore(dataRoot);
+
   // 7. ToolRegistry — register all tools
   const toolRegistry = new ToolRegistry();
 
@@ -237,6 +243,11 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     toolRegistry.register(tool);
   }
 
+  // Portfolio tools (2 tools: save_portfolio_positions, get_portfolio)
+  for (const tool of createPortfolioTools({ snapshotStore })) {
+    toolRegistry.register(tool);
+  }
+
   const toolCount = toolRegistry.toSchemas().length;
   log.info(`ToolRegistry ready — ${toolCount} tools registered`);
 
@@ -267,6 +278,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     pluginRegistry,
     dataSourceRegistry,
     personaManager: persona,
+    snapshotStore,
     piiScanner,
     brain: {
       persona,
