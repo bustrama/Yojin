@@ -29,8 +29,10 @@ const c = {
   red: '\x1b[31m',
   gray: '\x1b[90m',
   white: '\x1b[37m',
-  warmOrange: '\x1b[38;5;173m',
-  goldBold: '\x1b[1;33m',
+  // Yojin brand coral (#F06060)
+  coral: '\x1b[38;2;240;96;96m',
+  coralBold: '\x1b[1;38;2;240;96;96m',
+  coralDim: '\x1b[2;38;2;240;96;96m',
   clearLine: '\x1b[2K\r',
 };
 
@@ -38,38 +40,13 @@ const c = {
 // Thinking spinner (Claude Code style)
 // ---------------------------------------------------------------------------
 
-const SPINNER_CHARS = ['·', '✢', '✳', '✶', '✻', '✽', '✶', '✳', '✢'];
 const BRAILLE_SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
-const THINKING_VERBS = [
-  'Thinking',
-  'Analyzing',
-  'Reasoning',
-  'Considering',
-  'Processing',
-  'Evaluating',
-  'Examining',
-  'Reflecting',
-  'Computing',
-  'Strategizing',
-  'Synthesizing',
-  'Deliberating',
-  'Assessing',
-  'Formulating',
-  'Contemplating',
-];
 
 class ThinkingSpinner {
   private interval: ReturnType<typeof setInterval> | null = null;
   private frame = 0;
-  private verb: string;
-
-  constructor() {
-    this.verb = THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)];
-  }
 
   start(): void {
-    this.verb = THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)];
     this.frame = 0;
     this.render();
     this.interval = setInterval(() => this.render(), 80);
@@ -80,17 +57,13 @@ class ThinkingSpinner {
       clearInterval(this.interval);
       this.interval = null;
     }
-    // Clear the spinner line
     process.stdout.write(c.clearLine);
-    // Clear terminal title
     process.stdout.write('\x1b]0;\x07');
   }
 
   private render(): void {
-    const spinChar = SPINNER_CHARS[this.frame % SPINNER_CHARS.length];
     const braille = BRAILLE_SPINNER[this.frame % BRAILLE_SPINNER.length];
-    process.stdout.write(`${c.clearLine}  ${c.warmOrange}${this.verb}${spinChar}${c.reset}`);
-    // Update terminal title with braille spinner
+    process.stdout.write(`${c.clearLine}  ${c.coralDim}${braille} Thinking${c.reset}`);
     process.stdout.write(`\x1b]0;${braille} Yojin\x07`);
     this.frame++;
   }
@@ -110,7 +83,7 @@ export async function startChat(args: string[]): Promise<void> {
 
   // Build the full dependency graph (may prompt for vault passphrase via TTY)
   const services = await buildContext();
-  const { config, toolRegistry, guardRunner, outputDlp, pluginRegistry } = services;
+  const { config, toolRegistry, guardRunner, outputDlp, pluginRegistry, piiScanner } = services;
 
   // Validate agent early — before loading provider plugins
   if (agentId && services.agentRegistry.getAll().every((a) => a.id !== agentId)) {
@@ -190,14 +163,32 @@ export async function startChat(args: string[]): Promise<void> {
 
   log.info('Chat session started', { provider: providerId, model, tools: tools.length, agent: agentId });
 
-  // Header
+  // Header with hand logo
   const modelShort = model.replace('claude-', '').replace('-20250514', '');
-  console.log(`\n${c.goldBold}Yojin${c.reset} ${c.dim}\u2014 ${modelShort} \u2022 ${tools.length} tools${c.reset}`);
-  if (agentId) console.log(`${c.dim}Agent: ${agentId}${c.reset}`);
-  console.log(`${c.dim}Type your message. "exit" or Ctrl+C to quit.${c.reset}\n`);
+  const hand = [
+    '          \u2584\u2588\u2588  \u2584\u2588\u2588',
+    '    \u2588\u2588\u2588  \u2588\u2588\u2588\u2580 \u2584\u2588\u2588\u2588',
+    '   \u2584\u2588\u2588\u2588 \u2588\u2588\u2588\u2588 \u2584\u2588\u2588\u2588   \u2584\u2584',
+    '   \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 \u2588\u2588\u2588\u2588  \u2588\u2588\u2588\u2580',
+    '  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 \u2584\u2588\u2588\u2588\u2580',
+    ' \u2584\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588',
+    ' \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588',
+    '\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2580',
+    '\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2584\u2588\u2588\u2588\u2588\u2588',
+    '\u2580\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2580',
+    ' \u2580\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2580\u2580',
+    '    \u2580\u2580\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2580\u2580',
+  ];
+  console.log();
+  for (const line of hand) {
+    console.log(`  ${c.coral}${line}${c.reset}`);
+  }
+  console.log(`  ${c.coralBold}Yojin${c.reset} ${c.dim}${modelShort} \u2022 ${tools.length} tools${c.reset}`);
+  if (agentId) console.log(`  ${c.dim}agent: ${agentId}${c.reset}`);
+  console.log();
 
   const ask = (): void => {
-    rl.question(`${c.cyan}${c.bold}> ${c.reset}`, async (input) => {
+    rl.question(`${c.coralBold}> ${c.reset}`, async (input) => {
       const trimmed = input.trim();
       if (!trimmed || trimmed === 'exit' || trimmed === 'quit') {
         rl.close();
@@ -206,13 +197,14 @@ export async function startChat(args: string[]): Promise<void> {
 
       // Pause readline during agent loop to avoid stdin conflicts
       rl.pause();
+      process.stdout.write('\n');
 
       const spinner = new ThinkingSpinner();
       let streamingStarted = false;
       let spinnerActive = false;
+      let piiDetected = false;
 
       try {
-        // Start thinking spinner
         spinner.start();
         spinnerActive = true;
 
@@ -224,17 +216,33 @@ export async function startChat(args: string[]): Promise<void> {
           guardRunner,
           outputDlp,
           agentId,
+          piiScanner,
           onEvent: (event) => {
+            if (event.type === 'pii_redacted') {
+              piiDetected = true;
+              if (spinnerActive) {
+                spinner.stop();
+                spinnerActive = false;
+              }
+              process.stdout.write(
+                `  ${c.yellow}\u26A0 PII masked:${c.reset} ${c.dim}${event.entitiesFound} item${event.entitiesFound > 1 ? 's' : ''} (${event.typesFound.join(', ')}) redacted before LLM${c.reset}\n`,
+              );
+              spinner.start();
+              spinnerActive = true;
+            }
             if (event.type === 'text_delta') {
               if (spinnerActive) {
                 spinner.stop();
                 spinnerActive = false;
               }
               if (!streamingStarted) {
-                process.stdout.write(`\n${c.yellow}${c.bold}assistant${c.reset}\n`);
                 streamingStarted = true;
               }
-              process.stdout.write(event.text);
+              // When PII was detected, buffer text (don't print raw tags).
+              // The rehydrated result.text will be printed after the loop.
+              if (!piiDetected) {
+                process.stdout.write(event.text);
+              }
             }
             if (event.type === 'action') {
               if (spinnerActive) {
@@ -248,11 +256,8 @@ export async function startChat(args: string[]): Promise<void> {
               for (const call of event.toolCalls) {
                 const argStr = summarizeArgs(call.input);
                 const args = argStr ? `${c.dim}(${argStr})${c.reset}` : '';
-                process.stdout.write(`  ${c.warmOrange}\u25CB${c.reset} ${c.white}${call.name}${c.reset}${args}\n`);
+                process.stdout.write(`  ${c.coral}\u25CB${c.reset} ${c.white}${call.name}${c.reset}${args}\n`);
               }
-              // Restart spinner while tools execute
-              spinner.start();
-              spinnerActive = true;
             }
             if (event.type === 'observation') {
               if (spinnerActive) {
@@ -267,9 +272,6 @@ export async function startChat(args: string[]): Promise<void> {
                   process.stdout.write(`  ${c.green}\u2713 ${r.name}${c.reset} ${c.dim}${preview}${c.reset}\n`);
                 }
               }
-              // Restart spinner while LLM processes results
-              spinner.start();
-              spinnerActive = true;
             }
           },
         });
@@ -282,19 +284,22 @@ export async function startChat(args: string[]): Promise<void> {
 
         history = result.messages;
 
-        if (streamingStarted) {
-          process.stdout.write('\n\n');
+        if (streamingStarted && !piiDetected) {
+          // Streaming already printed to terminal — just add newline
+          process.stdout.write('\n');
         } else if (result.text) {
-          process.stdout.write(`\n${c.yellow}${c.bold}assistant${c.reset}\n${result.text}\n\n`);
+          // Either non-streaming or PII-buffered — print the (rehydrated) result
+          process.stdout.write(result.text + '\n');
         }
 
         // Usage footer
         if (result.usage.inputTokens > 0) {
           const totalTokens = result.usage.inputTokens + result.usage.outputTokens;
           process.stdout.write(
-            `${c.dim}  ${result.iterations} step${result.iterations > 1 ? 's' : ''} \u2022 ${formatTokens(totalTokens)} tokens${c.reset}\n\n`,
+            `${c.dim}${result.iterations} step${result.iterations > 1 ? 's' : ''} \u2022 ${formatTokens(totalTokens)} tokens${c.reset}\n`,
           );
         }
+        process.stdout.write('\n');
 
         log.info('Agent loop complete', {
           iterations: result.iterations,

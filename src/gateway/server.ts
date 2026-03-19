@@ -9,6 +9,7 @@
 import { slackPlugin } from '../../channels/slack/index.js';
 import { webPlugin } from '../../channels/web/index.js';
 import { anthropicPlugin } from '../../providers/anthropic/index.js';
+import { setChatAgentRuntime } from '../api/graphql/resolvers/chat.js';
 import type { YojinConfig } from '../config/config.js';
 import type { AgentRuntime } from '../core/agent-runtime.js';
 import { getLogger } from '../logging/index.js';
@@ -25,6 +26,9 @@ export class Gateway {
     this.config = config;
     this.registry = new PluginRegistry();
     this.agentRuntime = agentRuntime;
+
+    // Inject AgentRuntime into GraphQL chat resolver
+    setChatAgentRuntime(agentRuntime);
   }
 
   /** Load all built-in and discovered plugins. */

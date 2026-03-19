@@ -92,7 +92,8 @@ export function mapEventToUpdates(event: AgentLoopEvent, sessionId: string): Acp
       ];
 
     case 'compaction':
-      // Internal optimization, not relevant to ACP client
+    case 'pii_redacted':
+      // Internal optimization / privacy info, not relevant to ACP client
       return [];
 
     default:

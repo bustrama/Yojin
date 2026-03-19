@@ -27,6 +27,7 @@
     "dev": "node --disable-warning=DEP0040 --import tsx/esm src/entry.ts",
     "chat": "node --disable-warning=DEP0040 --import tsx/esm src/entry.ts chat",
     "yojin:acp": "node --disable-warning=DEP0040 --import tsx/esm src/entry.ts acp",
+    "setup-token": "node --disable-warning=DEP0040 --import tsx/esm src/entry.ts setup-token",
     "start": "node --disable-warning=DEP0040 dist/src/entry.js",
     "test": "vitest run",
     "test:ci": "vitest run",
@@ -69,6 +70,7 @@
     "graphql": "16.13.1",
     "graphql-yoga": "5.18.1",
     "hono": "4.12.8",
+    "rehydra": "0.3.4",
     "tslog": "4.10.2",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.25.1"

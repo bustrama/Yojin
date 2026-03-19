@@ -322,7 +322,29 @@ When connecting a platform (e.g. Binance), the LLM never sees your API key. The 
 - **Non-TTY rejection** — refuses piped input, preventing LLM from feeding secrets programmatically
 - **Transport-layer injection** — credentials go from vault directly into HTTP headers, never into prompts
 
-### PII Redaction Pipeline
+### PII Protection (Two Layers)
+
+**Layer 1: Chat Pipeline** — Masks PII in user messages before they reach the LLM, powered by [Rehydra](https://github.com/rehydra-ai/rehydra-sdk). Responses are rehydrated so the user sees original values.
+
+```
+User: "my email is dean@test.com"
+        │
+        ▼
+  ChatPiiScanner.scrub()          ◀── regex (email, phone, card, IP, URL, IBAN)
+        │                              + optional NER (names, orgs, locations)
+        ▼
+LLM sees: "my email is <PII type="EMAIL" id="1"/>"
+        │
+        ▼
+  ChatPiiScanner.restore()        ◀── AES-256-GCM encrypted PII map
+        │
+        ▼
+User sees: "Got it, I noted dean@test.com"
+```
+
+Enable NER for name/org detection: `YOJIN_PII_NER=1`
+
+**Layer 2: Structured Data** — Redacts PII in portfolio snapshots before external API calls (Keelson).
 
 ```
 Raw Snapshot                    Redacted Snapshot
@@ -363,7 +385,7 @@ Delete an event        ──▶ prevHash gap  ──▶ verifyChain() detects i
 
 - **Encrypted credential vault** — AES-256-GCM with PBKDF2 key derivation. Credentials injected at the transport layer, never exposed to the LLM.
 - **12 deterministic guards** — Kill switch, self-defense, tool policy, fs, command, egress, output-dlp, rate-budget, repetition, read-only, cooldown, symbol-whitelist.
-- **PII redaction** — Account IDs hashed, balances converted to ranges, emails/names stripped before any external API call.
+- **PII protection** — Chat messages scrubbed before LLM via Rehydra (email, phone, card, IP, URL + optional NER for names). Structured data redacted before external APIs (account IDs hashed, balances ranged).
 - **Human approval gate** — Irreversible actions (trades, new connections) require explicit approval via your active channel.
 - **HMAC-chained audit log** — Tamper-evident append-only JSONL. Every security event logged, chain integrity verifiable.
 - **Pipeline freeze** — Guard pipeline locked after initialization. No runtime modification possible.
@@ -375,6 +397,7 @@ Delete an event        ──▶ prevHash gap  ──▶ verifyChain() detects i
 - **Anthropic SDK** — Claude as the default AI provider
 - **Hono + graphql-yoga** — Web server and GraphQL API with subscriptions
 - **Playwright** — browser automation for scraping investment platforms
+- **Rehydra** — reversible PII masking in chat (regex + optional NER)
 - **Zod** — schema validation for all external data
 - **vitest** — testing
 - **tslog** — structured logging

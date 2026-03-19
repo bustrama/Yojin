@@ -61,6 +61,7 @@ export async function runAgentLoop(
     approvalGate,
     agentId,
     abortSignal,
+    piiScanner,
   } = options;
 
   const registry = new ToolRegistry();
@@ -87,7 +88,28 @@ export async function runAgentLoop(
   const maxToolResultChars = memory?.maxToolResultChars ?? budget.maxToolResultChars();
 
   const toolSchemas = registry.toSchemas();
-  let messages: AgentMessage[] = [...history, { role: 'user', content: userMessage }];
+
+  // ── PII: scrub sensitive data from user message before LLM ──────
+  let messageForLlm = userMessage;
+  let piiMap: import('rehydra').EncryptedPIIMap | undefined;
+
+  if (piiScanner) {
+    const scrubResult = await piiScanner.scrub(userMessage);
+    if (scrubResult.entitiesFound > 0) {
+      messageForLlm = scrubResult.sanitized;
+      piiMap = scrubResult.piiMap;
+      emit(onEvent, {
+        type: 'pii_redacted',
+        entitiesFound: scrubResult.entitiesFound,
+        typesFound: scrubResult.typesFound,
+        processingTimeMs: scrubResult.processingTimeMs,
+      });
+    }
+  }
+
+  // Send scrubbed text to LLM, but keep original in history for future turns
+  let messages: AgentMessage[] = [...history, { role: 'user', content: messageForLlm }];
+  const originalUserIdx = messages.length - 1;
   const totalUsage = { inputTokens: 0, outputTokens: 0 };
   let compactions = 0;
 
@@ -153,9 +175,15 @@ export async function runAgentLoop(
 
     // No tool calls → done
     if (toolUseBlocks.length === 0) {
-      emit(onEvent, { type: 'done', text: thoughtText, iterations });
+      // Rehydrate PII tags in the final response so the user sees original values
+      const finalText = piiScanner && piiMap ? await piiScanner.restore(thoughtText, piiMap) : thoughtText;
+      emit(onEvent, { type: 'done', text: finalText, iterations });
       messages.push({ role: 'assistant', content: response.content });
-      return { text: thoughtText, messages, iterations, usage: totalUsage, compactions };
+      // Restore original user message in history so future turns don't see stale PII tags
+      if (piiMap) {
+        messages[originalUserIdx] = { role: 'user', content: userMessage };
+      }
+      return { text: finalText, messages, iterations, usage: totalUsage, compactions };
     }
 
     // ── Action: execute tool calls ────────────────────────────────────
@@ -218,6 +246,9 @@ export async function runAgentLoop(
 
   // Max iterations reached
   emit(onEvent, { type: 'max_iterations', iterations });
+  if (piiMap) {
+    messages[originalUserIdx] = { role: 'user', content: userMessage };
+  }
   const lastAssistant = messages.filter((m) => m.role === 'assistant').pop();
   const fallbackText = extractText(lastAssistant);
   return {

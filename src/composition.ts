@@ -33,6 +33,7 @@ import { createErrorAnalysisTools } from './tools/error-analysis.js';
 import { createPortfolioReasoningTools } from './tools/portfolio-reasoning.js';
 import { createSecurityAuditTools } from './tools/security-audit.js';
 import { FileAuditLog } from './trust/audit/audit-log.js';
+import { ChatPiiScanner } from './trust/pii/chat-scanner.js';
 import { createSecretTools } from './trust/vault/secure-input.js';
 import { EncryptedVault } from './trust/vault/vault.js';
 
@@ -60,6 +61,7 @@ export interface YojinServices {
   pluginRegistry: PluginRegistry;
   dataSourceRegistry: DataSourceRegistry;
   personaManager: PersonaManager;
+  piiScanner: ChatPiiScanner;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +242,13 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   }
   log.info(`AgentRegistry ready — ${agentRegistry.getAll().length} agents`);
 
-  // 9. PluginRegistry (empty — caller loads provider/channel plugins)
+  // 9. PII scanner (regex-only by default, NER opt-in via YOJIN_PII_NER=1)
+  const piiScanner = new ChatPiiScanner({
+    auditLog,
+    enableNer: process.env.YOJIN_PII_NER === '1',
+  });
+
+  // 10. PluginRegistry (empty — caller loads provider/channel plugins)
   const pluginRegistry = new PluginRegistry();
 
   return {
@@ -254,6 +262,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     pluginRegistry,
     dataSourceRegistry,
     personaManager: persona,
+    piiScanner,
   };
 }
 
