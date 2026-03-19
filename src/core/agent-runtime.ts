@@ -151,7 +151,9 @@ export class AgentRuntime {
     'CRITICAL: You MUST use your tools to perform actions. NEVER suggest CLI commands, bash snippets, or manual steps. ' +
     'You do NOT have access to a terminal — you can ONLY act through tool calls. ' +
     'When the user asks to store a credential, call store_credential. When they ask to check something, call the relevant tool. ' +
-    'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually.';
+    'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually. ' +
+    'You can see images that users attach to their messages. When a user sends an image (e.g. a portfolio screenshot), ' +
+    'analyze it directly — describe what you see, extract any visible data, and respond accordingly.';
 
   async handleMessage(params: {
     message: string;

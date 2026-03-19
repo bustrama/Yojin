@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import Button from '../common/button';
 
 export interface ImageAttachment {
@@ -22,6 +22,33 @@ export default function ChatInput({
   const [image, setImage] = useState<ImageAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /** Shared logic: validate a File and read it as an ImageAttachment. */
+  const processFile = useCallback((file: File) => {
+    if (!ACCEPTED_TYPES.has(file.type)) {
+      alert(`Unsupported file type: ${file.type}. Accepted: JPEG, PNG, GIF, WebP.`);
+      return;
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_SIZE_MB} MB.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1];
+      setImage({
+        base64,
+        mediaType: file.type as ImageAttachment['mediaType'],
+        preview: dataUrl,
+        name: file.name,
+      });
+    };
+    reader.onerror = () => {
+      alert('Failed to read the image file. Please try again.');
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if ((!value.trim() && !image) || disabled) return;
@@ -32,34 +59,7 @@ export default function ChatInput({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!ACCEPTED_TYPES.has(file.type)) {
-      alert(`Unsupported file type: ${file.type}. Accepted: JPEG, PNG, GIF, WebP.`);
-      return;
-    }
-
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_SIZE_MB} MB.`);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(',')[1];
-      setImage({
-        base64,
-        mediaType: file.type as ImageAttachment['mediaType'],
-        preview: dataUrl,
-        name: file.name,
-      });
-    };
-    reader.onerror = () => {
-      alert('Failed to read the image file. Please try again.');
-    };
-    reader.readAsDataURL(file);
-
+    if (file) processFile(file);
     // Reset input so the same file can be re-selected
     e.target.value = '';
   };
@@ -67,31 +67,20 @@ export default function ChatInput({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (!file) return;
-    if (!ACCEPTED_TYPES.has(file.type)) {
-      alert(`Unsupported file type: ${file.type}. Accepted: JPEG, PNG, GIF, WebP.`);
-      return;
-    }
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_SIZE_MB} MB.`);
-      return;
-    }
+    if (file) processFile(file);
+  };
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(',')[1];
-      setImage({
-        base64,
-        mediaType: file.type as ImageAttachment['mediaType'],
-        preview: dataUrl,
-        name: file.name,
-      });
-    };
-    reader.onerror = () => {
-      alert('Failed to read the image file. Please try again.');
-    };
-    reader.readAsDataURL(file);
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) processFile(file);
+        return;
+      }
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -99,7 +88,7 @@ export default function ChatInput({
   };
 
   return (
-    <div onDrop={handleDrop} onDragOver={handleDragOver}>
+    <div onDrop={handleDrop} onDragOver={handleDragOver} onPaste={handlePaste}>
       {image && (
         <div className="bg-bg-card border-border mb-2 flex items-center gap-3 rounded-lg border px-3 py-2">
           <img src={image.preview} alt={image.name} className="h-12 w-12 rounded object-cover" />
@@ -144,6 +133,7 @@ export default function ChatInput({
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          onPaste={handlePaste}
           placeholder={image ? 'Add a message or send the image...' : 'Ask Yojin anything about your portfolio...'}
           className="text-text-primary placeholder:text-text-muted flex-1 bg-transparent text-sm outline-none"
         />
