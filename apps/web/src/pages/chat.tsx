@@ -186,7 +186,7 @@ export default function Chat() {
       {/* Chat input — pinned bottom */}
       <div className="px-6 pb-6">
         <div className="mx-auto max-w-3xl">
-          <ChatInput onSend={handleSend} initialValue={presetMessage} />
+          <ChatInput onSend={handleSend} disableAttachment={isLoading} initialValue={presetMessage} />
         </div>
       </div>
     </div>

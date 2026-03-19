@@ -16,6 +16,7 @@ const PADDING_Y = 16;
 export interface ChatInputProps {
   onSend: (message: string, image?: ImageAttachment) => void;
   disabled?: boolean;
+  disableAttachment?: boolean;
   placeholder?: string;
   initialValue?: string;
 }
@@ -23,6 +24,7 @@ export interface ChatInputProps {
 export default function ChatInput({
   onSend,
   disabled,
+  disableAttachment,
   placeholder = 'How can I help you today?',
   initialValue,
 }: ChatInputProps) {
@@ -142,11 +144,11 @@ export default function ChatInput({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
+          disabled={disabled || disableAttachment}
           aria-label="Attach file"
           className={cn(
             'mb-px flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors',
-            !disabled
+            !(disabled || disableAttachment)
               ? 'cursor-pointer text-text-muted hover:bg-bg-hover hover:text-text-secondary'
               : 'cursor-default text-text-muted/40',
           )}

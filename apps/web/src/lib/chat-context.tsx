@@ -128,7 +128,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (queueRef.current.length > 0 && !isProcessingRef.current) {
       const next = queueRef.current.shift();
       if (!next) return;
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: next }]);
+      // Message already shown in UI from sendMessage — just process it.
       processMessage(next);
     }
   }, [processMessage]);
@@ -189,15 +189,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const sendMessage = useCallback(
     (content: string, image?: ChatImageData) => {
       if (isProcessingRef.current) {
-        // Queue text-only — images are not queued to avoid holding large base64 strings in memory.
-        // Warn the user that the image will not be sent.
-        if (image) {
-          alert(
-            'A message is still being processed. Your image was not included — please re-attach it after the response completes.',
-          );
-        }
-        // Don't append to messages here — processQueue does it when the message is actually sent.
         queueRef.current.push(content);
+        // Show the queued message in the UI immediately so the user knows it was received.
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content }]);
       } else {
         setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content }]);
         processMessage(content, image);
