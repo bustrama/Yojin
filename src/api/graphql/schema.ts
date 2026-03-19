@@ -30,10 +30,10 @@ export const typeDefs = /* GraphQL */ `
   }
 
   enum IntegrationTier {
-    CLI
-    API
-    UI
-    SCREENSHOT
+    cli
+    api
+    ui
+    screenshot
   }
 
   enum AlertStatus {

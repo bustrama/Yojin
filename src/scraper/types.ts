@@ -112,7 +112,7 @@ export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
 
 export const ConnectionConfigSchema = z.object({
   id: z.string(),
-  platform: z.string(),
+  platform: PlatformSchema,
   tier: IntegrationTierSchema,
   enabled: z.boolean().default(true),
   credentialRefs: z.array(z.string()).default([]),
