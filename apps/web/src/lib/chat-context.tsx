@@ -51,6 +51,7 @@ export interface ChatImageData {
 
 interface ChatContextValue {
   messages: ChatMessage[];
+  pendingMessages: ChatMessage[];
   streamingContent: string;
   isLoading: boolean;
   isThinking: boolean;
@@ -69,6 +70,7 @@ export function useChatContext(): ChatContextValue {
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<ChatMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -128,7 +130,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (queueRef.current.length > 0 && !isProcessingRef.current) {
       const next = queueRef.current.shift();
       if (!next) return;
-      // Message already shown in UI from sendMessage — just process it.
+      // Move the first pending message into the main messages list.
+      setPendingMessages((prev) => prev.slice(1));
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: next }]);
       processMessage(next);
     }
   }, [processMessage]);
@@ -190,8 +194,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     (content: string, image?: ChatImageData) => {
       if (isProcessingRef.current) {
         queueRef.current.push(content);
-        // Show the queued message in the UI immediately so the user knows it was received.
-        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content }]);
+        // Show queued message separately so it renders after the current streaming response.
+        setPendingMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content }]);
       } else {
         setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content }]);
         processMessage(content, image);
@@ -202,6 +206,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value: ChatContextValue = {
     messages,
+    pendingMessages,
     streamingContent,
     isLoading,
     isThinking,

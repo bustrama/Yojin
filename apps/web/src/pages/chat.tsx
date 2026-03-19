@@ -57,7 +57,8 @@ function parseToolAction(action: string): { tool: string; params: Record<string,
 /* ─── Page ─── */
 
 export default function Chat() {
-  const { messages, streamingContent, isLoading, isThinking, activeTools, sendMessage } = useChatContext();
+  const { messages, pendingMessages, streamingContent, isLoading, isThinking, activeTools, sendMessage } =
+    useChatContext();
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
@@ -200,6 +201,11 @@ export default function Chat() {
 
           {/* Streaming response */}
           {streamingContent && <ChatMessage id="streaming" role="assistant" content={streamingContent} />}
+
+          {/* Pending queued messages — rendered after streaming so conversation order is preserved */}
+          {pendingMessages.map((msg) => (
+            <ChatMessage key={msg.id} role="user" content={msg.content} />
+          ))}
 
           {/* Loading / thinking / tool indicators */}
           {isLoading && !streamingContent && (

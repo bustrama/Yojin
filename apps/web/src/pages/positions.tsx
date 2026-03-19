@@ -47,10 +47,16 @@ export default function Positions() {
     return result;
   }, [positions]);
 
+  // Only show tabs for asset classes that have positions
+  const activeTabs = FILTER_VALUES.filter((f) => f === 'ALL' || counts[f] > 0);
+
+  // Fall back to 'ALL' if the selected filter tab no longer exists (e.g. after data refresh).
+  const effectiveFilter = filter !== 'ALL' && !activeTabs.includes(filter) ? 'ALL' : filter;
+
   const filteredPositions = useMemo(() => {
-    if (filter === 'ALL') return positions;
-    return positions.filter((pos) => pos.assetClass === filter);
-  }, [filter, positions]);
+    if (effectiveFilter === 'ALL') return positions;
+    return positions.filter((pos) => pos.assetClass === effectiveFilter);
+  }, [effectiveFilter, positions]);
 
   if (fetching) {
     return (
@@ -85,9 +91,6 @@ export default function Positions() {
     );
   }
 
-  // Only show tabs for asset classes that have positions
-  const activeTabs = FILTER_VALUES.filter((f) => f === 'ALL' || counts[f] > 0);
-
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
       <PortfolioStats portfolio={portfolio} />
@@ -97,7 +100,7 @@ export default function Positions() {
             label: `${filterLabels[f]} (${counts[f]})`,
             value: f,
           }))}
-          value={filter}
+          value={effectiveFilter}
           onChange={(v) => {
             if ((FILTER_VALUES as readonly string[]).includes(v)) setFilter(v as FilterValue);
           }}
