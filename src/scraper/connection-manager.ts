@@ -20,6 +20,7 @@ const TIER_PRIORITY: IntegrationTier[] = ['cli', 'api', 'ui', 'screenshot'];
 export class ConnectionManager {
   private connectors = new Map<string, TieredPlatformConnector[]>();
   private connections: ConnectionConfig[] = [];
+  private loaded = false;
   private readonly configPath: string;
 
   constructor(dataRoot: string) {
@@ -102,7 +103,15 @@ export class ConnectionManager {
   async loadConnections(): Promise<void> {
     const file = (await loadJsonConfig(this.configPath, ConnectionsFileSchema)) as ConnectionsFile;
     this.connections = file.connections;
+    this.loaded = true;
     logger.debug(`Loaded ${this.connections.length} connection(s)`);
+  }
+
+  /** Ensure connections are loaded before any mutation to prevent data loss. */
+  private async ensureLoaded(): Promise<void> {
+    if (!this.loaded) {
+      await this.loadConnections();
+    }
   }
 
   listConnections(): ConnectionConfig[] {
@@ -110,6 +119,7 @@ export class ConnectionManager {
   }
 
   async addConnection(config: ConnectionConfig): Promise<void> {
+    await this.ensureLoaded();
     const parsed = ConnectionConfigSchema.parse(config);
     const existing = this.connections.find((c) => c.id === parsed.id);
     if (existing) {
@@ -121,6 +131,7 @@ export class ConnectionManager {
   }
 
   async removeConnection(id: string): Promise<void> {
+    await this.ensureLoaded();
     const index = this.connections.findIndex((c) => c.id === id);
     if (index === -1) {
       logger.warn(`Connection "${id}" not found — nothing to remove`);

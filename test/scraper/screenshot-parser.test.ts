@@ -400,8 +400,8 @@ describe('ScreenshotConnector', () => {
       model: 'claude-sonnet-4-6',
     });
 
-    expect(connector.platformId).toBe('screenshot');
-    expect(connector.platformName).toBe('Screenshot Import');
+    expect(connector.platformId).toBe('MANUAL');
+    expect(connector.platformName).toBe('MANUAL Screenshot Import');
 
     const result = await connector.fetchPositions();
     expect(result.success).toBe(true);

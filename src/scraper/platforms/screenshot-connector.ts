@@ -5,6 +5,7 @@
  * The connector is stateless — no auth, no session, always available.
  */
 
+import type { Platform } from '../../api/graphql/types.js';
 import { parsePortfolioScreenshot } from '../screenshot-parser.js';
 import type {
   IntegrationTier,
@@ -14,11 +15,18 @@ import type {
 } from '../types.js';
 
 export class ScreenshotConnector implements TieredPlatformConnector {
-  readonly platformId = 'screenshot';
-  readonly platformName = 'Screenshot Import';
+  readonly platformId: string;
+  readonly platformName: string;
   readonly tier: IntegrationTier = 'screenshot';
 
-  constructor(private readonly params: ParseScreenshotParams) {}
+  constructor(
+    private readonly params: ParseScreenshotParams,
+    platform?: Platform,
+  ) {
+    const resolved = platform ?? params.platformHint ?? 'MANUAL';
+    this.platformId = resolved;
+    this.platformName = `${resolved} Screenshot Import`;
+  }
 
   async isAvailable(): Promise<boolean> {
     return true;
