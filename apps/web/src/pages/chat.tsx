@@ -5,6 +5,7 @@ import FullBriefingCard from '../components/chat/full-briefing-card';
 import QueryBuilder from '../components/chat/query-builder';
 import WaterfallFlow from '../components/chat/waterfall-flow';
 import ChatInput from '../components/chat/chat-input';
+import type { ImageAttachment } from '../components/chat/chat-input';
 import ChatMessage from '../components/chat/chat-message';
 import ChatAvatar from '../components/chat/chat-avatar';
 import { useChatContext } from '../lib/chat-context';
@@ -46,9 +47,9 @@ export default function Chat() {
   }, [messages, localMessages, isLoading, streamingContent, isThinking, activeTools]);
 
   const handleSend = useCallback(
-    (content: string) => {
+    (content: string, image?: ImageAttachment) => {
       setActiveCategory(null);
-      sendMessage(content);
+      sendMessage(content, image);
     },
     [sendMessage],
   );

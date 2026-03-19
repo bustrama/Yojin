@@ -21,17 +21,9 @@ export const Default: Story = {
   args: { onSend: fn() },
 };
 
-export const WithAttachment: Story = {
-  args: {
-    onSend: fn(),
-    onAttach: fn(),
-  },
-};
-
 export const WithPlaceholder: Story = {
   args: {
     onSend: fn(),
-    onAttach: fn(),
     placeholder: 'Ask about your portfolio...',
   },
 };
@@ -39,7 +31,6 @@ export const WithPlaceholder: Story = {
 export const WithInitialValue: Story = {
   args: {
     onSend: fn(),
-    onAttach: fn(),
     initialValue: 'What is my risk exposure?',
   },
 };
@@ -47,7 +38,6 @@ export const WithInitialValue: Story = {
 export const MultiLine: Story = {
   args: {
     onSend: fn(),
-    onAttach: fn(),
     initialValue: 'Line one\nLine two\nLine three\nThis demonstrates the auto-expanding textarea behavior.',
   },
 };
@@ -55,7 +45,6 @@ export const MultiLine: Story = {
 export const Disabled: Story = {
   args: {
     onSend: fn(),
-    onAttach: fn(),
     disabled: true,
     placeholder: 'Waiting for response...',
   },

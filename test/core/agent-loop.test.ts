@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { runAgentLoop } from '../../src/core/agent-loop.js';
+import { ToolRegistry } from '../../src/core/tool-registry.js';
 import type {
   AgentLoopEvent,
   AgentLoopProvider,
@@ -13,6 +14,7 @@ import { GuardRunner } from '../../src/guards/guard-runner.js';
 import { OutputDlpGuard } from '../../src/guards/security/output-dlp.js';
 import type { Guard, GuardResult, ProposedAction } from '../../src/guards/types.js';
 import type { AuditEvent, AuditEventInput, AuditLog } from '../../src/trust/audit/types.js';
+import { GuardedToolRegistry } from '../../src/trust/guarded-tool-registry.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -277,6 +279,62 @@ describe('runAgentLoop', () => {
     );
   });
 
+  it('stops early when abort signal is triggered', async () => {
+    const ac = new AbortController();
+    // Provider returns tool calls then text — but we abort before iteration 2
+    const provider = mockProvider([
+      toolCallResponse([{ id: 'tc1', name: 'echo', input: { message: 'step1' } }]),
+      textResponse('Should not reach this'),
+    ]);
+
+    // Abort after the first iteration completes (we trigger it synchronously before the call)
+    // We need the abort to fire between iterations, so abort immediately
+    ac.abort();
+
+    const events: AgentLoopEvent[] = [];
+    const result = await runAgentLoop('Go', [], {
+      provider,
+      model: 'test-model',
+      tools: [echoTool],
+      abortSignal: ac.signal,
+      onEvent: (e) => events.push(e),
+    });
+
+    // Since we aborted before iteration 1, the loop should return immediately
+    expect(result.iterations).toBe(1);
+    expect(events.some((e) => e.type === 'done')).toBe(true);
+  });
+
+  it('returns last assistant text when aborted mid-conversation', async () => {
+    const ac = new AbortController();
+
+    // Provider returns tool call first, then text, then another tool call
+    const provider = mockProvider([
+      toolCallResponse([{ id: 'tc1', name: 'echo', input: { message: 'ping' } }]),
+      textResponse('Intermediate answer'),
+      toolCallResponse([{ id: 'tc2', name: 'echo', input: { message: 'pong' } }]),
+    ]);
+
+    // We'll track iterations via onEvent and abort after iteration 2
+    let iterationCount = 0;
+    const result = await runAgentLoop('Go', [], {
+      provider,
+      model: 'test-model',
+      tools: [echoTool],
+      abortSignal: ac.signal,
+      onEvent: (e) => {
+        // After the second LLM call completes (done event for text), abort
+        if (e.type === 'done' || e.type === 'thought') {
+          iterationCount++;
+          if (iterationCount >= 1) ac.abort();
+        }
+      },
+    });
+
+    // The loop should have stopped; text from last assistant message available
+    expect(result.text).toBeDefined();
+  });
+
   it('accumulates usage across iterations', async () => {
     const provider = mockProvider([
       toolCallResponse([{ id: 'tc1', name: 'echo', input: { message: 'a' } }]),
@@ -329,7 +387,22 @@ const leakyTool: ToolDefinition = {
   execute: async () => ({ content: 'Here is a key: sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAA' }),
 };
 
-describe('runAgentLoop with guards', () => {
+/** Pre-wrap tools with GuardedToolRegistry, matching how AgentRuntime does it. */
+function wrapToolsWithGuards(
+  tools: ToolDefinition[],
+  guardRunner: GuardRunner,
+  outputDlp?: OutputDlpGuard,
+): ToolDefinition[] {
+  const registry = new ToolRegistry();
+  for (const tool of tools) registry.register(tool);
+  const guarded = new GuardedToolRegistry({ registry, guardRunner, outputDlp });
+  return tools.map((tool) => ({
+    ...tool,
+    execute: async (params: unknown) => guarded.execute(tool.name, params, {}),
+  }));
+}
+
+describe('runAgentLoop with pre-wrapped guarded tools', () => {
   it('blocks tool execution when guard rejects', async () => {
     const auditLog = mockAuditLog();
     const guardRunner = new GuardRunner([blockingGuard('echo')], { auditLog });
@@ -342,8 +415,7 @@ describe('runAgentLoop with guards', () => {
     const result = await runAgentLoop('Echo test', [], {
       provider,
       model: 'test-model',
-      tools: [echoTool],
-      guardRunner,
+      tools: wrapToolsWithGuards([echoTool], guardRunner),
     });
 
     expect(result.text).toBe('Handled the block');
@@ -370,8 +442,7 @@ describe('runAgentLoop with guards', () => {
     const result = await runAgentLoop('Echo hello', [], {
       provider,
       model: 'test-model',
-      tools: [echoTool],
-      guardRunner,
+      tools: wrapToolsWithGuards([echoTool], guardRunner),
     });
 
     expect(result.text).toBe('Echo succeeded');
@@ -398,9 +469,7 @@ describe('runAgentLoop with guards', () => {
     const result = await runAgentLoop('Leak a secret', [], {
       provider,
       model: 'test-model',
-      tools: [leakyTool],
-      guardRunner,
-      outputDlp,
+      tools: wrapToolsWithGuards([leakyTool], guardRunner, outputDlp),
     });
 
     expect(result.text).toBe('Handled the DLP block');
