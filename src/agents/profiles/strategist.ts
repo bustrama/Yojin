@@ -18,6 +18,7 @@ export function createStrategistProfile(): AgentProfile {
       'brain_rollback',
       // Portfolio reasoning (Strategist-only)
       'portfolio_reasoning',
+      'get_portfolio',
       // Security audit
       'security_audit_check',
       // Utility

@@ -13,6 +13,9 @@ export function createTraderProfile(): AgentProfile {
       'list_platforms',
       'fetch_positions',
       'check_platform_health',
+      // Portfolio tools
+      'save_portfolio_positions',
+      'get_portfolio',
       // Credential tools
       'store_credential',
       'check_credential',
