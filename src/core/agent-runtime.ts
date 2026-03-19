@@ -80,6 +80,7 @@ export class AgentRuntime {
     sessionKey?: string;
     context?: string;
     onEvent?: AgentLoopEventHandler;
+    abortSignal?: AbortSignal;
   }): Promise<AgentStepResult> {
     const profile = this.agentRegistry.get(params.agentId);
     if (!profile) {
@@ -107,6 +108,7 @@ export class AgentRuntime {
         systemPrompt,
         tools: guardedTools,
         onEvent: params.onEvent,
+        abortSignal: params.abortSignal,
         piiScanner: this.piiScanner,
       });
     } catch (err) {
@@ -161,6 +163,7 @@ export class AgentRuntime {
     imageBase64?: string;
     /** MIME type of the image (required when imageBase64 is provided). */
     imageMediaType?: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+    abortSignal?: AbortSignal;
   }): Promise<string> {
     const model = DEFAULT_MODEL;
 
@@ -215,6 +218,7 @@ export class AgentRuntime {
         systemPrompt: AgentRuntime.CHAT_SYSTEM_PROMPT,
         tools: guardedTools,
         onEvent: params.onEvent,
+        abortSignal: params.abortSignal,
         piiScanner: this.piiScanner,
       });
     } catch (err) {

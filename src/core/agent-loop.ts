@@ -61,6 +61,7 @@ export async function runAgentLoop(
     outputDlp,
     approvalGate,
     agentId,
+    abortSignal,
     piiScanner,
   } = options;
 
@@ -144,6 +145,14 @@ export async function runAgentLoop(
 
   while (iterations < maxIterations) {
     iterations++;
+
+    // Check abort signal between iterations
+    if (abortSignal?.aborted) {
+      const lastAssistant = messages.filter((m) => m.role === 'assistant').pop();
+      const fallbackText = extractText(lastAssistant);
+      emit(onEvent, { type: 'done', text: fallbackText, iterations });
+      return { text: fallbackText, messages, iterations, usage: totalUsage, compactions };
+    }
 
     // ── Memory: check if compaction is needed ───────────────────────
     if (budget.shouldCompact(messages, systemPrompt)) {
