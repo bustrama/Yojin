@@ -16,6 +16,7 @@ export const typeDefs = /* GraphQL */ `
     OTHER
   }
 
+  # Keep in sync with PlatformSchema in src/api/graphql/types.ts
   enum Platform {
     INTERACTIVE_BROKERS
     ROBINHOOD

@@ -8,6 +8,7 @@
 import { z } from 'zod';
 
 import type { AssetClass, Platform, Position } from '../api/graphql/types.js';
+import { AssetClassSchema, PlatformSchema } from '../api/graphql/types.js';
 import type { ToolDefinition, ToolResult } from '../core/types.js';
 import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
 
@@ -21,15 +22,8 @@ const PositionInputSchema = z.object({
   unrealizedPnl: z.number().default(0).describe('Unrealized profit/loss'),
   unrealizedPnlPercent: z.number().default(0).describe('Unrealized P&L as a percentage'),
   sector: z.string().optional().describe('Sector (e.g. Technology, Healthcare)'),
-  assetClass: z
-    .enum(['EQUITY', 'CRYPTO', 'BOND', 'COMMODITY', 'CURRENCY', 'OTHER'])
-    .default('OTHER')
-    .describe('Asset class'),
+  assetClass: AssetClassSchema.default('OTHER').describe('Asset class'),
 });
-
-const PlatformSchema = z
-  .enum(['INTERACTIVE_BROKERS', 'ROBINHOOD', 'COINBASE', 'MANUAL'])
-  .describe('Platform the positions were imported from');
 
 export interface PortfolioToolsOptions {
   snapshotStore: PortfolioSnapshotStore;
@@ -45,7 +39,7 @@ export function createPortfolioTools(options: PortfolioToolsOptions): ToolDefini
       'Call this whenever a user shares a portfolio screenshot or provides position data. ' +
       'This persists the positions so the user can track their portfolio over time.',
     parameters: z.object({
-      platform: PlatformSchema,
+      platform: PlatformSchema.describe('Platform the positions were imported from'),
       positions: z.array(PositionInputSchema).min(1).describe('Array of positions to save'),
     }),
     async execute(params: {

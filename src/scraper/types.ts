@@ -6,7 +6,10 @@
 import { z } from 'zod';
 
 import type { Platform } from '../api/graphql/types.js';
+import { AssetClassSchema, PlatformSchema } from '../api/graphql/types.js';
 import type { AgentLoopProvider, ImageMediaType } from '../core/types.js';
+
+export { AssetClassSchema, PlatformSchema };
 
 // ---------------------------------------------------------------------------
 // Integration tiers (priority order: cli > api > ui > screenshot)
@@ -14,24 +17,6 @@ import type { AgentLoopProvider, ImageMediaType } from '../core/types.js';
 
 export const IntegrationTierSchema = z.enum(['cli', 'api', 'ui', 'screenshot']);
 export type IntegrationTier = z.infer<typeof IntegrationTierSchema>;
-
-// ---------------------------------------------------------------------------
-// Zod schemas for validating Claude Vision output
-// ---------------------------------------------------------------------------
-
-export const AssetClassSchema = z.enum(['EQUITY', 'CRYPTO', 'BOND', 'COMMODITY', 'CURRENCY', 'OTHER']);
-
-export const PlatformSchema = z.enum([
-  'INTERACTIVE_BROKERS',
-  'ROBINHOOD',
-  'COINBASE',
-  'SCHWAB',
-  'BINANCE',
-  'FIDELITY',
-  'POLYMARKET',
-  'PHANTOM',
-  'MANUAL',
-]);
 
 export const ExtractedPositionSchema = z.object({
   symbol: z.string().min(1),

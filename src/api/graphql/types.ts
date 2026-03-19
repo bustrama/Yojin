@@ -3,7 +3,32 @@
  *
  * These are the TypeScript representations of the GraphQL schema types.
  * Resolvers return these shapes; future services will produce them.
+ *
+ * PlatformSchema and AssetClassSchema are the single source of truth —
+ * all other modules re-export from here.
  */
+
+import { z } from 'zod';
+
+// ---------------------------------------------------------------------------
+// Canonical Zod schemas — keep in sync with src/api/graphql/schema.ts SDL
+// ---------------------------------------------------------------------------
+
+export const PlatformSchema = z.enum([
+  'INTERACTIVE_BROKERS',
+  'ROBINHOOD',
+  'COINBASE',
+  'SCHWAB',
+  'BINANCE',
+  'FIDELITY',
+  'POLYMARKET',
+  'PHANTOM',
+  'MANUAL',
+]);
+export type Platform = z.infer<typeof PlatformSchema>;
+
+export const AssetClassSchema = z.enum(['EQUITY', 'CRYPTO', 'BOND', 'COMMODITY', 'CURRENCY', 'OTHER']);
+export type AssetClass = z.infer<typeof AssetClassSchema>;
 
 // ---------------------------------------------------------------------------
 // Portfolio
@@ -22,18 +47,6 @@ export interface Position {
   assetClass: AssetClass;
   platform: Platform;
 }
-
-export type AssetClass = 'EQUITY' | 'CRYPTO' | 'BOND' | 'COMMODITY' | 'CURRENCY' | 'OTHER';
-export type Platform =
-  | 'INTERACTIVE_BROKERS'
-  | 'ROBINHOOD'
-  | 'COINBASE'
-  | 'SCHWAB'
-  | 'BINANCE'
-  | 'FIDELITY'
-  | 'POLYMARKET'
-  | 'PHANTOM'
-  | 'MANUAL';
 
 export interface PortfolioSnapshot {
   id: string;
