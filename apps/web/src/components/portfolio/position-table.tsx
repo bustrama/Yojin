@@ -5,7 +5,7 @@ import EmptyState from '../common/empty-state';
 import { SymbolLogo } from '../common/symbol-logo';
 import type { Position } from '../../api';
 
-const columns = ['Symbol', 'Platform', 'Sector', 'Quantity', 'Price', 'Value', '% of Total', 'P&L'];
+const columns = ['Symbol', 'Platform', 'Class', 'Quantity', 'Price', 'Value', '% of Total', 'P&L'];
 
 const PLATFORM_LABELS: Record<string, string> = {
   INTERACTIVE_BROKERS: 'IBKR',
@@ -66,7 +66,9 @@ export default function PositionTable({ positions }: { positions: Position[] }) 
                 </div>
               </td>
               <td className="px-4 py-2.5 text-text-secondary">{PLATFORM_LABELS[pos.platform] ?? pos.platform}</td>
-              <td className="px-4 py-2.5 text-text-secondary">{pos.sector ?? '-'}</td>
+              <td className="px-4 py-2.5 text-text-secondary">
+                {pos.assetClass.charAt(0) + pos.assetClass.slice(1).toLowerCase()}
+              </td>
               <td className="px-4 py-2.5 text-text-secondary">{pos.quantity}</td>
               <td className="px-4 py-2.5 text-text-secondary">{formatCurrency(pos.currentPrice)}</td>
               <td className="px-4 py-2.5 font-medium text-text-primary">{formatCurrency(pos.marketValue)}</td>
