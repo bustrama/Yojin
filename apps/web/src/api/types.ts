@@ -195,6 +195,48 @@ export interface Article {
 }
 
 // ---------------------------------------------------------------------------
+// Connections / Onboarding
+// ---------------------------------------------------------------------------
+
+export type IntegrationTier = 'CLI' | 'API' | 'UI' | 'SCREENSHOT';
+export type ConnectionStatus = 'PENDING' | 'VALIDATING' | 'CONNECTED' | 'ERROR' | 'DISCONNECTED';
+
+export interface Connection {
+  platform: Platform;
+  tier: IntegrationTier;
+  status: ConnectionStatus;
+  lastSync: string | null;
+  lastError: string | null;
+  syncInterval: number;
+  autoRefresh: boolean;
+}
+
+export interface TierAvailability {
+  tier: IntegrationTier;
+  available: boolean;
+  requiresCredentials: string[];
+}
+
+export interface ConnectionResult {
+  success: boolean;
+  connection: Connection | null;
+  error: string | null;
+}
+
+export interface ConnectionEvent {
+  platform: string;
+  step: string;
+  message: string;
+  tier: IntegrationTier | null;
+  error: string | null;
+}
+
+export interface ConnectPlatformInput {
+  platform: string;
+  tier?: IntegrationTier;
+}
+
+// ---------------------------------------------------------------------------
 // Subscriptions
 // ---------------------------------------------------------------------------
 
@@ -244,6 +286,47 @@ export interface QuoteQueryResult {
 
 export interface NewsQueryResult {
   news: Article[];
+}
+
+// ---------------------------------------------------------------------------
+// Connection query/mutation wrappers
+// ---------------------------------------------------------------------------
+
+export interface ListConnectionsQueryResult {
+  listConnections: Connection[];
+}
+
+export interface DetectAvailableTiersQueryResult {
+  detectAvailableTiers: TierAvailability[];
+}
+
+export interface DetectAvailableTiersVariables {
+  platform: string;
+}
+
+export interface ConnectPlatformMutationResult {
+  connectPlatform: ConnectionResult;
+}
+
+export interface ConnectPlatformVariables {
+  input: ConnectPlatformInput;
+}
+
+export interface DisconnectPlatformMutationResult {
+  disconnectPlatform: Pick<ConnectionResult, 'success' | 'error'>;
+}
+
+export interface DisconnectPlatformVariables {
+  platform: string;
+  removeCredentials?: boolean;
+}
+
+export interface OnConnectionStatusSubscriptionResult {
+  onConnectionStatus: ConnectionEvent;
+}
+
+export interface OnConnectionStatusVariables {
+  platform: string;
 }
 
 // ---------------------------------------------------------------------------
