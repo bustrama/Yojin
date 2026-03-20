@@ -14,7 +14,7 @@ const sizeStyles = {
   lg: 'h-12 w-12 text-base',
 };
 
-export default function PlatformLogo({ platform, size = 'md', className }: PlatformLogoProps) {
+export function PlatformLogo({ platform, size = 'md', className }: PlatformLogoProps) {
   const meta = getPlatformMeta(platform);
   return (
     <div

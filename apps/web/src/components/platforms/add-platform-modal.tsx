@@ -6,7 +6,7 @@ import { KNOWN_PLATFORMS } from '../../api/types';
 import Button from '../common/button';
 import Modal from '../common/modal';
 import { getPlatformMeta } from './platform-meta';
-import PlatformLogo from './platform-logos';
+import { PlatformLogo } from './platform-logos';
 
 interface AddPlatformModalProps {
   open: boolean;
@@ -20,7 +20,7 @@ interface AddPlatformModalProps {
 /** Platforms shown in the Add modal (exclude MANUAL — that's for CSV upload). */
 const CONNECTABLE_PLATFORMS = KNOWN_PLATFORMS.filter((p) => p !== 'MANUAL');
 
-export default function AddPlatformModal({
+export function AddPlatformModal({
   open,
   onClose,
   onConnect,

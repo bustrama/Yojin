@@ -3,14 +3,15 @@ import { useState } from 'react';
 import Card from '../components/common/card';
 import Spinner from '../components/common/spinner';
 import Button from '../components/common/button';
-import PlatformCard from '../components/platforms/platform-card';
-import AddPlatformModal from '../components/platforms/add-platform-modal';
+import { PlatformCard } from '../components/platforms/platform-card';
+import { AddPlatformModal } from '../components/platforms/add-platform-modal';
 import { useListConnections, useConnectPlatform, useDisconnectPlatform, useRefreshPositions } from '../api/hooks';
 
 export default function Profile() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalKey, setAddModalKey] = useState(0);
   const [syncingPlatform, setSyncingPlatform] = useState<string | null>(null);
+  const [disconnectingPlatform, setDisconnectingPlatform] = useState<string | null>(null);
 
   const [{ data, fetching, error }] = useListConnections();
   const [{ fetching: connecting }, connectPlatform] = useConnectPlatform();
@@ -35,7 +36,12 @@ export default function Profile() {
   }
 
   async function handleDisconnect(platform: string) {
-    await disconnectPlatform({ platform, removeCredentials: true });
+    setDisconnectingPlatform(platform);
+    try {
+      await disconnectPlatform({ platform, removeCredentials: true });
+    } finally {
+      setDisconnectingPlatform(null);
+    }
   }
 
   async function handleConnect(platform: string) {
@@ -97,6 +103,7 @@ export default function Profile() {
                 onSyncNow={handleSyncNow}
                 onDisconnect={handleDisconnect}
                 syncing={syncingPlatform === connection.platform}
+                disconnecting={disconnectingPlatform === connection.platform}
               />
             ))}
           </div>

@@ -7,13 +7,14 @@ import Button from '../common/button';
 import Modal from '../common/modal';
 import Spinner from '../common/spinner';
 import { getPlatformMeta } from './platform-meta';
-import PlatformLogo from './platform-logos';
+import { PlatformLogo } from './platform-logos';
 
 interface PlatformCardProps {
   connection: Connection;
   onSyncNow: (platform: string) => void;
   onDisconnect: (platform: string) => void;
   syncing?: boolean;
+  disconnecting?: boolean;
 }
 
 const statusConfig: Record<ConnectionStatus, { variant: BadgeVariant; label: string }> = {
@@ -36,7 +37,13 @@ function formatLastSync(lastSync: string | null): string {
   return `${days}d ago`;
 }
 
-export default function PlatformCard({ connection, onSyncNow, onDisconnect, syncing = false }: PlatformCardProps) {
+export function PlatformCard({
+  connection,
+  onSyncNow,
+  onDisconnect,
+  syncing = false,
+  disconnecting = false,
+}: PlatformCardProps) {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const meta = getPlatformMeta(connection.platform);
   const { variant, label } = statusConfig[connection.status];
@@ -102,9 +109,9 @@ export default function PlatformCard({ connection, onSyncNow, onDisconnect, sync
           <Button
             variant="danger"
             size="sm"
+            loading={disconnecting}
             onClick={() => {
               onDisconnect(connection.platform);
-              setConfirmDisconnect(false);
             }}
           >
             Disconnect
