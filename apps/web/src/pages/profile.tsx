@@ -12,6 +12,7 @@ export default function Profile() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalKey, setAddModalKey] = useState(0);
   const [syncingPlatform, setSyncingPlatform] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<{ platform: string; success: boolean; error?: string } | null>(null);
   const [disconnectingPlatform, setDisconnectingPlatform] = useState<string | null>(null);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
@@ -31,8 +32,18 @@ export default function Profile() {
 
   async function handleSyncNow(platform: string) {
     setSyncingPlatform(platform);
+    setSyncResult(null);
     try {
-      await refreshPositions({ platform });
+      const result = await refreshPositions({ platform });
+      if (result.error) {
+        setSyncResult({ platform, success: false, error: result.error.message });
+      } else {
+        setSyncResult({ platform, success: true });
+        // Auto-dismiss success after 3 seconds
+        setTimeout(() => setSyncResult(null), 3000);
+      }
+    } catch {
+      setSyncResult({ platform, success: false, error: 'Sync failed' });
     } finally {
       setSyncingPlatform(null);
     }
@@ -118,6 +129,13 @@ export default function Profile() {
           </div>
         ) : (
           <div className="space-y-3">
+            {syncResult && (
+              <p
+                className={`text-sm rounded-lg px-3 py-2 ${syncResult.success ? 'text-success bg-success/10' : 'text-error bg-error/10'}`}
+              >
+                {syncResult.success ? `Synced ${syncResult.platform} successfully` : `Sync failed: ${syncResult.error}`}
+              </p>
+            )}
             {disconnectError && (
               <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{disconnectError}</p>
             )}
