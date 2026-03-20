@@ -248,6 +248,7 @@ export interface ConnectionEvent {
 export interface ConnectPlatformInput {
   platform: string;
   tier?: IntegrationTier;
+  credentials?: { key: string; value: string }[];
 }
 
 // ---------------------------------------------------------------------------

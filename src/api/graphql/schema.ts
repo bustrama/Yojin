@@ -281,9 +281,15 @@ export const typeDefs = /* GraphQL */ `
     DISCONNECTED
   }
 
+  input CredentialInput {
+    key: String!
+    value: String!
+  }
+
   input ConnectPlatformInput {
     platform: String!
     tier: IntegrationTier
+    credentials: [CredentialInput!]
   }
 
   type ConnectionResult {

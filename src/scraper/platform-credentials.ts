@@ -21,8 +21,8 @@ const DEFAULT_PLATFORM_CREDENTIALS: CredentialMap = {
     SCREENSHOT: [],
   },
   INTERACTIVE_BROKERS: {
-    CLI: ['IBKR_GATEWAY_PORT'],
-    API: ['IBKR_API_KEY', 'IBKR_API_SECRET'],
+    CLI: [],
+    API: ['IBKR_GATEWAY_PORT'],
     UI: [],
     SCREENSHOT: [],
   },

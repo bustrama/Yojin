@@ -120,8 +120,17 @@ export function AddPlatformModal({ open, onClose, connectedPlatforms }: AddPlatf
     setStep('connecting');
     setConnectError(null);
 
+    // Convert credentials Record to [{ key, value }] for GraphQL
+    const credentialList = Object.entries(credentials)
+      .filter(([, v]) => v.trim().length > 0)
+      .map(([key, value]) => ({ key, value }));
+
     const result = await connectPlatform({
-      input: { platform: selectedPlatform, tier: connectTier },
+      input: {
+        platform: selectedPlatform,
+        tier: connectTier,
+        ...(credentialList.length > 0 ? { credentials: credentialList } : {}),
+      },
     });
 
     if (result.error || !result.data?.connectPlatform.success) {

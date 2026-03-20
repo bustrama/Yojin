@@ -11,11 +11,16 @@ interface DeviceInfo {
   createdAt: string;
 }
 
+let cachedIdentity: DeviceInfo | null = null;
+
 export function deviceInfoResolver(): DeviceInfo {
-  const identity = loadOrCreateDeviceIdentity();
-  return {
-    deviceId: identity.deviceId,
-    shortId: identity.deviceId.slice(0, 8),
-    createdAt: identity.createdAt,
-  };
+  if (!cachedIdentity) {
+    const identity = loadOrCreateDeviceIdentity();
+    cachedIdentity = {
+      deviceId: identity.deviceId,
+      shortId: identity.deviceId.slice(0, 8),
+      createdAt: identity.createdAt,
+    };
+  }
+  return cachedIdentity;
 }
