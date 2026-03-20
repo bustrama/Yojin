@@ -27,11 +27,15 @@ const cache = cacheExchange({
   keys: {
     Position: (data) => `${data.symbol as string}:${data.platform as string}`,
     EnrichedPosition: (data) => `${data.symbol as string}:${data.platform as string}`,
+    Connection: (data) => data.platform as string,
     AlertRule: () => null, // embedded, not an entity
     SectorWeight: () => null,
     Concentration: () => null,
     CorrelationCluster: () => null,
     PriceEvent: () => null,
+    TierAvailability: () => null,
+    ConnectionResult: () => null,
+    ConnectionEvent: () => null,
   },
   updates: {
     Mutation: {
@@ -50,6 +54,12 @@ const cache = cacheExchange({
       },
       dismissAlert(_result, _args, cache) {
         cache.invalidate('Query', 'alerts');
+      },
+      connectPlatform(_result, _args, cache) {
+        cache.invalidate('Query', 'listConnections');
+      },
+      disconnectPlatform(_result, _args, cache) {
+        cache.invalidate('Query', 'listConnections');
       },
     },
   },

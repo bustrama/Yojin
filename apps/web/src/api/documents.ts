@@ -220,6 +220,34 @@ export const NEWS_QUERY = gql`
 `;
 
 // ---------------------------------------------------------------------------
+// Queries — Connections
+// ---------------------------------------------------------------------------
+
+export const LIST_CONNECTIONS_QUERY = gql`
+  query ListConnections {
+    listConnections {
+      platform
+      tier
+      status
+      lastSync
+      lastError
+      syncInterval
+      autoRefresh
+    }
+  }
+`;
+
+export const DETECT_AVAILABLE_TIERS_QUERY = gql`
+  query DetectAvailableTiers($platform: String!) {
+    detectAvailableTiers(platform: $platform) {
+      tier
+      available
+      requiresCredentials
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
 
@@ -277,6 +305,33 @@ export const ADD_MANUAL_POSITION_MUTATION = gql`
   ${POSITION_FIELDS}
 `;
 
+export const CONNECT_PLATFORM_MUTATION = gql`
+  mutation ConnectPlatform($input: ConnectPlatformInput!) {
+    connectPlatform(input: $input) {
+      success
+      connection {
+        platform
+        tier
+        status
+        lastSync
+        lastError
+        syncInterval
+        autoRefresh
+      }
+      error
+    }
+  }
+`;
+
+export const DISCONNECT_PLATFORM_MUTATION = gql`
+  mutation DisconnectPlatform($platform: String!, $removeCredentials: Boolean) {
+    disconnectPlatform(platform: $platform, removeCredentials: $removeCredentials) {
+      success
+      error
+    }
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // Subscriptions
 // ---------------------------------------------------------------------------
@@ -306,6 +361,18 @@ export const ON_PORTFOLIO_UPDATE_SUBSCRIPTION = gql`
     }
   }
   ${POSITION_FIELDS}
+`;
+
+export const ON_CONNECTION_STATUS_SUBSCRIPTION = gql`
+  subscription OnConnectionStatus($platform: String!) {
+    onConnectionStatus(platform: $platform) {
+      platform
+      step
+      message
+      tier
+      error
+    }
+  }
 `;
 
 export const ON_PRICE_MOVE_SUBSCRIPTION = gql`

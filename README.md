@@ -80,36 +80,92 @@ All state is file-driven — JSONL sessions, JSON configs, Markdown personas. No
 ### Install
 
 ```bash
+git clone https://github.com/YojinHQ/Yojin.git
+cd Yojin
 pnpm install
 ```
 
-### Configure
+### First Run
 
 ```bash
-# Set up your AI provider (pick one)
-export ANTHROPIC_API_KEY=sk-ant-...
-# or
-pnpm dev -- setup-token  # OAuth flow for Claude Code CLI
+pnpm chat
 ```
+
+On first launch, Yojin will:
+
+1. **Bootstrap** — prompt you to connect an LLM provider (paste an Anthropic API key or run the OAuth flow)
+2. **Onboard** — ask a few questions about your investment style and generate a personalized persona
+
+No manual config files needed — credentials are stored in the encrypted vault automatically.
 
 ### Run
 
 ```bash
-# Development
-pnpm dev
-
-# Interactive chat
+# Interactive chat (recommended starting point)
 pnpm chat
+
+# Start server + web dashboard
+pnpm dev
 
 # Production
 pnpm build && pnpm start
-
-# Web UI development
-pnpm dev:web
-
-# Backend + Web UI together
-pnpm dev:all
 ```
+
+## CLI Usage
+
+Yojin ships a CLI entry point (`yojin`) with the following commands:
+
+```
+yojin                Start Yojin (server + dashboard)
+yojin chat           Chat with Yojin in your terminal
+yojin setup          Connect your Claude account (OAuth flow)
+yojin web            Start the web dashboard only
+yojin secret <cmd>   Manage encrypted credentials
+yojin acp            Start ACP (Agent Client Protocol) server
+yojin version        Print version
+yojin help           Show help
+```
+
+### `yojin chat`
+
+Full agent loop in your terminal — streaming responses, tool execution, color-coded output.
+
+```bash
+pnpm chat
+
+# Options:
+pnpm chat -- --model claude-opus-4-6   # Choose model
+pnpm chat -- --provider anthropic      # Choose provider
+pnpm chat -- --system "Be concise"     # Custom system prompt
+```
+
+### `yojin secret`
+
+Manage credentials in the encrypted vault (AES-256-GCM). Requires `YOJIN_VAULT_PASSPHRASE` env var and an interactive terminal.
+
+```bash
+pnpm dev -- secret set ANTHROPIC_API_KEY   # Store a secret (hidden input)
+pnpm dev -- secret list                    # List stored secret names
+pnpm dev -- secret show ANTHROPIC_API_KEY  # Reveal a secret (TTY only)
+pnpm dev -- secret delete ANTHROPIC_API_KEY # Remove a secret
+```
+
+### `yojin setup`
+
+Run the OAuth PKCE flow to authenticate with Claude — opens your browser, stores the token in the vault.
+
+```bash
+pnpm setup
+```
+
+### Environment Variables
+
+| Variable                  | Purpose                                      | Required |
+|---------------------------|----------------------------------------------|----------|
+| `ANTHROPIC_API_KEY`       | Anthropic API key (alternative to OAuth)     | One of these |
+| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `yojin setup`               | One of these |
+| `YOJIN_VAULT_PASSPHRASE`  | Passphrase for the encrypted credential vault | For `secret` commands |
+| `YOJIN_PII_NER`           | Set to `1` to enable NER-based PII detection | No |
 
 ## Project Structure
 

@@ -1,7 +1,39 @@
-import { cn } from '../lib/utils';
+import { useState } from 'react';
+
 import Card from '../components/common/card';
+import Spinner from '../components/common/spinner';
+import Button from '../components/common/button';
+import PlatformCard from '../components/platforms/platform-card';
+import AddPlatformModal from '../components/platforms/add-platform-modal';
+import { useListConnections, useConnectPlatform, useDisconnectPlatform, useRefreshPositions } from '../api/hooks';
 
 export default function Profile() {
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [syncingPlatform, setSyncingPlatform] = useState<string | null>(null);
+
+  const [{ data, fetching }] = useListConnections();
+  const [{ fetching: connecting }, connectPlatform] = useConnectPlatform();
+  const [, disconnectPlatform] = useDisconnectPlatform();
+  const [, refreshPositions] = useRefreshPositions();
+
+  const connections = data?.listConnections ?? [];
+  const connectedPlatforms = connections.map((c) => c.platform);
+
+  async function handleSyncNow(platform: string) {
+    setSyncingPlatform(platform);
+    await refreshPositions({ platform });
+    setSyncingPlatform(null);
+  }
+
+  async function handleDisconnect(platform: string) {
+    await disconnectPlatform({ platform, removeCredentials: true });
+  }
+
+  async function handleConnect(platform: string) {
+    await connectPlatform({ input: { platform } });
+    setAddModalOpen(false);
+  }
+
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
       <Card className="p-6">
@@ -25,13 +57,46 @@ export default function Profile() {
         </div>
       </Card>
 
-      <Card title="Connected Platforms" section>
-        <div className="space-y-3">
-          <PlatformRow name="Interactive Brokers" status="connected" />
-          <PlatformRow name="Coinbase" status="connected" />
-          <PlatformRow name="Robinhood" status="disconnected" />
+      <Card title="Connected Platforms" section className="relative">
+        <div className="absolute right-5 top-5">
+          <Button size="sm" onClick={() => setAddModalOpen(true)}>
+            + Connect New
+          </Button>
         </div>
+
+        {fetching ? (
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
+        ) : connections.length === 0 ? (
+          <div className="flex flex-col items-center py-8 text-center">
+            <p className="text-sm text-text-muted mb-3">No platforms connected yet.</p>
+            <Button size="sm" onClick={() => setAddModalOpen(true)}>
+              Connect your first platform
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {connections.map((connection) => (
+              <PlatformCard
+                key={connection.platform}
+                connection={connection}
+                onSyncNow={handleSyncNow}
+                onDisconnect={handleDisconnect}
+                syncing={syncingPlatform === connection.platform}
+              />
+            ))}
+          </div>
+        )}
       </Card>
+
+      <AddPlatformModal
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        onConnect={handleConnect}
+        connecting={connecting}
+        connectedPlatforms={connectedPlatforms}
+      />
     </div>
   );
 }
@@ -41,18 +106,6 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs text-text-muted mb-1">{label}</p>
       <p className="text-sm text-text-primary">{value}</p>
-    </div>
-  );
-}
-
-function PlatformRow({ name, status }: { name: string; status: 'connected' | 'disconnected' }) {
-  const connected = status === 'connected';
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-      <span className="text-sm text-text-primary">{name}</span>
-      <span className={cn('text-xs font-medium', connected ? 'text-success' : 'text-text-muted')}>
-        {connected ? 'Connected' : 'Not connected'}
-      </span>
     </div>
   );
 }
