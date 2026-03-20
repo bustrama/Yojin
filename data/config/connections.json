@@ -1,0 +1,9 @@
+[
+  {
+    "platform": "BINANCE",
+    "tier": "UI",
+    "credentialRefs": [],
+    "syncInterval": 3600,
+    "autoRefresh": true
+  }
+]

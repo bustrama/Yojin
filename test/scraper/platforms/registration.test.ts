@@ -41,7 +41,7 @@ function makeMockManager(): ConnectionManager & {
 // ---------------------------------------------------------------------------
 
 describe('registerAllConnectors', () => {
-  it('registers all API-tier connectors without a browser', () => {
+  it('registers all API-tier connectors', () => {
     const manager = makeMockManager();
     const vault = makeMockVault();
 
@@ -57,15 +57,22 @@ describe('registerAllConnectors', () => {
     expect(platforms).toContain('POLYMARKET');
   });
 
-  it('does not register UI-tier connectors without a browser', () => {
+  it('always registers UI-tier connectors (via lazy browser)', () => {
     const manager = makeMockManager();
     registerAllConnectors({ manager, vault: makeMockVault() });
 
     const uiConnectors = manager.registered.filter((c) => c.tier === 'UI');
-    expect(uiConnectors).toHaveLength(0);
+    expect(uiConnectors).toHaveLength(5);
+
+    const uiPlatforms = uiConnectors.map((c) => c.platformId);
+    expect(uiPlatforms).toContain('ROBINHOOD');
+    expect(uiPlatforms).toContain('COINBASE');
+    expect(uiPlatforms).toContain('BINANCE');
+    expect(uiPlatforms).toContain('INTERACTIVE_BROKERS');
+    expect(uiPlatforms).toContain('FIDELITY');
   });
 
-  it('registers both API and UI connectors when browser is provided', () => {
+  it('uses explicit browser when provided instead of lazy browser', () => {
     const manager = makeMockManager();
     const mockBrowser = {} as never; // Playwright Browser mock
 
@@ -79,23 +86,16 @@ describe('registerAllConnectors', () => {
     const uiConnectors = manager.registered.filter((c) => c.tier === 'UI');
 
     expect(apiConnectors).toHaveLength(4);
-    expect(uiConnectors).toHaveLength(4);
-
-    const uiPlatforms = uiConnectors.map((c) => c.platformId);
-    expect(uiPlatforms).toContain('ROBINHOOD');
-    expect(uiPlatforms).toContain('COINBASE');
-    expect(uiPlatforms).toContain('INTERACTIVE_BROKERS');
-    expect(uiPlatforms).toContain('FIDELITY');
+    expect(uiConnectors).toHaveLength(5);
   });
 
-  it('total registered connectors is 8 with browser', () => {
+  it('total registered connectors is 9 (4 API + 5 UI)', () => {
     const manager = makeMockManager();
     registerAllConnectors({
       manager,
       vault: makeMockVault(),
-      browser: {} as never,
     });
 
-    expect(manager.registered).toHaveLength(8);
+    expect(manager.registered).toHaveLength(9);
   });
 });

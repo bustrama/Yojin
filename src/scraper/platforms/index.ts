@@ -9,8 +9,10 @@ import type { Browser } from 'playwright';
 
 import type { SecretVault } from '../../trust/vault/types.js';
 import type { ConnectionManager } from '../connection-manager.js';
+import { LazyBrowser } from '../lazy-browser.js';
 import { SessionStore } from '../session-store.js';
 import { BinanceApiConnector } from './binance/api-connector.js';
+import { BinanceUiConnector } from './binance/ui-connector.js';
 import { CoinbaseApiConnector } from './coinbase/api-connector.js';
 import { CoinbaseUiConnector } from './coinbase/ui-connector.js';
 import { FidelityUiConnector } from './fidelity/ui-connector.js';
@@ -26,7 +28,7 @@ import { RobinhoodUiConnector } from './robinhood/ui-connector.js';
 export interface RegisterConnectorsOptions {
   manager: ConnectionManager;
   vault: SecretVault;
-  /** Playwright Browser instance — required for UI tier connectors. */
+  /** Playwright Browser instance — overrides the default lazy browser. */
   browser?: Browser;
   /** Path to sessions directory (default: data/cache/sessions). */
   sessionsDir?: string;
@@ -42,10 +44,11 @@ export interface RegisterConnectorsOptions {
  * Register all platform connectors with the ConnectionManager.
  *
  * API tier connectors are always registered.
- * UI tier connectors are only registered when a Playwright Browser is provided.
+ * UI tier connectors use a LazyBrowser that launches Playwright on first use,
+ * or an explicit Browser instance if provided.
  */
 export function registerAllConnectors(opts: RegisterConnectorsOptions): void {
-  const { manager, vault, browser } = opts;
+  const { manager, vault } = opts;
   const sessionsDir = opts.sessionsDir ?? 'data/cache/sessions';
   const cacheDir = opts.cacheDir ?? 'data/cache';
 
@@ -59,17 +62,19 @@ export function registerAllConnectors(opts: RegisterConnectorsOptions): void {
   manager.registerConnector(new PolymarketApiConnector(vault));
 
   // -------------------------------------------------------------------------
-  // UI tier — requires Playwright Browser
+  // UI tier — uses lazy browser (launches Playwright on first connect)
   // -------------------------------------------------------------------------
 
-  if (browser) {
-    const sessionStore = new SessionStore({ vault, sessionsDir });
+  // LazyBrowser implements newContext() which is the only Browser method
+  // the UI connectors use. Cast is safe at runtime.
+  const browser = (opts.browser ?? new LazyBrowser()) as Browser;
+  const sessionStore = new SessionStore({ vault, sessionsDir });
 
-    manager.registerConnector(new RobinhoodUiConnector(vault, browser, sessionStore, cacheDir));
-    manager.registerConnector(new CoinbaseUiConnector(vault, browser, sessionStore, cacheDir));
-    manager.registerConnector(new IbkrUiConnector(vault, browser, sessionStore, cacheDir));
-    manager.registerConnector(new FidelityUiConnector(vault, browser, sessionStore, cacheDir));
-  }
+  manager.registerConnector(new RobinhoodUiConnector(vault, browser, sessionStore, cacheDir));
+  manager.registerConnector(new CoinbaseUiConnector(vault, browser, sessionStore, cacheDir));
+  manager.registerConnector(new BinanceUiConnector(vault, browser, sessionStore, cacheDir));
+  manager.registerConnector(new IbkrUiConnector(vault, browser, sessionStore, cacheDir));
+  manager.registerConnector(new FidelityUiConnector(vault, browser, sessionStore, cacheDir));
 }
 
 // ---------------------------------------------------------------------------
@@ -77,10 +82,12 @@ export function registerAllConnectors(opts: RegisterConnectorsOptions): void {
 // ---------------------------------------------------------------------------
 
 export { BinanceApiConnector } from './binance/api-connector.js';
+export { BinanceUiConnector } from './binance/ui-connector.js';
 export { CoinbaseApiConnector } from './coinbase/api-connector.js';
 export { CoinbaseUiConnector } from './coinbase/ui-connector.js';
 export { FidelityUiConnector } from './fidelity/ui-connector.js';
 export { IbkrApiConnector } from './ibkr/api-connector.js';
 export { IbkrUiConnector } from './ibkr/ui-connector.js';
+export { LazyBrowser } from '../lazy-browser.js';
 export { PolymarketApiConnector } from './polymarket/api-connector.js';
 export { RobinhoodUiConnector } from './robinhood/ui-connector.js';

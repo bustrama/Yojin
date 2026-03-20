@@ -24,7 +24,8 @@ import {
   type PlatformConnectorResult,
   type TierAvailability,
 } from './types.js';
-import type { Platform } from '../api/graphql/types.js';
+import type { Platform, Position } from '../api/graphql/types.js';
+import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
 import type { SecretVault } from '../trust/vault/types.js';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,8 @@ export interface ConnectionManagerOptions {
   statePath: string;
   /** Custom credential lookup (supports config overrides). Falls back to hardcoded defaults. */
   credentialLookup?: CredentialLookup;
+  /** Snapshot store — saves fetched positions on successful connect. */
+  snapshotStore?: PortfolioSnapshotStore;
 }
 
 export interface ConnectPlatformOptions {
@@ -87,6 +90,7 @@ export class ConnectionManager {
   private readonly configPath: string;
   private readonly statePath: string;
   private readonly credentialLookup: CredentialLookup;
+  private readonly snapshotStore?: PortfolioSnapshotStore;
 
   /** Async mutex for serializing config/state file I/O */
   private ioQueue: Promise<void> = Promise.resolve();
@@ -98,6 +102,7 @@ export class ConnectionManager {
     this.configPath = opts.configPath;
     this.statePath = opts.statePath;
     this.credentialLookup = opts.credentialLookup ?? getCredentialRequirements;
+    this.snapshotStore = opts.snapshotStore;
   }
 
   // -------------------------------------------------------------------------
@@ -132,7 +137,11 @@ export class ConnectionManager {
     for (const tier of TIER_PRIORITY) {
       const key = `${platform}:${tier}`;
       const connector = this.connectors.get(key);
-      const available = connector ? await connector.isAvailable() : false;
+      // A tier is "available" if a connector is registered for it.
+      // SCREENSHOT is always available (handled via chat, no connector needed).
+      // Whether credentials are already stored is a separate concern — the UI
+      // shows requiresCredentials so the user can provide them before connecting.
+      const available = tier === 'SCREENSHOT' || !!connector;
       const requiresCredentials = this.credentialLookup(platform, tier);
 
       results.push({ tier, available, requiresCredentials });
@@ -171,7 +180,7 @@ export class ConnectionManager {
         });
       }
 
-      this.auditLog.append({ type: 'connection.attempt', platform, tier, timestamp: new Date().toISOString() });
+      this.auditLog.append({ type: 'connection.attempt', details: { platform, tier } });
 
       // Store credentials in vault
       const credentialRefs: string[] = [];
@@ -237,12 +246,29 @@ export class ConnectionManager {
         return this.failConnection(channel, platform, tier, fetchResult.error);
       }
 
+      // Save fetched positions to snapshot store
+      if (this.snapshotStore && fetchResult.positions.length > 0) {
+        const positions: Position[] = fetchResult.positions.map((ep) => ({
+          symbol: ep.symbol,
+          name: ep.symbol,
+          quantity: ep.quantity ?? 0,
+          costBasis: 0,
+          currentPrice: 0,
+          marketValue: ep.marketValue ?? 0,
+          unrealizedPnl: 0,
+          unrealizedPnlPercent: 0,
+          assetClass: ep.assetClass ?? 'CRYPTO',
+          platform,
+        }));
+        await this.snapshotStore.save({ positions, platform });
+      }
+
       // Persist config + state
       const now = new Date().toISOString();
       await this.upsertConfig({ platform, tier, credentialRefs, syncInterval: 3600, autoRefresh: true });
       await this.upsertState({ platform, tier, status: 'CONNECTED', lastSync: now, lastError: null });
 
-      this.auditLog.append({ type: 'connection.success', platform, tier, timestamp: now });
+      this.auditLog.append({ type: 'connection.success', details: { platform, tier } });
       this.publish(channel, {
         platform,
         step: 'CONNECTED',
@@ -323,9 +349,7 @@ export class ConnectionManager {
 
       this.auditLog.append({
         type: 'connection.removed',
-        platform,
-        removeCredentials,
-        timestamp: new Date().toISOString(),
+        details: { platform, removeCredentials },
       });
 
       this.publish(`connectionStatus:${platform}`, {
@@ -368,9 +392,10 @@ export class ConnectionManager {
         });
       }
 
-      // Include state entries without matching config (disconnected/errored)
+      // Include state entries without matching config, but skip DISCONNECTED
+      // (those are historical — no active connection to show)
       for (const s of states) {
-        if (!seenPlatforms.has(s.platform)) {
+        if (!seenPlatforms.has(s.platform) && s.status !== 'DISCONNECTED') {
           connections.push({
             platform: s.platform as Platform,
             tier: s.tier as IntegrationTier,
@@ -480,7 +505,7 @@ export class ConnectionManager {
     error: string,
   ): Promise<ConnectionResult> {
     await this.upsertState({ platform, tier, status: 'ERROR', lastSync: null, lastError: error });
-    this.auditLog.append({ type: 'connection.failure', platform, tier, error, timestamp: new Date().toISOString() });
+    this.auditLog.append({ type: 'connection.failure', details: { platform, tier, error } });
     this.publish(channel, { platform, step: 'ERROR', message: error, error });
     return { success: false, error };
   }
@@ -492,10 +517,12 @@ export class ConnectionManager {
         await this.vault.delete(ref);
       } catch (err) {
         this.auditLog.append({
-          type: 'credential.rollback_failed',
-          key: ref,
-          error: err instanceof Error ? err.message : String(err),
-          timestamp: new Date().toISOString(),
+          type: 'connection.failure',
+          details: {
+            reason: 'credential_rollback_failed',
+            key: ref,
+            error: err instanceof Error ? err.message : String(err),
+          },
         });
       }
     }
