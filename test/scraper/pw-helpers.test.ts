@@ -4,6 +4,7 @@ import {
   buildLaunchOptions,
   randomUserAgent,
   randomViewport,
+  screenshotOnFailure,
   stealthDelay,
   waitForSelector,
 } from '../../src/scraper/pw-helpers.js';
@@ -111,6 +112,34 @@ describe('pw-helpers', () => {
     it('includes anti-detection args', () => {
       const opts = buildLaunchOptions();
       expect(opts.args).toContain('--disable-blink-features=AutomationControlled');
+    });
+  });
+
+  describe('screenshotOnFailure', () => {
+    it('injects PII mask before capture and removes it after', async () => {
+      const evaluateCalls: string[] = [];
+      const mockPage = {
+        evaluate: vi.fn().mockImplementation((script: string) => {
+          evaluateCalls.push(script);
+          return Promise.resolve();
+        }),
+        screenshot: vi.fn().mockResolvedValue(Buffer.from('png')),
+      };
+
+      const tmpDir = `/tmp/yojin-test-screenshots-${Date.now()}`;
+      const filepath = await screenshotOnFailure(mockPage as never, 'test', tmpDir);
+
+      expect(filepath).toContain('test-');
+      expect(filepath).toContain('.png');
+
+      // First evaluate injects the mask
+      expect(evaluateCalls[0]).toContain('__yojin_pii_mask');
+      expect(evaluateCalls[0]).toContain('color: transparent');
+      // Second evaluate removes the mask
+      expect(evaluateCalls[1]).toContain('__yojin_pii_mask');
+      expect(evaluateCalls[1]).toContain('remove');
+      // Screenshot is called between the two evaluates
+      expect(mockPage.screenshot).toHaveBeenCalledTimes(1);
     });
   });
 });

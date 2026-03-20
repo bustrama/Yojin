@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Position } from '../../src/api/graphql/types.js';
 import { PortfolioSnapshotStore } from '../../src/portfolio/snapshot-store.js';
+import { DefaultPiiRedactor } from '../../src/trust/pii/redactor.js';
 
 const TEST_POSITIONS: Position[] = [
   {
@@ -105,5 +106,22 @@ describe('PortfolioSnapshotStore', () => {
     expect(all).toHaveLength(2);
     expect(all[0].positions).toHaveLength(1);
     expect(all[1].positions).toHaveLength(2);
+  });
+
+  it('getLatestRedacted returns snapshot with balances converted to ranges', async () => {
+    await store.save({ positions: TEST_POSITIONS, platform: 'COINBASE' });
+
+    const noopAuditLog = { append: () => {} };
+    const redactor = new DefaultPiiRedactor({ auditLog: noopAuditLog as never });
+    const redacted = await store.getLatestRedacted(redactor);
+
+    expect(redacted).not.toBeNull();
+    // Balance fields should be converted to range strings, not exact numbers
+    expect(typeof redacted!.totalValue).toBe('string');
+    expect(redacted!.totalValue).toMatch(/^\$/); // e.g. "$10k-$50k"
+    // Position-level balances should also be redacted
+    const pos = redacted!.positions[0];
+    expect(typeof pos.marketValue).toBe('string');
+    expect(typeof pos.costBasis).toBe('string');
   });
 });
