@@ -268,8 +268,8 @@ describe('ConnectionManager — CRUD', () => {
     await expect(manager.removeConnection('nope')).resolves.toBeUndefined();
   });
 
-  it('listConnections returns empty array initially', () => {
-    expect(manager.listConnections()).toEqual([]);
+  it('listConnections throws before loadConnections', () => {
+    expect(() => manager.listConnections()).toThrow(/call loadConnections/);
   });
 
   it('persists to disk as valid JSON', async () => {

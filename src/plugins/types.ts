@@ -146,7 +146,7 @@ export interface TypingHandle {
 
 export interface ChannelTypingAdapter {
   /** Start a typing indicator on a channel/thread. Returns a handle to stop it. */
-  startTyping(channelId: string, threadTs?: string): TypingHandle;
+  startTyping(channelId: string, threadTs?: string): Promise<TypingHandle>;
 }
 
 export interface ChannelPlugin {

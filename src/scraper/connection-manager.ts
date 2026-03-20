@@ -115,6 +115,9 @@ export class ConnectionManager {
   }
 
   listConnections(): ConnectionConfig[] {
+    if (!this.loaded) {
+      throw new Error('ConnectionManager: call loadConnections() before listConnections()');
+    }
     return [...this.connections];
   }
 
