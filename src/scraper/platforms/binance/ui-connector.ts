@@ -7,7 +7,6 @@
 
 import type { Browser, Page } from 'playwright';
 
-import type { SecretVault } from '../../../trust/vault/types.js';
 import { screenshotOnFailure, stealthDelay } from '../../pw-helpers.js';
 import type { SessionStore } from '../../session-store.js';
 import type { ExtractedPosition, PlatformConnectorResult, TieredPlatformConnector } from '../../types.js';
@@ -24,21 +23,22 @@ export class BinanceUiConnector implements TieredPlatformConnector {
   private page: Page | null = null;
 
   constructor(
-    private readonly vault: SecretVault,
     private readonly browser: Browser,
     private readonly sessionStore: SessionStore,
     private readonly cacheDir: string,
   ) {}
 
   async isAvailable(): Promise<boolean> {
-    // UI tier is available if we have credentials or a saved session
-    const hasCreds = (await this.vault.has('BINANCE_USERNAME')) && (await this.vault.has('BINANCE_PASSWORD'));
-    const hasSession = await this.sessionStore.has('BINANCE');
-    return hasCreds || hasSession;
+    // Browser tier is always available — user logs in manually.
+    // A saved session just means we can skip the login step.
+    return true;
   }
 
   async connect(_credentialRefs: string[]): Promise<{ success: boolean; error?: string }> {
     try {
+      // Close any existing page/context to avoid resource leaks on repeated connect() calls
+      await this.disconnect();
+
       const context = await this.browser.newContext({
         viewport: { width: 1400, height: 900 },
         userAgent:
@@ -123,9 +123,6 @@ export class BinanceUiConnector implements TieredPlatformConnector {
         await screenshotOnFailure(this.page, 'binance', this.cacheDir);
         return { success: false, error: 'Portfolio page did not load — may need re-authentication' };
       }
-
-      // Save debug screenshot so we can see what the page actually shows
-      await this.page.screenshot({ path: `${this.cacheDir}/binance-debug.png`, fullPage: true });
 
       const allPositions = await this.parsePositions();
       // Only keep positions with positive quantity
@@ -267,13 +264,6 @@ export class BinanceUiConnector implements TieredPlatformConnector {
       ];
       var knownTickers = new Set(TICKERS);
 
-      function pn(text) {
-        if (!text) return undefined;
-        var cleaned = text.replace(/[,$\\s]/g, '');
-        var num = parseFloat(cleaned);
-        return isNaN(num) ? undefined : num;
-      }
-
       // Binance uses div-based layouts, not HTML tables.
       // Each asset is a block of lines in the page text:
       //   TICKER            ← known ticker (e.g., "MATIC")
@@ -343,19 +333,9 @@ export class BinanceUiConnector implements TieredPlatformConnector {
         seen[p.symbol] = true;
         return true;
       });
-      return { positions: deduped, debug: lines.slice(0, 120) };
+      return deduped;
     })()`);
 
-    const result = raw as { positions: ExtractedPosition[]; debug: unknown[] };
-
-    // Write debug data for troubleshooting
-    try {
-      const { writeFile } = await import('node:fs/promises');
-      await writeFile(`${this.cacheDir}/binance-parse-debug.json`, JSON.stringify(result.debug, null, 2), 'utf-8');
-    } catch {
-      // Ignore debug write failures
-    }
-
-    return result.positions;
+    return raw as ExtractedPosition[];
   }
 }

@@ -72,7 +72,7 @@ export function registerAllConnectors(opts: RegisterConnectorsOptions): void {
 
   manager.registerConnector(new RobinhoodUiConnector(vault, browser, sessionStore, cacheDir));
   manager.registerConnector(new CoinbaseUiConnector(vault, browser, sessionStore, cacheDir));
-  manager.registerConnector(new BinanceUiConnector(vault, browser, sessionStore, cacheDir));
+  manager.registerConnector(new BinanceUiConnector(browser, sessionStore, cacheDir));
   manager.registerConnector(new IbkrUiConnector(vault, browser, sessionStore, cacheDir));
   manager.registerConnector(new FidelityUiConnector(vault, browser, sessionStore, cacheDir));
 }
