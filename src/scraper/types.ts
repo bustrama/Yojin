@@ -5,18 +5,84 @@
 
 import { z } from 'zod';
 
-import type { Platform } from '../api/graphql/types.js';
-import { AssetClassSchema, PlatformSchema } from '../api/graphql/types.js';
+import { AssetClassSchema } from '../api/graphql/types.js';
+import { KNOWN_PLATFORMS, type Platform } from '../api/graphql/types.js';
 import type { AgentLoopProvider, ImageMediaType } from '../core/types.js';
 
-export { AssetClassSchema, PlatformSchema };
+export { AssetClassSchema };
 
 // ---------------------------------------------------------------------------
 // Integration tiers (priority order: cli > api > ui > screenshot)
 // ---------------------------------------------------------------------------
 
-export const IntegrationTierSchema = z.enum(['cli', 'api', 'ui', 'screenshot']);
+/** Accepts known platforms or any non-empty custom string. */
+export const PlatformSchema = z.string().min(1) as z.ZodType<Platform>;
+
+/** Re-export for consumers that only need the Zod enum of known values. */
+export const KnownPlatformSchema = z.enum(KNOWN_PLATFORMS);
+
+export const IntegrationTierSchema = z.enum(['CLI', 'API', 'UI', 'SCREENSHOT']);
+
+export const ConnectionStatusSchema = z.enum(['PENDING', 'VALIDATING', 'CONNECTED', 'ERROR', 'DISCONNECTED']);
+
+export const ConnectionConfigSchema = z.object({
+  platform: PlatformSchema,
+  tier: IntegrationTierSchema,
+  credentialRefs: z.array(z.string()),
+  syncInterval: z.number().default(3600),
+  autoRefresh: z.boolean().default(true),
+});
+
+export const ConnectionsFileSchema = z.array(ConnectionConfigSchema);
+export type ConnectionsFile = z.infer<typeof ConnectionsFileSchema>;
+
+export const ConnectionStateSchema = z.object({
+  platform: PlatformSchema,
+  tier: IntegrationTierSchema,
+  status: ConnectionStatusSchema,
+  lastSync: z.string().nullable(),
+  lastError: z.string().nullable(),
+});
+
+export const ConnectionStateFileSchema = z.array(ConnectionStateSchema);
+export type ConnectionStateFile = z.infer<typeof ConnectionStateFileSchema>;
+
+// ---------------------------------------------------------------------------
+// Connection domain types (canonical definitions — re-exported by api/graphql/types.ts)
+// ---------------------------------------------------------------------------
+
 export type IntegrationTier = z.infer<typeof IntegrationTierSchema>;
+export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
+
+export interface ConnectionEvent {
+  platform: Platform;
+  step: 'TIER_DETECTED' | 'CREDENTIALS_STORED' | 'VALIDATING' | 'CONNECTED' | 'ERROR' | 'DISCONNECTED';
+  message: string;
+  tier?: IntegrationTier;
+  error?: string;
+}
+
+export interface Connection {
+  platform: Platform;
+  tier: IntegrationTier;
+  status: ConnectionStatus;
+  lastSync: string | null;
+  lastError: string | null;
+  syncInterval: number;
+  autoRefresh: boolean;
+}
+
+export interface ConnectionResult {
+  success: boolean;
+  connection?: Connection;
+  error?: string;
+}
+
+export interface TierAvailability {
+  tier: IntegrationTier;
+  available: boolean;
+  requiresCredentials: string[];
+}
 
 export const ExtractedPositionSchema = z.object({
   symbol: z.string().min(1),
@@ -102,28 +168,3 @@ export interface PositionConfidence {
 // ---------------------------------------------------------------------------
 
 export type ScreenshotParseResult = PlatformConnectorResult;
-
-// ---------------------------------------------------------------------------
-// Connection config (persisted in data/config/connections.json)
-// ---------------------------------------------------------------------------
-
-export const ConnectionStatusSchema = z.enum(['pending', 'connected', 'error', 'disconnected']);
-export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
-
-export const ConnectionConfigSchema = z.object({
-  id: z.string(),
-  platform: PlatformSchema,
-  tier: IntegrationTierSchema,
-  enabled: z.boolean().default(true),
-  credentialRefs: z.array(z.string()).default([]),
-  syncInterval: z.number().default(3600),
-  lastSync: z.string().nullable().default(null),
-  status: ConnectionStatusSchema.default('pending'),
-  autoRefresh: z.boolean().default(true),
-});
-export type ConnectionConfig = z.infer<typeof ConnectionConfigSchema>;
-
-export const ConnectionsFileSchema = z.object({
-  connections: z.array(ConnectionConfigSchema).default([]),
-});
-export type ConnectionsFile = z.infer<typeof ConnectionsFileSchema>;

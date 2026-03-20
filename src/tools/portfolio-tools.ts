@@ -8,9 +8,10 @@
 import { z } from 'zod';
 
 import type { AssetClass, Platform, Position } from '../api/graphql/types.js';
-import { AssetClassSchema, PlatformSchema } from '../api/graphql/types.js';
+import { AssetClassSchema } from '../api/graphql/types.js';
 import type { ToolDefinition, ToolResult } from '../core/types.js';
 import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
+import { PlatformSchema } from '../scraper/types.js';
 
 const PositionInputSchema = z.object({
   symbol: z.string().min(1).describe('Ticker symbol (e.g. AAPL, BTC)'),

@@ -241,7 +241,7 @@ describe('parsePortfolioScreenshot', () => {
     expect(result.positions[0].symbol).toBe('BTC');
     expect(result.positions[1].symbol).toBe('ETH');
     expect(result.metadata.platform).toBe('COINBASE');
-    expect(result.metadata.source).toBe('screenshot');
+    expect(result.metadata.source).toBe('SCREENSHOT');
     expect(result.metadata.confidence).toBeGreaterThan(0);
     expect(result.metadata.usage).toEqual({ inputTokens: 1000, outputTokens: 500 });
   });
@@ -440,14 +440,14 @@ describe('ScreenshotConnector', () => {
     expect(textBlock?.text).toContain('ROBINHOOD');
   });
 
-  it('implements TieredPlatformConnector — tier is screenshot', () => {
+  it('implements TieredPlatformConnector — tier is SCREENSHOT', () => {
     const connector = new ScreenshotConnector({
       imageData: DUMMY_IMAGE,
       mediaType: 'image/png',
       provider: mockProvider(VALID_RESPONSE),
       model: 'claude-sonnet-4-6',
     });
-    expect(connector.tier).toBe('screenshot');
+    expect(connector.tier).toBe('SCREENSHOT');
   });
 
   it('isAvailable always returns true', async () => {
@@ -504,8 +504,12 @@ describe('Zod schemas', () => {
       }
     });
 
+    it('accepts custom platform strings', () => {
+      expect(PlatformSchema.safeParse('KRAKEN').success).toBe(true);
+      expect(PlatformSchema.safeParse('Alpaca').success).toBe(true);
+    });
+
     it('rejects invalid platforms', () => {
-      expect(PlatformSchema.safeParse('KRAKEN').success).toBe(false);
       expect(PlatformSchema.safeParse('').success).toBe(false);
       expect(PlatformSchema.safeParse(123).success).toBe(false);
     });

@@ -17,7 +17,7 @@ import type {
 export class ScreenshotConnector implements TieredPlatformConnector {
   readonly platformId: string;
   readonly platformName: string;
-  readonly tier: IntegrationTier = 'screenshot';
+  readonly tier: IntegrationTier = 'SCREENSHOT';
 
   constructor(
     private readonly params: ParseScreenshotParams,
