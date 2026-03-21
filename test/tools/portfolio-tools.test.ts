@@ -120,6 +120,10 @@ describe('Portfolio tools', () => {
       expect(getResult.content).not.toContain('67,000');
       expect(getResult.content).not.toContain('35,000');
       expect(getResult.content).not.toContain('$102,');
+      // LLM should NOT see exact quantities — only bucketed ranges
+      expect(getResult.content).not.toMatch(/: 1 unit/);
+      expect(getResult.content).toContain('1-10 units'); // quantity 1 → "1-10 units" bucket
+      expect(getResult.content).toContain('10-100 units'); // quantity 10 → "10-100 units" bucket
     });
 
     it('save response redacts exact totals', async () => {

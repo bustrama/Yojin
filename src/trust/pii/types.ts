@@ -5,7 +5,10 @@
 import type { Platform, Position } from '../../api/graphql/types.js';
 
 /** Position with balance fields converted to range strings by PII redaction. */
-export type RedactedPosition = Omit<Position, 'costBasis' | 'marketValue' | 'unrealizedPnl' | 'currentPrice'> & {
+export type RedactedPosition = Omit<
+  Position,
+  'costBasis' | 'marketValue' | 'unrealizedPnl' | 'currentPrice' | 'quantity'
+> & {
   costBasis: string;
   marketValue: string;
   unrealizedPnl: string;

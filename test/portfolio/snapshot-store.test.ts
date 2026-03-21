@@ -127,7 +127,8 @@ describe('PortfolioSnapshotStore', () => {
     const pos = redacted!.positions[0];
     expect(typeof pos.marketValue).toBe('string');
     expect(typeof pos.costBasis).toBe('string');
-    // currentPrice should be stripped to prevent balance reconstruction
+    // currentPrice and quantity should be stripped to prevent balance reconstruction
     expect(pos).not.toHaveProperty('currentPrice');
+    expect(pos).not.toHaveProperty('quantity');
   });
 });

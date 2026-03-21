@@ -12,7 +12,7 @@ import { AssetClassSchema } from '../api/graphql/types.js';
 import type { ToolDefinition, ToolResult } from '../core/types.js';
 import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
 import { PlatformSchema } from '../scraper/types.js';
-import { balanceToRange } from '../trust/pii/patterns.js';
+import { balanceToRange, quantityToRange } from '../trust/pii/patterns.js';
 
 const PositionInputSchema = z.object({
   symbol: z.string().min(1).describe('Ticker symbol (e.g. AAPL, BTC)'),
@@ -96,12 +96,12 @@ export function createPortfolioTools(options: PortfolioToolsOptions): ToolDefini
         };
       }
 
-      // Redact exact values — the LLM sees symbols, quantities, and balance
-      // ranges but NOT exact dollar amounts. The UI shows real values via GraphQL.
+      // Redact exact values — the LLM sees symbols, bucketed quantities, and balance
+      // ranges but NOT exact dollar amounts or quantities. The UI shows real values via GraphQL.
       const summary = snapshot.positions
         .map(
           (p) =>
-            `  ${p.symbol}: ${p.quantity} units, value: ${balanceToRange(p.marketValue)} ` +
+            `  ${p.symbol}: ${quantityToRange(p.quantity)}, value: ${balanceToRange(p.marketValue)} ` +
             `(P&L: ${p.unrealizedPnlPercent >= 0 ? '+' : ''}${p.unrealizedPnlPercent.toFixed(1)}%)`,
         )
         .join('\n');

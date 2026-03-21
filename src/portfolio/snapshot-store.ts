@@ -88,7 +88,7 @@ export class PortfolioSnapshotStore {
     // Strip fields that allow exact balance reconstruction (quantity × currentPrice = marketValue)
     const sanitized = {
       ...snapshot,
-      positions: snapshot.positions.map(({ currentPrice: _, ...p }) => p),
+      positions: snapshot.positions.map(({ currentPrice: _price, quantity: _qty, ...p }) => p),
     };
     const { data } = redactor.redact(sanitized as unknown as Record<string, unknown>);
     return data as unknown as RedactedSnapshot;
