@@ -6,10 +6,14 @@
  * server startup to inject the config path and registry.
  */
 
+import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { promisify } from 'node:util';
 
 import { createSubsystemLogger } from '../../../logging/logger.js';
+
+const runExec = promisify(execFile);
 
 const logger = createSubsystemLogger('data-source-resolvers');
 
@@ -115,6 +119,15 @@ export async function addDataSourceResolver(
 
   if (configs.some((c) => c.id === input.id)) {
     return { success: false, error: `Data source "${input.id}" already exists` };
+  }
+
+  // Validate CLI command exists before adding
+  if (input.type === 'CLI' && input.command) {
+    try {
+      await runExec('which', [input.command]);
+    } catch {
+      return { success: false, error: `"${input.command}" is not installed. Install it first.` };
+    }
   }
 
   const config: DataSourceConfig = {

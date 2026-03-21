@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "id": "curl-rss",
+    "name": "RSS/Atom Feeds",
+    "type": "CLI",
+    "capabilities": [
+      "news"
+    ],
+    "enabled": true,
+    "priority": 10,
+    "command": "curl",
+    "args": [
+      "-s"
+    ]
+  }
+]

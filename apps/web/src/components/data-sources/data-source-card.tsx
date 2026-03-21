@@ -11,7 +11,7 @@ interface DataSourceCardProps {
   source: DataSource;
   onToggle: (id: string, enabled: boolean) => void | Promise<void>;
   onRemove: (id: string) => void | Promise<void>;
-  onFetch: (id: string, url?: string) => Promise<{ ingested: number; duplicates: number } | null>;
+  onFetch: (id: string, url?: string) => Promise<{ ingested: number; duplicates: number; error?: string } | null>;
   toggling?: boolean;
   removing?: boolean;
 }
@@ -39,7 +39,7 @@ export function DataSourceCard({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [fetchUrl, setFetchUrl] = useState('');
   const [fetching, setFetching] = useState(false);
-  const [fetchResult, setFetchResult] = useState<{ ingested: number; duplicates: number } | null>(null);
+  const [fetchResult, setFetchResult] = useState<{ ingested: number; duplicates: number; error?: string } | null>(null);
   const [showFetch, setShowFetch] = useState(false);
   const { variant, label } = statusConfig[source.status];
 
@@ -103,7 +103,7 @@ export function DataSourceCard({
 
           {/* Actions */}
           <div className="flex items-center gap-2 shrink-0">
-            {source.enabled && isCli && (
+            {source.enabled && (
               <Button variant="secondary" size="sm" onClick={() => setShowFetch(!showFetch)}>
                 Fetch
               </Button>
@@ -143,7 +143,7 @@ export function DataSourceCard({
                 type="text"
                 value={fetchUrl}
                 onChange={(e) => setFetchUrl(e.target.value)}
-                placeholder="URL to fetch (e.g. RSS feed URL)"
+                placeholder="URL or search query"
                 className="flex-1 rounded-lg border border-border bg-bg-primary px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
               />
               <Button size="sm" onClick={handleFetch} disabled={fetching} loading={fetching}>
@@ -152,14 +152,16 @@ export function DataSourceCard({
             </div>
             {fetchResult && (
               <p className="text-xs text-text-secondary">
-                {fetchResult.ingested > 0 ? (
+                {fetchResult.error ? (
+                  <span className="text-error">{fetchResult.error}</span>
+                ) : fetchResult.ingested > 0 ? (
                   <span className="text-success">
                     {fetchResult.ingested} signal{fetchResult.ingested !== 1 ? 's' : ''} ingested
                   </span>
                 ) : (
                   <span className="text-text-muted">No new signals</span>
                 )}
-                {fetchResult.duplicates > 0 && (
+                {!fetchResult.error && fetchResult.duplicates > 0 && (
                   <span className="text-text-muted">
                     {' '}
                     ({fetchResult.duplicates} duplicate{fetchResult.duplicates !== 1 ? 's' : ''} skipped)

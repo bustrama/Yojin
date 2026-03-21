@@ -90,15 +90,21 @@ export default function Profile() {
     }
   }
 
-  async function handleFetchDs(id: string, url?: string): Promise<{ ingested: number; duplicates: number } | null> {
+  async function handleFetchDs(
+    id: string,
+    url?: string,
+  ): Promise<{ ingested: number; duplicates: number; error?: string } | null> {
     const result = await fetchDataSource({ id, url });
-    if (result.error || !result.data?.fetchDataSource.success) {
-      setDsError(result.data?.fetchDataSource.error ?? result.error?.message ?? 'Fetch failed');
-      return null;
+    const fetchResult = result.data?.fetchDataSource;
+    if (result.error) {
+      return { ingested: 0, duplicates: 0, error: result.error.message };
+    }
+    if (!fetchResult?.success) {
+      return { ingested: 0, duplicates: 0, error: fetchResult?.error ?? 'Fetch failed' };
     }
     return {
-      ingested: result.data.fetchDataSource.signalsIngested,
-      duplicates: result.data.fetchDataSource.duplicates,
+      ingested: fetchResult.signalsIngested,
+      duplicates: fetchResult.duplicates,
     };
   }
 

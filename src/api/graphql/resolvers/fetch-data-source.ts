@@ -215,11 +215,12 @@ export async function fetchDataSourceResolver(
     } else if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
       rawSignals = jsonToSignals(trimmed, config);
     } else {
+      const preview = trimmed.slice(0, 120).replace(/\n/g, ' ');
       return {
         success: false,
         signalsIngested: 0,
         duplicates: 0,
-        error: 'Unrecognized output format (expected XML or JSON)',
+        error: `Unrecognized output format (expected XML or JSON). Got: "${preview}..."`,
       };
     }
 
@@ -237,7 +238,21 @@ export async function fetchDataSourceResolver(
       error: result.errors.length > 0 ? result.errors.join('; ') : null,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+
+    // Friendly error messages for common failures
+    let message = raw;
+    if (raw.includes('ENOENT')) {
+      message = `"${config.command}" is not installed. Install it and try again.`;
+    } else if (raw.includes('No module named')) {
+      const mod = raw.match(/No module named (\S+)/)?.[1] ?? 'the module';
+      message = `Python module "${mod}" is not installed. Run: pip install ${mod}`;
+    } else if (raw.includes('Command failed')) {
+      // Strip the full command echo, keep just the error output
+      const lines = raw.split('\n').filter((l) => !l.startsWith('Command failed:'));
+      message = lines.join(' ').trim() || raw;
+    }
+
     logger.error(`Fetch failed for ${config.id}: ${message}`);
     return { success: false, signalsIngested: 0, duplicates: 0, error: message };
   }
