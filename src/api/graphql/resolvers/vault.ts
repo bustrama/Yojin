@@ -6,6 +6,9 @@
  * to inject the EncryptedVault instance.
  */
 
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+
 import type { SecretMeta } from '../../../trust/vault/types.js';
 import type { EncryptedVault } from '../../../trust/vault/vault.js';
 
@@ -56,14 +59,78 @@ export async function listVaultSecretsQuery(): Promise<SecretMeta[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Brute-force protection for vault unlock
+// Brute-force protection — shared across unlock + changePassphrase
 // ---------------------------------------------------------------------------
 
-const MAX_UNLOCK_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 60_000; // 1 minute base lockout
 
-let failedAttempts = 0;
-let lockoutUntil = 0;
+interface LockoutState {
+  failedAttempts: number;
+  lockoutCount: number;
+  lockoutUntil: number;
+}
+
+let lockout: LockoutState = { failedAttempts: 0, lockoutCount: 0, lockoutUntil: 0 };
+
+function getLockoutPath(): string | null {
+  if (!vault) return null;
+  // Store lockout state next to the vault file
+  const vaultPath = (vault as unknown as { vaultPath: string }).vaultPath;
+  return vaultPath ? `${dirname(vaultPath)}/lockout.json` : null;
+}
+
+function loadLockoutState(): void {
+  const path = getLockoutPath();
+  if (!path || !existsSync(path)) return;
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf8')) as LockoutState;
+    lockout = { failedAttempts: data.failedAttempts, lockoutCount: data.lockoutCount, lockoutUntil: data.lockoutUntil };
+  } catch {
+    // Corrupted file — start fresh
+  }
+}
+
+function saveLockoutState(): void {
+  const path = getLockoutPath();
+  if (!path) return;
+  try {
+    writeFileSync(path, JSON.stringify(lockout), 'utf8');
+  } catch {
+    // Best-effort — don't crash if write fails
+  }
+}
+
+function checkLockout(): VaultResult | null {
+  loadLockoutState();
+  const now = Date.now();
+  if (lockout.lockoutUntil > 0 && now < lockout.lockoutUntil) {
+    const remainingSec = Math.ceil((lockout.lockoutUntil - now) / 1000);
+    return { success: false, error: `Too many failed attempts. Try again in ${remainingSec}s.` };
+  }
+  // Lockout expired — reset attempt counter for a fresh window
+  if (lockout.lockoutUntil > 0 && now >= lockout.lockoutUntil) {
+    lockout.failedAttempts = 0;
+    lockout.lockoutUntil = 0;
+  }
+  return null;
+}
+
+function recordFailure(): void {
+  lockout.failedAttempts++;
+  if (lockout.failedAttempts >= MAX_ATTEMPTS) {
+    lockout.lockoutCount++;
+    const multiplier = Math.pow(2, lockout.lockoutCount - 1); // 1, 2, 4, 8...
+    lockout.lockoutUntil = Date.now() + LOCKOUT_DURATION_MS * multiplier;
+    lockout.failedAttempts = 0;
+  }
+  saveLockoutState();
+}
+
+function recordSuccess(): void {
+  lockout = { failedAttempts: 0, lockoutCount: 0, lockoutUntil: 0 };
+  saveLockoutState();
+}
 
 // ---------------------------------------------------------------------------
 // Mutation resolvers
@@ -72,25 +139,15 @@ let lockoutUntil = 0;
 export async function unlockVaultMutation(_parent: unknown, args: { passphrase: string }): Promise<VaultResult> {
   if (!vault) return { success: false, error: 'Vault not configured' };
 
-  // Check lockout
-  const now = Date.now();
-  if (failedAttempts >= MAX_UNLOCK_ATTEMPTS && now < lockoutUntil) {
-    const remainingSec = Math.ceil((lockoutUntil - now) / 1000);
-    return { success: false, error: `Too many failed attempts. Try again in ${remainingSec}s.` };
-  }
+  const blocked = checkLockout();
+  if (blocked) return blocked;
 
   try {
     await vault.unlock(args.passphrase);
-    failedAttempts = 0;
-    lockoutUntil = 0;
+    recordSuccess();
     return { success: true };
   } catch (err) {
-    failedAttempts++;
-    if (failedAttempts >= MAX_UNLOCK_ATTEMPTS) {
-      // Exponential backoff: 1min, 2min, 4min, ...
-      const multiplier = Math.pow(2, Math.floor(failedAttempts / MAX_UNLOCK_ATTEMPTS) - 1);
-      lockoutUntil = now + LOCKOUT_DURATION_MS * multiplier;
-    }
+    recordFailure();
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
@@ -117,10 +174,15 @@ export async function changeVaultPassphraseMutation(
   if (!vault) return { success: false, error: 'Vault not configured' };
   if (!vault.isUnlocked) return { success: false, error: 'Vault is locked' };
 
+  const blocked = checkLockout();
+  if (blocked) return blocked;
+
   try {
     await vault.changePassphrase(args.currentPassphrase, args.newPassphrase);
+    recordSuccess();
     return { success: true };
   } catch (err) {
+    recordFailure();
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
