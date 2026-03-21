@@ -13,6 +13,7 @@ import { AgentRegistry } from './agents/registry.js';
 import { pubsub } from './api/graphql/pubsub.js';
 import { setConnectionManager } from './api/graphql/resolvers/connections.js';
 import { setPortfolioConnectionManager } from './api/graphql/resolvers/portfolio.js';
+import { setVault } from './api/graphql/resolvers/vault.js';
 import { BrainStore } from './brain/brain.js';
 import { EmotionTracker } from './brain/emotion.js';
 import { FrontalLobe } from './brain/frontal-lobe.js';
@@ -134,24 +135,12 @@ export async function readPassphraseFromTty(prompt: string): Promise<string> {
 }
 
 /**
- * Resolve the vault passphrase:
- * 1. YOJIN_VAULT_PASSPHRASE env var
- * 2. TTY prompt (if stdin is a TTY)
- * 3. null (vault skipped)
+ * Resolve the vault passphrase from env var only.
+ * No TTY prompt at startup — vault auto-unlocks without a passphrase by default.
+ * Users can set a passphrase via the web UI or CLI command.
  */
-async function resolvePassphrase(): Promise<string | null> {
-  const envPassphrase = process.env.YOJIN_VAULT_PASSPHRASE;
-  if (envPassphrase) return envPassphrase;
-
-  if (process.stdin.isTTY) {
-    try {
-      return await readPassphraseFromTty('Vault passphrase (hidden): ');
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
+function resolvePassphrase(): string | null {
+  return process.env.YOJIN_VAULT_PASSPHRASE ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,13 +169,21 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   if (!skipVault) {
     try {
       vault = new EncryptedVault({ auditLog, vaultPath: `${dataRoot}/data/vault/secrets.json` });
-      const passphrase = await resolvePassphrase();
+      // Always expose vault to GraphQL so the web UI can manage it
+      setVault(vault);
+
+      const passphrase = resolvePassphrase();
       if (passphrase) {
         await vault.unlock(passphrase);
-        log.info('Vault unlocked');
+        log.info('Vault unlocked with passphrase');
       } else {
-        log.info('No vault passphrase — credential tools will report vault locked');
-        vault = undefined;
+        // Try auto-unlock with empty passphrase (default for new vaults)
+        const autoUnlocked = await vault.tryAutoUnlock();
+        if (autoUnlocked) {
+          log.info('Vault auto-unlocked (no passphrase set)');
+        } else {
+          log.info('Vault has a passphrase — unlock via web UI or YOJIN_VAULT_PASSPHRASE env var');
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -198,9 +195,9 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   // 4b. Portfolio snapshot store (created early — ConnectionManager needs it)
   const snapshotStore = new PortfolioSnapshotStore(dataRoot);
 
-  // 4c. ConnectionManager (requires vault)
+  // 4c. ConnectionManager (requires unlocked vault)
   let connectionManager: ConnectionManager | undefined;
-  if (vault) {
+  if (vault?.isUnlocked) {
     const credentialLookup = await loadCredentialLookup(`${dataRoot}/data/config/platform-credentials.json`);
     connectionManager = new ConnectionManager({
       vault,
@@ -234,8 +231,8 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     toolRegistry.register(tool);
   }
 
-  // Credential tools (4 tools if vault available, stubs if not)
-  if (vault) {
+  // Credential tools (4 tools if vault unlocked, stubs if not)
+  if (vault?.isUnlocked) {
     for (const tool of createSecretTools({ vault })) {
       toolRegistry.register(tool);
     }

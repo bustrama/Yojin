@@ -144,7 +144,7 @@ pnpm chat -- --system "Be concise"     # Custom system prompt
 
 ### `yojin secret`
 
-Manage credentials in the encrypted vault (AES-256-GCM). Requires `YOJIN_VAULT_PASSPHRASE` env var and an interactive terminal.
+Manage credentials in the encrypted vault (AES-256-GCM). The vault auto-unlocks without a passphrase by default. You can also manage secrets via the Web UI under Profile.
 
 ```bash
 pnpm dev:be -- secret set ANTHROPIC_API_KEY   # Store a secret (hidden input)
@@ -167,7 +167,7 @@ pnpm setup
 |---------------------------|----------------------------------------------|----------|
 | `ANTHROPIC_API_KEY`       | Anthropic API key (alternative to OAuth)     | One of these |
 | `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `yojin setup`               | One of these |
-| `YOJIN_VAULT_PASSPHRASE`  | Passphrase for the encrypted credential vault | Yes (or TTY prompt) |
+| `YOJIN_VAULT_PASSPHRASE`  | Passphrase for the encrypted credential vault | No (auto-unlocks without one) |
 | `YOJIN_PII_NER`           | Set to `1` to enable NER-based PII detection | No |
 
 ## Project Structure
@@ -312,12 +312,14 @@ Yojin is built with security as a first-class concern. Every agent action passes
 
 ### Credential Vault
 
+The vault auto-unlocks without a passphrase by default — no setup required on first run. Users can optionally set a passphrase via the Web UI (Profile page) or the `YOJIN_VAULT_PASSPHRASE` env var for additional security.
+
 ```text
 ┌──────────────────────────────────────────────┐
 │               Encrypted Vault                 │
 │                                               │
 │  Passphrase ──▶ PBKDF2 (600k, SHA-512)       │
-│                      │                        │
+│  (optional)          │                        │
 │                 Derived Key                    │
 │                      │                        │
 │              ┌───────┴───────┐                │
@@ -334,6 +336,7 @@ Yojin is built with security as a first-class concern. Every agent action passes
 │  Key names: plaintext (enables list w/o key)  │
 │  MCP server: injects creds at transport layer │
 │  Raw values: NEVER in LLM prompts             │
+│  Web UI: manage secrets under Profile page    │
 └──────────────────────────────────────────────┘
 ```
 
@@ -501,13 +504,13 @@ Delete an event        ──▶ prevHash gap  ──▶ verifyChain() detects i
 
 ### Security Highlights
 
-- **Encrypted credential vault** — AES-256-GCM with PBKDF2 key derivation. Credentials injected at the transport layer, never exposed to the LLM.
+- **Encrypted credential vault** — AES-256-GCM with PBKDF2 key derivation. Auto-unlocks without passphrase by default; optional passphrase via Web UI or env var. Credentials injected at the transport layer, never exposed to the LLM.
 - **12 deterministic guards** — Kill switch, self-defense, tool policy, fs, command, egress, output-dlp, rate-budget, repetition, read-only, cooldown, symbol-whitelist.
 - **PII protection** — Chat messages scrubbed before LLM via Rehydra (email, phone, card, IP, URL + optional NER for names). Structured data redacted before external APIs (account IDs hashed, balances ranged).
 - **Human approval gate** — Irreversible actions (trades, new connections) require explicit approval via your active channel.
 - **HMAC-chained audit log** — Tamper-evident append-only JSONL. Every security event logged, chain integrity verifiable.
 - **Pipeline freeze** — Guard pipeline locked after initialization. No runtime modification possible.
-- **Local-first** — Your data stays on your machine. No cloud database, no containers, no third-party data storage.
+- **Local-first** — Your data stays on your machine. No cloud database, no containers, no third-party data storage. Manage everything via Web UI or CLI.
 
 ## Tech Stack
 

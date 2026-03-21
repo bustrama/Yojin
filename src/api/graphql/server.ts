@@ -28,6 +28,16 @@ import {
 } from './resolvers/portfolio.js';
 import { deviceInfoResolver } from './resolvers/profile.js';
 import { riskReportQuery } from './resolvers/risk.js';
+import {
+  addVaultSecretMutation,
+  changeVaultPassphraseMutation,
+  deleteVaultSecretMutation,
+  listVaultSecretsQuery,
+  setVaultPassphraseMutation,
+  unlockVaultMutation,
+  updateVaultSecretMutation,
+  vaultStatusQuery,
+} from './resolvers/vault.js';
 import { typeDefs } from './schema.js';
 
 const schema = createSchema({
@@ -46,6 +56,8 @@ const schema = createSchema({
       listConnections: listConnectionsResolver,
       detectAvailableTiers: detectAvailableTiersResolver,
       deviceInfo: deviceInfoResolver,
+      vaultStatus: vaultStatusQuery,
+      listVaultSecrets: listVaultSecretsQuery,
     },
     Mutation: {
       refreshPositions: refreshPositionsMutation,
@@ -55,6 +67,12 @@ const schema = createSchema({
       sendMessage: sendMessageMutation,
       connectPlatform: connectPlatformResolver,
       disconnectPlatform: disconnectPlatformResolver,
+      unlockVault: unlockVaultMutation,
+      setVaultPassphrase: setVaultPassphraseMutation,
+      changeVaultPassphrase: changeVaultPassphraseMutation,
+      addVaultSecret: addVaultSecretMutation,
+      updateVaultSecret: updateVaultSecretMutation,
+      deleteVaultSecret: deleteVaultSecretMutation,
     },
     Subscription: {
       onAlert: onAlertSubscription,

@@ -347,6 +347,88 @@ export const DISCONNECT_PLATFORM_MUTATION = gql`
 `;
 
 // ---------------------------------------------------------------------------
+// Queries — Vault
+// ---------------------------------------------------------------------------
+
+export const VAULT_STATUS_QUERY = gql`
+  query VaultStatus {
+    vaultStatus {
+      isUnlocked
+      hasPassphrase
+      secretCount
+    }
+  }
+`;
+
+export const LIST_VAULT_SECRETS_QUERY = gql`
+  query ListVaultSecrets {
+    listVaultSecrets {
+      key
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Mutations — Vault
+// ---------------------------------------------------------------------------
+
+export const UNLOCK_VAULT_MUTATION = gql`
+  mutation UnlockVault($passphrase: String!) {
+    unlockVault(passphrase: $passphrase) {
+      success
+      error
+    }
+  }
+`;
+
+export const SET_VAULT_PASSPHRASE_MUTATION = gql`
+  mutation SetVaultPassphrase($newPassphrase: String!) {
+    setVaultPassphrase(newPassphrase: $newPassphrase) {
+      success
+      error
+    }
+  }
+`;
+
+export const CHANGE_VAULT_PASSPHRASE_MUTATION = gql`
+  mutation ChangeVaultPassphrase($currentPassphrase: String!, $newPassphrase: String!) {
+    changeVaultPassphrase(currentPassphrase: $currentPassphrase, newPassphrase: $newPassphrase) {
+      success
+      error
+    }
+  }
+`;
+
+export const ADD_VAULT_SECRET_MUTATION = gql`
+  mutation AddVaultSecret($input: VaultSecretInput!) {
+    addVaultSecret(input: $input) {
+      success
+      error
+    }
+  }
+`;
+
+export const UPDATE_VAULT_SECRET_MUTATION = gql`
+  mutation UpdateVaultSecret($input: VaultSecretInput!) {
+    updateVaultSecret(input: $input) {
+      success
+      error
+    }
+  }
+`;
+
+export const DELETE_VAULT_SECRET_MUTATION = gql`
+  mutation DeleteVaultSecret($key: String!) {
+    deleteVaultSecret(key: $key) {
+      success
+      error
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
 // Subscriptions
 // ---------------------------------------------------------------------------
 
