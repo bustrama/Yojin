@@ -44,6 +44,7 @@ import { createPortfolioTools } from './tools/portfolio-tools.js';
 import { createSecurityAuditTools } from './tools/security-audit.js';
 import { FileAuditLog } from './trust/audit/audit-log.js';
 import { ChatPiiScanner } from './trust/pii/chat-scanner.js';
+import { DefaultPiiRedactor } from './trust/pii/redactor.js';
 import { createSecretTools } from './trust/vault/secure-input.js';
 import { EncryptedVault } from './trust/vault/vault.js';
 
@@ -73,6 +74,7 @@ export interface YojinServices {
   dataSourceRegistry: DataSourceRegistry;
   personaManager: PersonaManager;
   snapshotStore: PortfolioSnapshotStore;
+  piiRedactor: DefaultPiiRedactor;
   piiScanner: ChatPiiScanner;
   brain: {
     persona: PersonaManager;
@@ -289,7 +291,8 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   }
   log.info(`AgentRegistry ready — ${agentRegistry.getAll().length} agents`);
 
-  // 9. PII scanner (regex-only by default, NER opt-in via YOJIN_PII_NER=1)
+  // 9. PII redaction
+  const piiRedactor = new DefaultPiiRedactor({ auditLog });
   const piiScanner = new ChatPiiScanner({
     auditLog,
     enableNer: process.env.YOJIN_PII_NER === '1',
@@ -311,6 +314,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     dataSourceRegistry,
     personaManager: persona,
     snapshotStore,
+    piiRedactor,
     piiScanner,
     brain: {
       persona,

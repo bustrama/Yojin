@@ -115,13 +115,55 @@ export async function waitForSelector(page: Page, selector: string, opts?: WaitF
 // Screenshot on failure
 // ---------------------------------------------------------------------------
 
-/** Save a debug screenshot when a scrape fails. */
+/**
+ * Save a debug screenshot when a scrape fails.
+ *
+ * Before capturing, injects a CSS overlay that blurs text content likely to
+ * contain PII (balances, account numbers, names). This is defense-in-depth —
+ * screenshots are already saved to a gitignored directory, but this prevents
+ * sensitive data from being readable in the image.
+ */
 export async function screenshotOnFailure(page: Page, platform: string, cacheDir: string): Promise<string> {
   const screenshotDir = path.join(cacheDir, 'screenshots');
   await mkdir(screenshotDir, { recursive: true });
   const filename = `${platform.toLowerCase()}-${Date.now()}.png`;
   const filepath = path.join(screenshotDir, filename);
-  await page.screenshot({ path: filepath, fullPage: true });
+
+  // Inject a style that blurs text content containing sensitive data so the
+  // screenshot captures page structure (useful for debugging selectors) without PII.
+  // Best-effort — if injection fails (page mid-navigation, context closing), still capture the screenshot.
+  try {
+    await page.evaluate(`(() => {
+      var style = document.createElement('style');
+      style.id = '__yojin_pii_mask';
+      style.textContent = [
+        // Blur all text-bearing elements so values/names are unreadable
+        'body * { color: transparent !important; text-shadow: 0 0 8px rgba(0,0,0,0.5) !important; }',
+        // Keep structural outlines visible for debugging
+        'body * { border-color: rgba(128,128,128,0.3) !important; }',
+        // Hide images that might contain account info
+        'img { opacity: 0.2 !important; }',
+      ].join('\\n');
+      document.head.appendChild(style);
+    })()`);
+  } catch {
+    // Mask injection is best-effort — proceed without PII masking if unavailable
+  }
+
+  try {
+    await page.screenshot({ path: filepath, fullPage: true });
+  } finally {
+    try {
+      // Remove the mask so the page is usable if the browser stays open
+      await page.evaluate(`(() => {
+        var mask = document.getElementById('__yojin_pii_mask');
+        if (mask) mask.remove();
+      })()`);
+    } catch {
+      // Mask cleanup is best-effort — don't suppress the original error
+    }
+  }
+
   return filepath;
 }
 
