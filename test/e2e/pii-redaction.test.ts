@@ -33,15 +33,15 @@ describe('PII Redaction E2E', () => {
     }
   });
 
-  it('server is running', () => {
+  it('server is running', ({ skip }) => {
     if (!serverAvailable) {
-      console.warn('Skipping E2E tests — server not running on :3000');
+      skip();
     }
     expect(serverAvailable).toBe(true);
   });
 
-  it('addManualPosition saves exact values accessible via GraphQL', async () => {
-    if (!serverAvailable) return;
+  it('addManualPosition saves exact values accessible via GraphQL', async ({ skip }) => {
+    if (!serverAvailable) skip();
 
     // Add a position via mutation
     const mutation = `
@@ -82,8 +82,8 @@ describe('PII Redaction E2E', () => {
     expect(btcPos.costBasis).toBe(42000);
   });
 
-  it('portfolio query returns exact numeric values for UI', async () => {
-    if (!serverAvailable) return;
+  it('portfolio query returns exact numeric values for UI', async ({ skip }) => {
+    if (!serverAvailable) skip();
 
     const query = `
       query Portfolio {
