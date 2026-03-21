@@ -1,0 +1,35 @@
+{
+  "feeds": [
+    {
+      "id": "reuters-markets",
+      "name": "Reuters Markets",
+      "url": "https://www.reutersagency.com/feed/?best-topics=business-finance",
+      "category": "markets",
+      "enabled": true
+    },
+    {
+      "id": "coindesk-rss",
+      "name": "CoinDesk",
+      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+      "category": "crypto",
+      "enabled": true
+    },
+    {
+      "id": "seeking-alpha",
+      "name": "Seeking Alpha",
+      "url": "https://seekingalpha.com/market_currents.xml",
+      "category": "equities",
+      "enabled": true
+    },
+    {
+      "id": "fed-rss",
+      "name": "Federal Reserve Press Releases",
+      "url": "https://www.federalreserve.gov/feeds/press_all.xml",
+      "category": "macro",
+      "enabled": true
+    }
+  ],
+  "pollIntervalMs": 300000,
+  "maxArticlesPerFeed": 50,
+  "archiveDir": "data/news-archive"
+}
