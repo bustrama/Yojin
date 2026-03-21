@@ -141,7 +141,7 @@ export class SignalIngestor {
       assets: tickers.map((ticker) => ({
         ticker,
         relevance: 0.5, // default — refined by portfolio scoring later
-        linkType: 'DIRECT' as const,
+        linkType: type === 'MACRO' ? ('MACRO' as const) : ('DIRECT' as const),
       })),
       sources: [
         {

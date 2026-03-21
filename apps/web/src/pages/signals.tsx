@@ -39,10 +39,15 @@ export default function Signals() {
   });
   const [{ data: posData }] = usePositions();
 
-  const heldSymbols = new Set((posData?.positions ?? []).map((p) => p.symbol.toUpperCase()));
+  const positions = posData?.positions ?? [];
+  const heldSymbols = new Set(positions.map((p) => p.symbol.toUpperCase()));
+  const heldSectors = new Set(
+    positions.map((p) => p.sector?.toLowerCase()).filter((s): s is string => s != null && s !== ''),
+  );
+
   const allSignals = data?.signals ?? [];
   const signals = isPortfolioFilter
-    ? allSignals.filter((s) => s.tickers.some((t) => heldSymbols.has(t.toUpperCase())))
+    ? allSignals.filter((s) => isPortfolioRelevant(s, heldSymbols, heldSectors))
     : allSignals;
 
   function handleSearch(e: React.FormEvent<HTMLFormElement>) {
@@ -196,4 +201,53 @@ export default function Signals() {
       </Card>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio relevance — matches signals beyond direct ticker mentions
+// ---------------------------------------------------------------------------
+
+/** Sector keywords found in signal titles/content that map to GICS sectors. */
+const SECTOR_KEYWORDS: Record<string, string[]> = {
+  technology: [
+    'tech',
+    'software',
+    'semiconductor',
+    'chip',
+    'ai ',
+    'artificial intelligence',
+    'cloud computing',
+    'saas',
+    'cybersecurity',
+  ],
+  'health care': ['healthcare', 'pharma', 'biotech', 'fda', 'drug', 'medical', 'hospital'],
+  financials: ['bank', 'banking', 'financial', 'insurance', 'lending', 'mortgage', 'credit'],
+  energy: ['oil', 'natural gas', 'crude', 'opec', 'drilling', 'petroleum', 'renewable energy', 'solar', 'wind energy'],
+  'consumer discretionary': ['retail', 'e-commerce', 'luxury', 'auto', 'automotive', 'housing', 'consumer spending'],
+  'consumer staples': ['grocery', 'food', 'beverage', 'tobacco', 'household'],
+  industrials: ['manufacturing', 'aerospace', 'defense', 'logistics', 'construction', 'infrastructure'],
+  materials: ['mining', 'steel', 'copper', 'gold', 'lithium', 'chemical', 'commodity'],
+  utilities: ['utility', 'electric', 'power grid', 'water utility', 'natural gas utility'],
+  'real estate': ['real estate', 'reit', 'housing market', 'commercial property', 'mortgage rate'],
+  'communication services': ['media', 'streaming', 'telecom', 'advertising', 'social media'],
+};
+
+function isPortfolioRelevant(signal: Signal, heldSymbols: Set<string>, heldSectors: Set<string>): boolean {
+  // Direct ticker match
+  if (signal.tickers.some((t) => heldSymbols.has(t.toUpperCase()))) return true;
+
+  // MACRO signals affect the entire portfolio (fed rates, inflation, GDP)
+  if (signal.type === 'MACRO') return true;
+
+  // Sector match — signal content mentions a sector the user is exposed to
+  if (heldSectors.size > 0) {
+    const text = `${signal.title} ${signal.content ?? ''}`.toLowerCase();
+    for (const [sector, keywords] of Object.entries(SECTOR_KEYWORDS)) {
+      if (heldSectors.has(sector) && keywords.some((kw) => text.includes(kw))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
