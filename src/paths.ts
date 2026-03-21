@@ -44,9 +44,12 @@ export function resolveDataRoot(): string {
  * Returns the absolute path to the `data/default/` directory bundled with the package.
  */
 export function resolveDefaultsRoot(): string {
-  // src/paths.ts → project root is one level up from src/
   const thisDir = dirname(fileURLToPath(import.meta.url));
-  return resolve(thisDir, '..', 'data', 'default');
+  // When compiled: dist/src/paths.js → need ../../ to reach project root
+  // When running source: src/paths.ts → need ../ to reach project root
+  const isCompiledOutput = thisDir.includes('/dist/');
+  const projectRoot = isCompiledOutput ? resolve(thisDir, '..', '..') : resolve(thisDir, '..');
+  return resolve(projectRoot, 'data', 'default');
 }
 
 /**

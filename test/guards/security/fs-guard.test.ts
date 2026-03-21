@@ -20,7 +20,7 @@ function deleteAction(path: string): ProposedAction {
 }
 
 describe('FsGuard', () => {
-  const guard = new FsGuard();
+  const guard = new FsGuard({ auditPath: `${HOME}/.yojin/audit` });
 
   it('passes when no path in action', () => {
     expect(guard.check({ type: 'tool_call' }).pass).toBe(true);
