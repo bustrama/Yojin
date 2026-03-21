@@ -13,5 +13,5 @@ export type { ApiHealthOptions } from './api-health.js';
 export { createPortfolioReasoningTools } from './portfolio-reasoning.js';
 export type { PortfolioReasoningOptions } from './portfolio-reasoning.js';
 
-export { createNewsTools } from '../news/tools.js';
-export type { NewsToolsOptions } from '../news/tools.js';
+export { createSignalTools } from '../signals/tools.js';
+export type { SignalToolsOptions } from '../signals/tools.js';

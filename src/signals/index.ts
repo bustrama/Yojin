@@ -40,3 +40,19 @@ export type {
   SignalIndexEntry,
   SignalIndex,
 } from './types.js';
+
+// Archive
+export { SignalArchive } from './archive.js';
+export type { SignalArchiveOptions, SignalQueryFilter } from './archive.js';
+
+// Ingestor
+export { SignalIngestor } from './ingestor.js';
+export type { IngestorOptions, IngestResult, RawSignalInput } from './ingestor.js';
+
+// Ticker extraction
+export { extractTickers } from './ticker-extractor.js';
+export type { SymbolResolver } from './ticker-extractor.js';
+
+// Agent tools
+export { createSignalTools } from './tools.js';
+export type { SignalToolsOptions } from './tools.js';

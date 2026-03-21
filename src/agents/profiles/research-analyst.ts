@@ -15,10 +15,10 @@ export function createResearchAnalystProfile(): AgentProfile {
       'openbb_currency_quote',
       'openbb_commodity_quote',
       'openbb_economy_indicators',
-      // News tools
-      'glob_news',
-      'grep_news',
-      'read_news',
+      // Signal tools
+      'glob_signals',
+      'grep_signals',
+      'read_signal',
       // Research / technicals
       'run_technical',
       'resolve_symbol',
@@ -34,6 +34,6 @@ export function createResearchAnalystProfile(): AgentProfile {
       'calculate',
     ],
     allowedActions: ['tool_call', 'network_request'],
-    capabilities: ['market-data', 'technicals', 'news', 'enrichment', 'symbol-resolution'],
+    capabilities: ['market-data', 'technicals', 'signals', 'enrichment', 'symbol-resolution'],
   };
 }
