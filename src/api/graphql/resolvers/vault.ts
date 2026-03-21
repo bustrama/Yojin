@@ -56,15 +56,41 @@ export async function listVaultSecretsQuery(): Promise<SecretMeta[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Brute-force protection for vault unlock
+// ---------------------------------------------------------------------------
+
+const MAX_UNLOCK_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 60_000; // 1 minute base lockout
+
+let failedAttempts = 0;
+let lockoutUntil = 0;
+
+// ---------------------------------------------------------------------------
 // Mutation resolvers
 // ---------------------------------------------------------------------------
 
 export async function unlockVaultMutation(_parent: unknown, args: { passphrase: string }): Promise<VaultResult> {
   if (!vault) return { success: false, error: 'Vault not configured' };
+
+  // Check lockout
+  const now = Date.now();
+  if (failedAttempts >= MAX_UNLOCK_ATTEMPTS && now < lockoutUntil) {
+    const remainingSec = Math.ceil((lockoutUntil - now) / 1000);
+    return { success: false, error: `Too many failed attempts. Try again in ${remainingSec}s.` };
+  }
+
   try {
     await vault.unlock(args.passphrase);
+    failedAttempts = 0;
+    lockoutUntil = 0;
     return { success: true };
   } catch (err) {
+    failedAttempts++;
+    if (failedAttempts >= MAX_UNLOCK_ATTEMPTS) {
+      // Exponential backoff: 1min, 2min, 4min, ...
+      const multiplier = Math.pow(2, Math.floor(failedAttempts / MAX_UNLOCK_ATTEMPTS) - 1);
+      lockoutUntil = now + LOCKOUT_DURATION_MS * multiplier;
+    }
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }

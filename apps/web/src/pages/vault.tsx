@@ -17,16 +17,7 @@ import {
 } from '../api/hooks';
 import type { VaultSecret } from '../api/types';
 
-/** Standalone vault page (kept for /vault route). */
-export default function Vault() {
-  return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      <VaultSection />
-    </div>
-  );
-}
-
-/** Embeddable vault section — used in Profile page and standalone /vault route. */
+/** Vault management section — embedded in the Profile page. */
 export function VaultSection() {
   const [statusResult, reexecuteStatus] = useVaultStatus();
   const [secretsResult, reexecuteSecrets] = useListVaultSecrets();
