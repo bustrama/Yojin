@@ -20,12 +20,54 @@ interface CatalogEntry {
   name: string;
   type: DataSourceType;
   capabilities: string[];
-  secretRef: string;
-  baseUrl: string;
   description: string;
+  // API-specific
+  secretRef?: string;
+  baseUrl?: string;
+  // CLI/MCP-specific
+  command?: string;
+  args?: string[];
 }
 
 const CATALOG: CatalogEntry[] = [
+  // --- CLI tools (prioritized — no API key needed, run locally) ---
+  {
+    id: 'openbb',
+    name: 'OpenBB Terminal',
+    type: 'CLI',
+    capabilities: ['market-data', 'fundamentals', 'forex', 'crypto', 'economy'],
+    command: 'openbb',
+    args: ['--format', 'json'],
+    description: 'Local financial terminal — stocks, crypto, forex, economy',
+  },
+  {
+    id: 'nimble-cli',
+    name: 'Nimble CLI',
+    type: 'CLI',
+    capabilities: ['web-scrape', 'social', 'search'],
+    command: 'nimble',
+    description: 'Web scraping and data collection from the terminal',
+  },
+  {
+    id: 'curl-rss',
+    name: 'RSS/Atom Feeds',
+    type: 'CLI',
+    capabilities: ['news'],
+    command: 'curl',
+    args: ['-s'],
+    description: 'Fetch RSS/Atom feeds via curl — no API key needed',
+  },
+  {
+    id: 'yfinance',
+    name: 'yfinance (Python)',
+    type: 'CLI',
+    capabilities: ['market-data', 'fundamentals', 'dividends'],
+    command: 'python3',
+    args: ['-m', 'yfinance'],
+    description: 'Yahoo Finance data via Python — free, no API key',
+  },
+
+  // --- API sources ---
   {
     id: 'exa-search',
     name: 'Exa Search',
@@ -167,8 +209,10 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
     setName(entry.name);
     setSourceType(entry.type);
     setCapabilities(entry.capabilities.join(', '));
-    setBaseUrl(entry.baseUrl);
-    setSecretRef(entry.secretRef);
+    setBaseUrl(entry.baseUrl ?? '');
+    setSecretRef(entry.secretRef ?? '');
+    setCommand(entry.command ?? '');
+    setArgs(entry.args?.join(' ') ?? '');
     setStep('details');
   }
 
@@ -222,8 +266,10 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
   const canSubmit = id.trim() && name.trim() && capabilities.trim();
 
   // Partition catalog: available (have key in vault), rest, already connected
-  const available = CATALOG.filter((e) => vaultKeys.has(e.secretRef) && !existingIds.has(e.id));
-  const rest = CATALOG.filter((e) => !vaultKeys.has(e.secretRef) && !existingIds.has(e.id));
+  // CLI tools are always ready (no key needed); API sources are ready if their key is in the vault
+  const isReady = (e: CatalogEntry) => e.type === 'CLI' || (e.secretRef != null && vaultKeys.has(e.secretRef));
+  const available = CATALOG.filter((e) => isReady(e) && !existingIds.has(e.id));
+  const rest = CATALOG.filter((e) => !isReady(e) && !existingIds.has(e.id));
 
   return (
     <Modal open={open} onClose={handleClose} title="Add Data Source">
@@ -234,7 +280,7 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
             <div>
               <p className="text-xs font-medium text-text-secondary mb-2 flex items-center gap-2">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />
-                Detected in vault
+                Ready to connect
               </p>
               <div className="space-y-2">
                 {available.map((entry) => (
@@ -444,6 +490,8 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
 // ---------------------------------------------------------------------------
 
 function CatalogButton({ entry, hasKey, onClick }: { entry: CatalogEntry; hasKey: boolean; onClick: () => void }) {
+  const isCli = entry.type === 'CLI';
+
   return (
     <button
       onClick={onClick}
@@ -454,21 +502,37 @@ function CatalogButton({ entry, hasKey, onClick }: { entry: CatalogEntry; hasKey
           hasKey ? 'bg-success/10 text-success' : 'bg-accent-primary/10 text-accent-primary'
         }`}
       >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"
-          />
-        </svg>
+        {isCli ? (
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z"
+            />
+          </svg>
+        ) : (
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"
+            />
+          </svg>
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-text-primary">{entry.name}</span>
-          {hasKey && (
-            <Badge variant="success" size="xs">
-              Key ready
+          {isCli ? (
+            <Badge variant="info" size="xs">
+              Local
             </Badge>
+          ) : (
+            hasKey && (
+              <Badge variant="success" size="xs">
+                Key ready
+              </Badge>
+            )
           )}
         </div>
         <p className="text-xs text-text-muted truncate">{entry.description}</p>
