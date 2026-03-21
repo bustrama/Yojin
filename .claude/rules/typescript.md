@@ -13,6 +13,7 @@ globs: ["**/*.ts"]
 ## Type Safety
 - Strict mode enabled — no `any` unless absolutely necessary (and comment why).
 - Use Zod schemas for all external data: config files, API responses, user input.
+- **Reuse typed Zod schemas.** When a typed schema exists (e.g. `PlatformSchema`, `AssetClassSchema`), use it instead of `z.string()`. This ensures `z.infer` produces the correct type and eliminates casts. If your Zod-inferred type doesn't match the interface, fix the schema — don't add `as T`.
 - Define interfaces for module boundaries (e.g., `IPortfolioScraper`, `Guard`, `RiskManager`).
 - Prefer `interface` over `type` for object shapes that will be implemented.
 - **Types must match runtime shape.** If a field is stripped at runtime (destructured out, deleted), `Omit` it from the type. Never use `as unknown as T` to hide a mismatch — create a purpose-built type instead.
