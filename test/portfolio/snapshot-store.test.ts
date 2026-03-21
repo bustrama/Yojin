@@ -122,7 +122,7 @@ describe('PortfolioSnapshotStore', () => {
     expect(typeof redacted!.totalCost).toBe('string');
     expect(redacted!.totalCost).toMatch(/^\$/);
     expect(typeof redacted!.totalPnl).toBe('string');
-    expect(redacted!.totalPnl).toMatch(/^\$/);
+    expect(redacted!.totalPnl).toMatch(/^-?\$/); // e.g. "$10k-$50k" or "-$50k-$100k"
     // Position-level balances should also be redacted
     const pos = redacted!.positions[0];
     expect(typeof pos.marketValue).toBe('string');

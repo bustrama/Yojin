@@ -92,7 +92,7 @@ export class PortfolioSnapshotStore {
       positions: snapshot.positions.map(({ currentPrice: _price, quantity: _qty, ...p }) => p),
     };
     const { data } = redactor.redact(sanitized as Record<string, unknown>);
-    return RedactedSnapshotSchema.parse(data) as RedactedSnapshot;
+    return RedactedSnapshotSchema.parse(data);
   }
 
   /** Read all snapshots (for history). */

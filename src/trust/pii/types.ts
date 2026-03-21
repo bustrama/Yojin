@@ -4,7 +4,9 @@
 
 import { z } from 'zod';
 
+import { AssetClassSchema } from '../../api/graphql/types.js';
 import type { Platform, Position } from '../../api/graphql/types.js';
+import { PlatformSchema } from '../../scraper/types.js';
 
 /** Position with balance fields converted to range strings by PII redaction. */
 export type RedactedPosition = Omit<
@@ -40,8 +42,8 @@ export const RedactedSnapshotSchema = z.object({
       unrealizedPnl: z.string(),
       unrealizedPnlPercent: z.number(),
       sector: z.string().optional(),
-      assetClass: z.string(),
-      platform: z.string(),
+      assetClass: AssetClassSchema,
+      platform: PlatformSchema,
     }),
   ),
   totalValue: z.string(),
@@ -49,7 +51,7 @@ export const RedactedSnapshotSchema = z.object({
   totalPnl: z.string(),
   totalPnlPercent: z.number(),
   timestamp: z.string(),
-  platform: z.string().nullable(),
+  platform: PlatformSchema.nullable(),
 });
 
 export interface RedactionRule {
