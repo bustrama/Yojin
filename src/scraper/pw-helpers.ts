@@ -148,11 +148,15 @@ export async function screenshotOnFailure(page: Page, platform: string, cacheDir
   try {
     await page.screenshot({ path: filepath, fullPage: true });
   } finally {
-    // Remove the mask so the page is usable if the browser stays open
-    await page.evaluate(`(() => {
-      var mask = document.getElementById('__yojin_pii_mask');
-      if (mask) mask.remove();
-    })()`);
+    try {
+      // Remove the mask so the page is usable if the browser stays open
+      await page.evaluate(`(() => {
+        var mask = document.getElementById('__yojin_pii_mask');
+        if (mask) mask.remove();
+      })()`);
+    } catch {
+      // Mask cleanup is best-effort — don't suppress the original error
+    }
   }
 
   return filepath;

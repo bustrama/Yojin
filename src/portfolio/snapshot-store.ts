@@ -85,7 +85,12 @@ export class PortfolioSnapshotStore {
   async getLatestRedacted(redactor: PiiRedactor): Promise<RedactedSnapshot | null> {
     const snapshot = await this.getLatest();
     if (!snapshot) return null;
-    const { data } = redactor.redact(snapshot as unknown as Record<string, unknown>);
+    // Strip fields that allow exact balance reconstruction (quantity × currentPrice = marketValue)
+    const sanitized = {
+      ...snapshot,
+      positions: snapshot.positions.map(({ currentPrice: _, ...p }) => p),
+    };
+    const { data } = redactor.redact(sanitized as unknown as Record<string, unknown>);
     return data as unknown as RedactedSnapshot;
   }
 
