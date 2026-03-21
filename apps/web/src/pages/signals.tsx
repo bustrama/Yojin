@@ -419,7 +419,7 @@ function FilterTag({ label, onRemove }: { label: string; onRemove: () => void })
 
 /** Sector keywords found in signal titles/content that map to GICS sectors. */
 const SECTOR_KEYWORDS: Record<string, string[]> = {
-  technology: [
+  'information technology': [
     'tech',
     'software',
     'semiconductor',

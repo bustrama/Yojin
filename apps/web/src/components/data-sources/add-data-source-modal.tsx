@@ -105,7 +105,9 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
   const [{ data: dsData }] = useListDataSources();
 
   // Check which CLI commands are actually installed on the system
-  const cliCommands = CATALOG.filter((e) => e.type === 'CLI' && e.command).map((e) => e.command!);
+  const cliCommands = CATALOG.filter((e): e is typeof e & { command: string } => e.type === 'CLI' && !!e.command).map(
+    (e) => e.command,
+  );
   const [{ data: cliData }] = useCheckCliCommands(cliCommands);
   const availableCommands = new Set((cliData?.checkCliCommands ?? []).filter((c) => c.available).map((c) => c.command));
 
