@@ -131,19 +131,24 @@ export async function screenshotOnFailure(page: Page, platform: string, cacheDir
 
   // Inject a style that blurs text content containing sensitive data so the
   // screenshot captures page structure (useful for debugging selectors) without PII.
-  await page.evaluate(`(() => {
-    var style = document.createElement('style');
-    style.id = '__yojin_pii_mask';
-    style.textContent = [
-      // Blur all text-bearing elements so values/names are unreadable
-      'body * { color: transparent !important; text-shadow: 0 0 8px rgba(0,0,0,0.5) !important; }',
-      // Keep structural outlines visible for debugging
-      'body * { border-color: rgba(128,128,128,0.3) !important; }',
-      // Hide images that might contain account info
-      'img { opacity: 0.2 !important; }',
-    ].join('\\n');
-    document.head.appendChild(style);
-  })()`);
+  // Best-effort — if injection fails (page mid-navigation, context closing), still capture the screenshot.
+  try {
+    await page.evaluate(`(() => {
+      var style = document.createElement('style');
+      style.id = '__yojin_pii_mask';
+      style.textContent = [
+        // Blur all text-bearing elements so values/names are unreadable
+        'body * { color: transparent !important; text-shadow: 0 0 8px rgba(0,0,0,0.5) !important; }',
+        // Keep structural outlines visible for debugging
+        'body * { border-color: rgba(128,128,128,0.3) !important; }',
+        // Hide images that might contain account info
+        'img { opacity: 0.2 !important; }',
+      ].join('\\n');
+      document.head.appendChild(style);
+    })()`);
+  } catch {
+    // Mask injection is best-effort — proceed without PII masking if unavailable
+  }
 
   try {
     await page.screenshot({ path: filepath, fullPage: true });
