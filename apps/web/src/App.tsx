@@ -11,6 +11,7 @@ import Profile from './pages/profile';
 import Settings from './pages/settings';
 import Dashboard from './pages/dashboard';
 import Positions from './pages/positions';
+import Signals from './pages/signals';
 
 function RedirectPositionSymbol() {
   const { symbol } = useParams<{ symbol: string }>();
@@ -28,6 +29,7 @@ export default function App() {
               <Route path="portfolio" element={<Positions />} />
               <Route path="portfolio/:symbol" element={<Position />} />
               <Route path="chat" element={<Chat />} />
+              <Route path="signals" element={<Signals />} />
               <Route path="skills" element={<Skills />} />
               <Route path="profile" element={<Profile />} />
               <Route path="settings" element={<Settings />} />

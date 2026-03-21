@@ -1,7 +1,5 @@
 import { useCallback, useState } from 'react';
 
-import type { Signal } from '../api/types';
-
 import Card from '../components/common/card';
 import Spinner from '../components/common/spinner';
 import Button from '../components/common/button';
@@ -10,7 +8,6 @@ import { DataSourceCard } from '../components/data-sources/data-source-card';
 import { AddDataSourceModal } from '../components/data-sources/add-data-source-modal';
 import { PlatformCard } from '../components/platforms/platform-card';
 import { AddPlatformModal } from '../components/platforms/add-platform-modal';
-import type { BadgeVariant } from '../components/common/badge';
 import {
   useListConnections,
   useDisconnectPlatform,
@@ -20,7 +17,6 @@ import {
   useRemoveDataSource,
   useToggleDataSource,
   useFetchDataSource,
-  useSignals,
 } from '../api/hooks';
 import { VaultSection } from './vault';
 
@@ -46,7 +42,6 @@ export default function Profile() {
   const [, removeDataSource] = useRemoveDataSource();
   const [, toggleDataSource] = useToggleDataSource();
   const [, fetchDataSource] = useFetchDataSource();
-  const [{ data: signalsData, fetching: signalsFetching }] = useSignals({ limit: 50 });
 
   function openAddModal() {
     setAddModalKey((k: number) => k + 1);
@@ -285,94 +280,8 @@ export default function Profile() {
         }}
       />
 
-      {/* Ingested Signals */}
-      <SignalsSection fetching={signalsFetching} signals={signalsData?.signals} />
-
       {/* Credential Vault */}
       <VaultSection />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Signals viewer
-// ---------------------------------------------------------------------------
-
-const signalTypeBadge: Record<string, { variant: BadgeVariant; label: string }> = {
-  MACRO: { variant: 'info', label: 'Macro' },
-  FUNDAMENTAL: { variant: 'success', label: 'Fundamental' },
-  SENTIMENT: { variant: 'warning', label: 'Sentiment' },
-  TECHNICAL: { variant: 'neutral', label: 'Technical' },
-  NEWS: { variant: 'neutral', label: 'News' },
-};
-
-function SignalsSection({ fetching, signals }: { fetching: boolean; signals?: Signal[] }) {
-  const items = signals ?? [];
-
-  return (
-    <Card title="Ingested Signals" section>
-      {fetching ? (
-        <div className="flex justify-center py-8">
-          <Spinner />
-        </div>
-      ) : items.length === 0 ? (
-        <p className="py-8 text-center text-sm text-text-muted">
-          No signals ingested yet. Fetch a data source to see signals here.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-xs text-text-muted mb-2">
-            Showing latest {items.length} signal{items.length !== 1 ? 's' : ''}
-          </p>
-          {items.map((signal) => {
-            const badge = signalTypeBadge[signal.type] ?? { variant: 'neutral' as BadgeVariant, label: signal.type };
-            return (
-              <div key={signal.id} className="rounded-lg border border-border bg-bg-card px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant={badge.variant} size="xs">
-                        {badge.label}
-                      </Badge>
-                      <span className="text-2xs text-text-muted">{signal.sourceName}</span>
-                      <span className="text-2xs text-text-muted">
-                        {new Date(signal.publishedAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    {signal.link ? (
-                      <a
-                        href={signal.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium text-text-primary hover:text-accent-primary transition-colors line-clamp-2"
-                      >
-                        {signal.title}
-                      </a>
-                    ) : (
-                      <p className="text-sm font-medium text-text-primary line-clamp-2">{signal.title}</p>
-                    )}
-                    {signal.tickers.length > 0 && (
-                      <div className="flex gap-1 mt-1">
-                        {signal.tickers.map((t) => (
-                          <span
-                            key={t}
-                            className="text-2xs font-mono text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded"
-                          >
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {signal.confidence > 0 && (
-                    <span className="text-2xs text-text-muted shrink-0">{Math.round(signal.confidence * 100)}%</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Card>
   );
 }
