@@ -387,6 +387,32 @@ export const typeDefs = /* GraphQL */ `
     error: String
   }
 
+  type FetchResult {
+    success: Boolean!
+    signalsIngested: Int!
+    duplicates: Int!
+    error: String
+  }
+
+  # ---------------------------------------------------------------------------
+  # Signals
+  # ---------------------------------------------------------------------------
+
+  type Signal {
+    id: String!
+    type: String!
+    title: String!
+    content: String
+    publishedAt: String!
+    ingestedAt: String!
+    confidence: Float!
+    contentHash: String!
+    tickers: [String!]!
+    sourceId: String!
+    sourceName: String!
+    link: String
+  }
+
   input DataSourceInput {
     id: String!
     name: String!
@@ -432,6 +458,15 @@ export const typeDefs = /* GraphQL */ `
     listConnections: [Connection!]!
     detectAvailableTiers(platform: String!): [TierAvailability!]!
     listDataSources: [DataSource!]!
+    signals(
+      type: String
+      ticker: String
+      sourceId: String
+      since: String
+      until: String
+      search: String
+      limit: Int
+    ): [Signal!]!
     vaultStatus: VaultStatus!
     listVaultSecrets: [VaultSecret!]!
   }
@@ -444,6 +479,7 @@ export const typeDefs = /* GraphQL */ `
     sendMessage(threadId: String!, message: String!, imageBase64: String, imageMediaType: String): SendMessagePayload!
     connectPlatform(input: ConnectPlatformInput!): ConnectionResult!
     disconnectPlatform(platform: String!, removeCredentials: Boolean = false): ConnectionResult!
+    fetchDataSource(id: String!, url: String): FetchResult!
     addDataSource(input: DataSourceInput!): DataSourceResult!
     removeDataSource(id: String!): DataSourceResult!
     toggleDataSource(id: String!, enabled: Boolean!): DataSourceResult!
