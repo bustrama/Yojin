@@ -66,6 +66,7 @@ export async function signalsResolver(
     since?: string;
     until?: string;
     search?: string;
+    minConfidence?: number;
     limit?: number;
   },
 ): Promise<SignalGql[]> {
@@ -78,6 +79,7 @@ export async function signalsResolver(
   if (args.since) filter.since = args.since;
   if (args.until) filter.until = args.until;
   if (args.search) filter.search = args.search;
+  if (args.minConfidence != null) filter.minConfidence = args.minConfidence;
   filter.limit = args.limit ?? 50;
 
   const signals = await archive.query(filter);

@@ -465,6 +465,7 @@ export const typeDefs = /* GraphQL */ `
       since: String
       until: String
       search: String
+      minConfidence: Float
       limit: Int
     ): [Signal!]!
     vaultStatus: VaultStatus!

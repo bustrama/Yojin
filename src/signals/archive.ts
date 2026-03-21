@@ -41,6 +41,8 @@ export interface SignalQueryFilter {
   until?: string;
   /** Text search in title + content (case-insensitive). */
   search?: string;
+  /** Minimum confidence threshold (0-1). Signals below this are excluded. */
+  minConfidence?: number;
   /** Max signals to return. */
   limit?: number;
 }
@@ -192,6 +194,7 @@ export class SignalArchive {
       const haystack = `${signal.title} ${signal.content ?? ''}`.toLowerCase();
       if (!haystack.includes(term)) return false;
     }
+    if (filter.minConfidence != null && signal.confidence < filter.minConfidence) return false;
     return true;
   }
 

@@ -17,8 +17,16 @@ const signalTypeBadge: Record<string, { variant: BadgeVariant; label: string }> 
 
 const TYPE_OPTIONS = ['ALL', 'PORTFOLIO', 'MACRO', 'FUNDAMENTAL', 'SENTIMENT', 'TECHNICAL', 'NEWS'] as const;
 
+const CONFIDENCE_LEVELS = [
+  { value: 0, label: 'All' },
+  { value: 0.5, label: '50%+' },
+  { value: 0.7, label: '70%+' },
+  { value: 0.85, label: '85%+' },
+] as const;
+
 export default function Signals() {
-  const [typeFilter, setTypeFilter] = useState<string>('ALL');
+  const [typeFilter, setTypeFilter] = useState<string>('PORTFOLIO');
+  const [minConfidence, setMinConfidence] = useState(0.5);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
@@ -26,6 +34,7 @@ export default function Signals() {
   const [{ data, fetching }] = useSignals({
     type: typeFilter === 'ALL' || isPortfolioFilter ? undefined : typeFilter,
     search: search || undefined,
+    minConfidence: minConfidence > 0 ? minConfidence : undefined,
     limit: 100,
   });
   const [{ data: posData }] = usePositions();
@@ -61,6 +70,23 @@ export default function Signals() {
           ))}
         </div>
 
+        <div className="flex items-center gap-1.5">
+          <span className="text-2xs text-text-muted">Quality:</span>
+          {CONFIDENCE_LEVELS.map((level) => (
+            <button
+              key={level.value}
+              onClick={() => setMinConfidence(level.value)}
+              className={`rounded-full px-2 py-0.5 text-2xs font-medium transition-colors ${
+                minConfidence === level.value
+                  ? 'bg-accent-primary/20 text-accent-primary'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              {level.label}
+            </button>
+          ))}
+        </div>
+
         <form onSubmit={handleSearch} className="flex gap-2 ml-auto">
           <input
             type="text"
@@ -92,8 +118,8 @@ export default function Signals() {
           </div>
         ) : signals.length === 0 ? (
           <p className="py-12 text-center text-sm text-text-muted">
-            {search || typeFilter !== 'ALL'
-              ? 'No signals match your filters.'
+            {search || typeFilter !== 'ALL' || minConfidence > 0
+              ? 'No signals match your filters. Try lowering the quality threshold.'
               : 'No signals ingested yet. Add a data source and fetch some data.'}
           </p>
         ) : (

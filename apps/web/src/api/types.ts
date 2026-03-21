@@ -455,6 +455,7 @@ export interface SignalsVariables {
   since?: string;
   until?: string;
   search?: string;
+  minConfidence?: number;
   limit?: number;
 }
 

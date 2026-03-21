@@ -130,6 +130,8 @@ export class SignalIngestor {
     const tickers = input.tickers ?? extractTickers(textForTickers, this.symbolResolver);
     const type = input.type ?? this.classifyType(input);
 
+    const confidence = input.confidence ?? this.scoreConfidence(input, title, tickers, type);
+
     return {
       id: randomUUID().slice(0, 12),
       contentHash,
@@ -151,7 +153,7 @@ export class SignalIngestor {
       ],
       publishedAt,
       ingestedAt: new Date().toISOString(),
-      confidence: input.confidence ?? input.reliability,
+      confidence,
       ...(input.metadata || input.link
         ? {
             metadata: {
@@ -161,6 +163,37 @@ export class SignalIngestor {
           }
         : {}),
     };
+  }
+
+  /**
+   * Score confidence based on signal quality indicators.
+   * Starts from source reliability and adjusts up/down based on content.
+   */
+  private scoreConfidence(input: RawSignalInput, title: string, tickers: string[], type: SignalType): number {
+    let score = input.reliability; // base: 0.7 for RSS/API
+
+    // Specific tickers → more actionable
+    if (tickers.length > 0) score += 0.15;
+    // Too many tickers → probably a roundup/listicle
+    if (tickers.length > 5) score -= 0.1;
+
+    // Classified as something specific (not generic NEWS)
+    if (type !== 'NEWS') score += 0.1;
+
+    // Has substantive content beyond just a title
+    const content = input.content ?? '';
+    if (content.length > 100) score += 0.05;
+
+    // Short vague titles are noise
+    if (title.length < 20) score -= 0.15;
+
+    // Clickbait/vague patterns
+    if (/\b(you won't believe|shocking|breaking|watch this)\b/i.test(title)) score -= 0.2;
+
+    // Sponsored/ad content
+    if (/\b(sponsored|advertisement|promoted|paid post)\b/i.test(`${title} ${content}`)) score -= 0.3;
+
+    return Math.max(0, Math.min(1, score));
   }
 
   /**

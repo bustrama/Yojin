@@ -434,6 +434,7 @@ export const SIGNALS_QUERY = gql`
     $since: String
     $until: String
     $search: String
+    $minConfidence: Float
     $limit: Int
   ) {
     signals(
@@ -443,6 +444,7 @@ export const SIGNALS_QUERY = gql`
       since: $since
       until: $until
       search: $search
+      minConfidence: $minConfidence
       limit: $limit
     ) {
       id
