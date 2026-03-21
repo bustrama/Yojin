@@ -162,6 +162,13 @@ describe('SignalIngestor', () => {
     expect(signals[0].metadata?.link).toBe('https://example.com/article');
   });
 
+  it('omits metadata when no metadata or link is provided', async () => {
+    await ingestor.ingest([makeInput()]);
+
+    const signals = await archive.query({});
+    expect(signals[0].metadata).toBeUndefined();
+  });
+
   it('loads existing hashes from archive on initialization', async () => {
     // Pre-populate
     const ingestor1 = new SignalIngestor({ archive });

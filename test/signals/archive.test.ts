@@ -117,6 +117,24 @@ describe('SignalArchive', () => {
     expect(results[0].id).toBe('s2');
   });
 
+  it('filters by date range with plain date strings (boundary inclusive)', async () => {
+    await archive.appendBatch([
+      makeSignal({ id: 's1', publishedAt: '2026-03-19T12:00:00.000Z' }),
+      makeSignal({ id: 's2', publishedAt: '2026-03-20T12:00:00.000Z' }),
+      makeSignal({ id: 's3', publishedAt: '2026-03-21T12:00:00.000Z' }),
+    ]);
+    const results = await archive.query({ since: '2026-03-20', until: '2026-03-20' });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe('s2');
+  });
+
+  it('finds a signal by id filter', async () => {
+    await archive.appendBatch([makeSignal({ id: 's1' }), makeSignal({ id: 's2' }), makeSignal({ id: 's3' })]);
+    const results = await archive.query({ id: 's2', limit: 1 });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe('s2');
+  });
+
   it('filters by search text (case-insensitive)', async () => {
     await archive.appendBatch([
       makeSignal({ id: 's1', title: 'Fed holds rates steady' }),

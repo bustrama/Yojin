@@ -303,6 +303,19 @@ describe('SignalIndexSchema', () => {
     expect(result.entries).toHaveLength(0);
   });
 
+  it('rejects empty-string ticker in tickers array', () => {
+    expect(() =>
+      SignalIndexEntrySchema.parse({
+        id: 'sig_1',
+        contentHash: 'abc',
+        type: 'NEWS',
+        tickers: ['', 'AAPL'],
+        publishedAt: '2026-03-21T10:00:00.000Z',
+        ingestedAt: '2026-03-21T10:01:00.000Z',
+      }),
+    ).toThrow();
+  });
+
   it('accepts entry without optional portfolioScore', () => {
     const result = SignalIndexEntrySchema.parse({
       id: 'sig_1',
