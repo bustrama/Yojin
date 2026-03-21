@@ -252,6 +252,89 @@ export interface ConnectPlatformInput {
 }
 
 // ---------------------------------------------------------------------------
+// Vault
+// ---------------------------------------------------------------------------
+
+export interface VaultStatus {
+  isUnlocked: boolean;
+  hasPassphrase: boolean;
+  secretCount: number;
+}
+
+export interface VaultSecret {
+  key: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VaultResult {
+  success: boolean;
+  error: string | null;
+}
+
+export interface VaultSecretInput {
+  key: string;
+  value: string;
+}
+
+export interface VaultStatusQueryResult {
+  vaultStatus: VaultStatus;
+}
+
+export interface ListVaultSecretsQueryResult {
+  listVaultSecrets: VaultSecret[];
+}
+
+export interface UnlockVaultMutationResult {
+  unlockVault: VaultResult;
+}
+
+export interface UnlockVaultVariables {
+  passphrase: string;
+}
+
+export interface SetVaultPassphraseMutationResult {
+  setVaultPassphrase: VaultResult;
+}
+
+export interface SetVaultPassphraseVariables {
+  newPassphrase: string;
+}
+
+export interface ChangeVaultPassphraseMutationResult {
+  changeVaultPassphrase: VaultResult;
+}
+
+export interface ChangeVaultPassphraseVariables {
+  currentPassphrase: string;
+  newPassphrase: string;
+}
+
+export interface AddVaultSecretMutationResult {
+  addVaultSecret: VaultResult;
+}
+
+export interface AddVaultSecretVariables {
+  input: VaultSecretInput;
+}
+
+export interface UpdateVaultSecretMutationResult {
+  updateVaultSecret: VaultResult;
+}
+
+export interface UpdateVaultSecretVariables {
+  input: VaultSecretInput;
+}
+
+export interface DeleteVaultSecretMutationResult {
+  deleteVaultSecret: VaultResult;
+}
+
+export interface DeleteVaultSecretVariables {
+  key: string;
+}
+
+// ---------------------------------------------------------------------------
 // Subscriptions
 // ---------------------------------------------------------------------------
 

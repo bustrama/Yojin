@@ -17,3 +17,13 @@ export {
   useDisconnectPlatform,
   useOnConnectionStatus,
 } from './use-connections.js';
+export {
+  useVaultStatus,
+  useListVaultSecrets,
+  useUnlockVault,
+  useSetVaultPassphrase,
+  useChangeVaultPassphrase,
+  useAddVaultSecret,
+  useUpdateVaultSecret,
+  useDeleteVaultSecret,
+} from './use-vault.js';

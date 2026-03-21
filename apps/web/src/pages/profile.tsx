@@ -7,6 +7,7 @@ import Badge from '../components/common/badge';
 import { PlatformCard } from '../components/platforms/platform-card';
 import { AddPlatformModal } from '../components/platforms/add-platform-modal';
 import { useListConnections, useDisconnectPlatform, useRefreshPositions, useDeviceInfo } from '../api/hooks';
+import { VaultSection } from './vault';
 
 export default function Profile() {
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -159,6 +160,9 @@ export default function Profile() {
         onClose={() => setAddModalOpen(false)}
         connectedPlatforms={connectedPlatforms}
       />
+
+      {/* Credential Vault */}
+      <VaultSection />
     </div>
   );
 }

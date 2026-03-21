@@ -323,6 +323,32 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
+  # Vault
+  # ---------------------------------------------------------------------------
+
+  type VaultStatus {
+    isUnlocked: Boolean!
+    hasPassphrase: Boolean!
+    secretCount: Int!
+  }
+
+  type VaultSecret {
+    key: String!
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  type VaultResult {
+    success: Boolean!
+    error: String
+  }
+
+  input VaultSecretInput {
+    key: String!
+    value: String!
+  }
+
+  # ---------------------------------------------------------------------------
   # Root types
   # ---------------------------------------------------------------------------
 
@@ -353,6 +379,8 @@ export const typeDefs = /* GraphQL */ `
     sectorExposure: [SectorWeight!]!
     listConnections: [Connection!]!
     detectAvailableTiers(platform: String!): [TierAvailability!]!
+    vaultStatus: VaultStatus!
+    listVaultSecrets: [VaultSecret!]!
   }
 
   type Mutation {
@@ -363,6 +391,12 @@ export const typeDefs = /* GraphQL */ `
     sendMessage(threadId: String!, message: String!, imageBase64: String, imageMediaType: String): SendMessagePayload!
     connectPlatform(input: ConnectPlatformInput!): ConnectionResult!
     disconnectPlatform(platform: String!, removeCredentials: Boolean = false): ConnectionResult!
+    unlockVault(passphrase: String!): VaultResult!
+    setVaultPassphrase(newPassphrase: String!): VaultResult!
+    changeVaultPassphrase(currentPassphrase: String!, newPassphrase: String!): VaultResult!
+    addVaultSecret(input: VaultSecretInput!): VaultResult!
+    updateVaultSecret(input: VaultSecretInput!): VaultResult!
+    deleteVaultSecret(key: String!): VaultResult!
   }
 
   type Subscription {
