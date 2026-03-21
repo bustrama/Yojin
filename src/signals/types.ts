@@ -37,7 +37,7 @@ export type LinkType = z.infer<typeof LinkTypeSchema>;
 // ---------------------------------------------------------------------------
 
 export const SignalDataSourceSchema = z.object({
-  id: z.string(), // e.g. 'openbb-fmp', 'rss-reuters', 'keelson'
+  id: z.string().min(1), // e.g. 'openbb-fmp', 'rss-reuters', 'keelson'
   name: z.string(),
   type: SourceTypeSchema,
   reliability: z.number().min(0).max(1),
@@ -49,7 +49,7 @@ export type SignalDataSource = z.infer<typeof SignalDataSourceSchema>;
 // ---------------------------------------------------------------------------
 
 export const AssetSchema = z.object({
-  ticker: z.string(), // e.g. 'AAPL', 'BTC-USD'
+  ticker: z.string().min(1), // e.g. 'AAPL', 'BTC-USD'
   name: z.string().optional(),
   assetClass: AssetClassSchema,
   exchange: z.string().optional(),
@@ -63,7 +63,7 @@ export type Asset = z.infer<typeof AssetSchema>;
 // ---------------------------------------------------------------------------
 
 export const SignalAssetLinkSchema = z.object({
-  ticker: z.string(),
+  ticker: z.string().min(1),
   relevance: z.number().min(0).max(1), // how relevant this signal is to this asset
   linkType: LinkTypeSchema,
 });
@@ -74,13 +74,13 @@ export type SignalAssetLink = z.infer<typeof SignalAssetLinkSchema>;
 // ---------------------------------------------------------------------------
 
 export const SignalSchema = z.object({
-  id: z.string(), // nanoid
-  contentHash: z.string(), // SHA-256 for dedup across sources
+  id: z.string().min(1), // nanoid
+  contentHash: z.string().min(1), // SHA-256 for dedup across sources
   type: SignalTypeSchema,
-  title: z.string(),
+  title: z.string().min(1),
   content: z.string().optional(), // raw content or structured payload
   assets: z.array(SignalAssetLinkSchema), // many-to-many links
-  sources: z.array(SignalDataSourceSchema), // which providers contributed
+  sources: z.array(SignalDataSourceSchema).min(1), // which providers contributed
   publishedAt: z.string().datetime(), // when the data point was produced
   ingestedAt: z.string().datetime(), // when Yojin captured it
   confidence: z.number().min(0).max(1), // source confidence
@@ -93,7 +93,8 @@ export type Signal = z.infer<typeof SignalSchema>;
 // ---------------------------------------------------------------------------
 
 export const PortfolioRelevanceScoreSchema = z.object({
-  signalId: z.string(),
+  signalId: z.string().min(1),
+  ticker: z.string().min(1), // which position this score applies to
   exposureWeight: z.number().min(0).max(1), // position size as % of portfolio
   typeRelevance: z.number().min(0).max(1), // how much this signal type matters
   compositeScore: z.number().min(0).max(1), // final ranked score
@@ -105,8 +106,8 @@ export type PortfolioRelevanceScore = z.infer<typeof PortfolioRelevanceScoreSche
 // ---------------------------------------------------------------------------
 
 export const SignalIndexEntrySchema = z.object({
-  id: z.string(),
-  contentHash: z.string(),
+  id: z.string().min(1),
+  contentHash: z.string().min(1),
   type: SignalTypeSchema,
   tickers: z.array(z.string()), // denormalized from assets for fast lookup
   portfolioScore: z.number().min(0).max(1).optional(),

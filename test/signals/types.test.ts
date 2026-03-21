@@ -118,6 +118,10 @@ describe('AssetSchema', () => {
   it('rejects missing ticker', () => {
     expect(() => AssetSchema.parse({ assetClass: 'EQUITY' })).toThrow();
   });
+
+  it('rejects empty-string ticker', () => {
+    expect(() => AssetSchema.parse({ ticker: '', assetClass: 'EQUITY' })).toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -136,6 +140,10 @@ describe('SignalAssetLinkSchema', () => {
 
   it('rejects relevance out of range', () => {
     expect(() => SignalAssetLinkSchema.parse({ ticker: 'AAPL', relevance: 2.0, linkType: 'DIRECT' })).toThrow();
+  });
+
+  it('rejects empty-string ticker', () => {
+    expect(() => SignalAssetLinkSchema.parse({ ticker: '', relevance: 0.5, linkType: 'DIRECT' })).toThrow();
   });
 });
 
@@ -196,6 +204,22 @@ describe('SignalSchema', () => {
     expect(result.assets).toHaveLength(0);
   });
 
+  it('rejects empty sources array', () => {
+    expect(() => SignalSchema.parse({ ...validSignal, sources: [] })).toThrow();
+  });
+
+  it('rejects empty-string id', () => {
+    expect(() => SignalSchema.parse({ ...validSignal, id: '' })).toThrow();
+  });
+
+  it('rejects empty-string contentHash', () => {
+    expect(() => SignalSchema.parse({ ...validSignal, contentHash: '' })).toThrow();
+  });
+
+  it('rejects empty-string title', () => {
+    expect(() => SignalSchema.parse({ ...validSignal, title: '' })).toThrow();
+  });
+
   it('validates nested asset link schemas', () => {
     expect(() =>
       SignalSchema.parse({
@@ -214,20 +238,34 @@ describe('PortfolioRelevanceScoreSchema', () => {
   it('parses a valid score', () => {
     const result = PortfolioRelevanceScoreSchema.parse({
       signalId: 'sig_abc123',
+      ticker: 'AAPL',
       exposureWeight: 0.4,
       typeRelevance: 0.8,
       compositeScore: 0.72,
     });
     expect(result.compositeScore).toBe(0.72);
+    expect(result.ticker).toBe('AAPL');
   });
 
   it('rejects score values > 1', () => {
     expect(() =>
       PortfolioRelevanceScoreSchema.parse({
         signalId: 'sig_abc123',
+        ticker: 'AAPL',
         exposureWeight: 0.4,
         typeRelevance: 0.8,
         compositeScore: 1.5,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects missing ticker', () => {
+    expect(() =>
+      PortfolioRelevanceScoreSchema.parse({
+        signalId: 'sig_abc123',
+        exposureWeight: 0.4,
+        typeRelevance: 0.8,
+        compositeScore: 0.72,
       }),
     ).toThrow();
   });
