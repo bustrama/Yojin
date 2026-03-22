@@ -11,7 +11,7 @@ import {
   SignalSchema,
   SignalTypeSchema,
   SourceTypeSchema,
-} from '../../src/signals/index.js';
+} from '../../src/signals/types.js';
 
 // ---------------------------------------------------------------------------
 // Enum schemas
