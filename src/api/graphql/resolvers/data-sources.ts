@@ -157,6 +157,7 @@ export async function addDataSourceResolver(
     secretRef: input.secretRef,
     command: input.command,
     args: input.args,
+    feeds: input.feeds,
   };
 
   configs.push(config);

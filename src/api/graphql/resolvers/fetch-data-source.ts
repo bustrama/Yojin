@@ -196,28 +196,32 @@ function jsonToSignals(stdout: string, config: DataSourceConfig): RawSignalInput
 // Multi-feed fetcher — runs curl for each configured feed URL
 // ---------------------------------------------------------------------------
 
-async function fetchMultipleFeeds(config: DataSourceConfig, command: string, urls: string[]): Promise<FetchResult> {
+async function fetchMultipleFeeds(
+  config: DataSourceConfig,
+  command: string,
+  urls: string[],
+  env?: Record<string, string>,
+): Promise<FetchResult> {
   if (!ingestor) {
     return { success: false, signalsIngested: 0, duplicates: 0, error: 'Signal ingestor not initialized' };
   }
 
+  const ing = ingestor;
   let totalIngested = 0;
   let totalDuplicates = 0;
   const errors: string[] = [];
 
-  for (const url of urls) {
-    const cmdArgs = [...(config.args ?? []), url];
-    try {
+  const results = await Promise.allSettled(
+    urls.map(async (url) => {
+      const cmdArgs = [...(config.args ?? []), url];
       const { stdout } = await runCli(command, cmdArgs, {
         timeout: 30_000,
         maxBuffer: 10 * 1024 * 1024,
+        ...(env && { env }),
       });
 
       const trimmed = stdout.trim();
-      if (!trimmed) {
-        errors.push(`${url}: empty response`);
-        continue;
-      }
+      if (!trimmed) return { url, error: 'empty response' };
 
       let rawSignals: RawSignalInput[];
       if (trimmed.startsWith('<?xml') || trimmed.startsWith('<rss') || trimmed.startsWith('<feed')) {
@@ -225,20 +229,29 @@ async function fetchMultipleFeeds(config: DataSourceConfig, command: string, url
       } else if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
         rawSignals = jsonToSignals(trimmed, config);
       } else {
-        errors.push(`${url}: unrecognized format`);
-        continue;
+        return { url, error: 'unrecognized format' };
       }
 
-      if (rawSignals.length === 0) continue;
+      if (rawSignals.length === 0) return { url, ingested: 0, duplicates: 0 };
 
-      const result = await ingestor.ingest(rawSignals);
-      totalIngested += result.ingested;
-      totalDuplicates += result.duplicates;
-      if (result.errors.length > 0) errors.push(...result.errors);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.warn(`Feed fetch failed for ${url}: ${msg}`);
-      errors.push(`${url}: ${msg}`);
+      const result = await ing.ingest(rawSignals);
+      return { url, ingested: result.ingested, duplicates: result.duplicates, ingestErrors: result.errors };
+    }),
+  );
+
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      const msg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      errors.push(msg);
+    } else {
+      const val = result.value;
+      if (val.error) {
+        errors.push(`${val.url}: ${val.error}`);
+      } else {
+        totalIngested += val.ingested ?? 0;
+        totalDuplicates += val.duplicates ?? 0;
+        if (val.ingestErrors && val.ingestErrors.length > 0) errors.push(...val.ingestErrors);
+      }
     }
   }
 
@@ -302,24 +315,6 @@ export async function fetchDataSourceResolver(
     return { success: false, signalsIngested: 0, duplicates: 0, error: `Data source "${args.id}" has no command` };
   }
 
-  // For RSS sources with configured feeds: fetch all feeds (or a single URL if provided)
-  const feedUrls = args.url ? [args.url] : (config.feeds ?? []);
-  if (feedUrls.length > 0) {
-    return fetchMultipleFeeds(config, config.command, feedUrls);
-  }
-
-  // Build the command args
-  const cmdArgs = [...(config.args ?? [])];
-
-  // For Nimble-style sources: if args include "search" subcommand, pass url as --query
-  if (args.url) {
-    if (cmdArgs.includes('search')) {
-      cmdArgs.push('--query', args.url);
-    } else {
-      cmdArgs.push(args.url);
-    }
-  }
-
   // Resolve API key from vault if secretRef is configured
   const env: Record<string, string> = { ...process.env } as Record<string, string>;
   if (config.secretRef && vault?.isUnlocked) {
@@ -350,6 +345,24 @@ export async function fetchDataSourceResolver(
       duplicates: 0,
       error: 'Vault is locked. Unlock it first to use data sources that require API keys.',
     };
+  }
+
+  // For RSS sources with configured feeds: fetch all feeds (or a single URL if provided)
+  const feedUrls = args.url ? [args.url] : (config.feeds ?? []);
+  if (feedUrls.length > 0) {
+    return fetchMultipleFeeds(config, config.command, feedUrls, env);
+  }
+
+  // Build the command args
+  const cmdArgs = [...(config.args ?? [])];
+
+  // For Nimble-style sources: if args include "search" subcommand, pass url as --query
+  if (args.url) {
+    if (cmdArgs.includes('search')) {
+      cmdArgs.push('--query', args.url);
+    } else {
+      cmdArgs.push(args.url);
+    }
   }
 
   try {
