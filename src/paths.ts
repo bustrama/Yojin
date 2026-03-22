@@ -23,6 +23,7 @@ const DATA_SUBDIRS = [
   'news-archive',
   'cron',
   'acp',
+  'signals',
 ] as const;
 
 /**

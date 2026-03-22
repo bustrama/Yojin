@@ -238,10 +238,10 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   const dataSourceRegistry = new DataSourceRegistry();
 
   // 6b. Signal Archive + Ingestor
-  const signalArchive = new SignalArchive({ dir: `${dataRoot}/data/signals/by-date` });
+  const signalArchive = new SignalArchive({ dir: `${dataRoot}/signals/by-date` });
   const signalIngestor = new SignalIngestor({ archive: signalArchive });
   setSignalArchive(signalArchive);
-  setFetchDeps({ configPath: `${dataRoot}/data/config/data-sources.json`, ingestor: signalIngestor, vault });
+  setFetchDeps({ configPath: `${dataRoot}/config/data-sources.json`, ingestor: signalIngestor, vault });
 
   // 6c. Run data source health checks (non-blocking)
   runHealthChecks().catch((err) => log.warn('Data source health check failed', { error: String(err) }));
@@ -287,7 +287,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
 
   // Data source query tools (2 tools: query_data_source, list_data_sources)
   for (const tool of createDataSourceQueryTools({
-    configPath: `${dataRoot}/data/config/data-sources.json`,
+    configPath: `${dataRoot}/config/data-sources.json`,
     vault,
     ingestor: signalIngestor,
   })) {
