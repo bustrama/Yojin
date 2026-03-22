@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router';
 import { Provider, useQuery } from 'urql';
 import { ChatProvider } from './lib/chat-context';
@@ -48,16 +48,17 @@ function OnboardingGuard() {
   const openOnboarding = useCallback(() => setModalOpen(true), []);
   const closeOnboarding = useCallback(() => setModalOpen(false), []);
 
+  const serverCompleted = result.data?.onboardingStatus?.completed ?? false;
+
+  // Re-hydrate localStorage when backend confirms completion (in an effect, not render)
+  useEffect(() => {
+    if (!completed && !skipped && serverCompleted) {
+      localStorage.setItem(ONBOARDING_KEYS.COMPLETE_KEY, 'true');
+    }
+  }, [completed, skipped, serverCompleted]);
+
   // Still loading backend status — wait
   if (!completed && !skipped && result.fetching) return null;
-
-  // Backend confirms completed — re-hydrate localStorage
-  if (!completed && !skipped && result.data?.onboardingStatus?.completed) {
-    localStorage.setItem(ONBOARDING_KEYS.COMPLETE_KEY, 'true');
-  }
-
-  // Show modal when: first visit (not completed, not skipped) OR manually re-opened
-  const serverCompleted = result.data?.onboardingStatus?.completed;
   const isComplete = completed || serverCompleted;
   const showModal = !isComplete && (!skipped || modalOpen);
 

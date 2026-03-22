@@ -25,6 +25,7 @@ let browser: Browser | null = null;
 let page: Page | null = null;
 let pkceCodeVerifier = '';
 let pkceState = '';
+let flowInProgress = false;
 
 const OAUTH_CALLBACK_URI = 'https://console.anthropic.com/oauth/code/callback';
 
@@ -44,6 +45,7 @@ async function closeBrowser(): Promise<void> {
   page = null;
   pkceCodeVerifier = '';
   pkceState = '';
+  flowInProgress = false;
 }
 
 /**
@@ -76,8 +78,13 @@ export interface MagicLinkStartResult {
 }
 
 export async function startMagicLinkFlow(email: string): Promise<MagicLinkStartResult> {
+  if (flowInProgress) {
+    return { success: false, error: 'A magic link flow is already in progress. Please wait or cancel it first.' };
+  }
+
   // Close any existing session
   await closeBrowser();
+  flowInProgress = true;
 
   try {
     const { chromium } = await import('playwright');
@@ -128,11 +135,11 @@ export async function startMagicLinkFlow(email: string): Promise<MagicLinkStartR
       bodyText.toLowerCase().includes('magic link') ||
       bodyText.toLowerCase().includes('sent');
 
-    if (onCheckEmail || !bodyText.toLowerCase().includes('error')) {
+    if (onCheckEmail) {
       return { success: true };
     }
 
-    // If the page shows an error, report it
+    // No positive signal found — treat as failure
     await closeBrowser();
     return { success: false, error: 'Failed to submit email. Check the email address and try again.' };
   } catch (err) {
@@ -162,6 +169,14 @@ export async function completeMagicLinkFlow(magicLinkUrl: string): Promise<Magic
   }
 
   try {
+    // Set up route interception BEFORE any navigation so fast redirects are captured
+    let interceptedCallbackUrl: string | null = null;
+
+    await page.route(`${OAUTH_CALLBACK_URI}**`, (route) => {
+      interceptedCallbackUrl = route.request().url();
+      route.fulfill({ status: 200, contentType: 'text/html', body: 'Token captured.' });
+    });
+
     // Navigate to the magic link URL
     await page.goto(magicLinkUrl, { waitUntil: 'networkidle' });
     await page.waitForTimeout(3000);
@@ -203,14 +218,6 @@ export async function completeMagicLinkFlow(magicLinkUrl: string): Promise<Magic
 
       currentUrl = page.url();
     }
-
-    // Set up route interception to capture the OAuth callback
-    let interceptedCallbackUrl: string | null = null;
-
-    await page.route(`${OAUTH_CALLBACK_URI}**`, (route) => {
-      interceptedCallbackUrl = route.request().url();
-      route.fulfill({ status: 200, contentType: 'text/html', body: 'Token captured.' });
-    });
 
     // Loop through authorize flow (org selection → authorize → callback)
     for (let step = 0; step < 5; step++) {

@@ -142,8 +142,8 @@ export function Step3Platforms() {
         setScreen('grid');
         setSelectedPlatformId(null);
       }
-    } catch {
-      // Silently handle — user can retry
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Failed to save positions. Please try again.');
     } finally {
       setConfirming(false);
     }

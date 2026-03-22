@@ -61,11 +61,11 @@ export function Step1AiBrain() {
         // No env credential
       }
     }
-    if (!isReset && !state.aiProvider?.validated) detect();
+    if (!isReset && !validated) detect();
     return () => {
       cancelled = true;
     };
-  }, [isReset]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isReset, validated, updateState]);
 
   const handleSelectProvider = (p: Provider) => {
     if (p === provider) return;

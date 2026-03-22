@@ -562,7 +562,13 @@ export async function resetOnboardingMutation(): Promise<boolean> {
 
   // Remove AI credentials from vault
   if (vault?.isUnlocked) {
-    for (const key of ['anthropic_api_key', 'openai_api_key', 'openrouter_api_key', 'anthropic_verified_email']) {
+    for (const key of [
+      'anthropic_api_key',
+      'openai_api_key',
+      'openrouter_api_key',
+      'anthropic_verified_email',
+      'anthropic_oauth_token',
+    ]) {
       if (await vault.has(key)) {
         await vault.delete(key);
       }
@@ -596,6 +602,15 @@ export async function resetOnboardingMutation(): Promise<boolean> {
       }
     } catch {
       // ConnectionManager not ready
+    }
+  }
+
+  // Clear portfolio snapshots from previous onboarding
+  if (snapshotStore) {
+    try {
+      await snapshotStore.clearAll();
+    } catch {
+      // best-effort
     }
   }
 
