@@ -86,7 +86,7 @@ export class SignalArchive {
 
   /** Query signals across date-partitioned files. */
   async query(filter: SignalQueryFilter = {}): Promise<Signal[]> {
-    const files = await this.listFiles(filter.since, filter.until);
+    const files = (await this.listFiles(filter.since, filter.until)).reverse(); // newest first
     const results: Signal[] = [];
     const limit = filter.limit ?? Infinity;
 
@@ -94,7 +94,8 @@ export class SignalArchive {
       if (results.length >= limit) break;
 
       const signals = await this.readFile(file);
-      for (const signal of signals) {
+      for (const signal of [...signals].reverse()) {
+        // newest within the day first
         if (results.length >= limit) break;
         if (this.matchesFilter(signal, filter)) {
           results.push(signal);
