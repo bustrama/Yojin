@@ -69,7 +69,7 @@ const navItems: NavItem[] = [
 
 export default function Sidebar() {
   const { resolved } = useTheme();
-  const logoSrc = resolved === 'dark' ? '/yojin_logo_white.png' : '/yojin_logo.png';
+  const logoSrc = resolved === 'dark' ? '/brand/yojin_logo_white.png' : '/brand/yojin_logo.png';
 
   return (
     <aside className="flex w-[220px] flex-shrink-0 flex-col border-r border-border bg-bg-secondary">

@@ -62,15 +62,13 @@ function detectTimezone(): string {
   }
 }
 
-type BriefingChannel = 'web' | 'telegram';
-
 export function Step4Briefing() {
   const { state, updateState, nextStep, prevStep } = useOnboarding();
 
   const [time, setTime] = useState(state.briefing?.time ?? '08:00');
   const [timezone, setTimezone] = useState(state.briefing?.timezone ?? detectTimezone());
   const [sections, setSections] = useState<string[]>(state.briefing?.sections ?? getDefaultSections());
-  const [channel, setChannel] = useState<BriefingChannel>(state.briefing?.channel ?? 'web');
+  const channel = 'web';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -109,7 +107,7 @@ export function Step4Briefing() {
     } finally {
       setSaving(false);
     }
-  }, [time, timezone, sections, channel, updateState, nextStep]);
+  }, [time, timezone, sections, updateState, nextStep]);
 
   return (
     <OnboardingShell currentStep={4}>
@@ -157,25 +155,11 @@ export function Step4Briefing() {
           <div className="space-y-3">
             <p className="text-sm font-medium text-text-secondary">Deliver briefing via</p>
             <div className="flex gap-3">
-              {/* Web option */}
-              <button
-                type="button"
-                onClick={() => setChannel('web')}
-                className={cn(
-                  'cursor-pointer flex flex-1 items-center gap-3 rounded-xl border p-4 transition-colors',
-                  channel === 'web'
-                    ? 'border-accent-primary/60 bg-accent-glow'
-                    : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
-                )}
-              >
-                <div
-                  className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-lg',
-                    channel === 'web' ? 'bg-accent-primary/10' : 'bg-bg-tertiary',
-                  )}
-                >
+              {/* Web option (currently the only supported channel) */}
+              <div className="flex flex-1 items-center gap-3 rounded-xl border p-4 border-accent-primary/60 bg-accent-glow">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-primary/10">
                   <svg
-                    className={cn('h-5 w-5', channel === 'web' ? 'text-accent-primary' : 'text-text-muted')}
+                    className="h-5 w-5 text-accent-primary"
                     fill="none"
                     viewBox="0 0 24 24"
                     strokeWidth={1.5}
@@ -192,30 +176,19 @@ export function Step4Briefing() {
                   <p className="text-sm font-medium text-text-primary">Web</p>
                   <p className="text-xs text-text-muted">In-app dashboard</p>
                 </div>
-              </button>
+              </div>
 
-              {/* Telegram option (placeholder) */}
+              {/* Telegram option (placeholder — disabled until supported) */}
               <button
                 type="button"
-                onClick={() => setChannel('telegram')}
+                disabled
                 className={cn(
-                  'cursor-pointer flex flex-1 items-center gap-3 rounded-xl border p-4 transition-colors',
-                  channel === 'telegram'
-                    ? 'border-accent-primary/60 bg-accent-glow'
-                    : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
+                  'flex flex-1 items-center gap-3 rounded-xl border p-4 cursor-not-allowed opacity-50',
+                  'border-border bg-bg-card',
                 )}
               >
-                <div
-                  className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-lg',
-                    channel === 'telegram' ? 'bg-accent-primary/10' : 'bg-bg-tertiary',
-                  )}
-                >
-                  <svg
-                    className={cn('h-5 w-5', channel === 'telegram' ? 'text-accent-primary' : 'text-text-muted')}
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                  >
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-bg-tertiary">
+                  <svg className="h-5 w-5 text-text-muted" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
                   </svg>
                 </div>

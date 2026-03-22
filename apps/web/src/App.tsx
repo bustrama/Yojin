@@ -65,7 +65,7 @@ function OnboardingGuard() {
     <OnboardingModalContext.Provider value={{ openOnboarding }}>
       {showModal ? (
         <>
-          <div className="pointer-events-none select-none blur-sm" aria-hidden="true">
+          <div className="pointer-events-none select-none blur-sm" aria-hidden="true" inert>
             <AppShell />
           </div>
           <OnboardingPage onDismiss={closeOnboarding} />

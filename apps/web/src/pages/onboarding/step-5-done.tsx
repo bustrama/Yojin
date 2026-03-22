@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation } from 'urql';
 import { useOnboarding } from '../../lib/onboarding-context';
@@ -123,8 +124,11 @@ export function Step5Done() {
   const { state, completeOnboarding } = useOnboarding();
   const navigate = useNavigate();
   const [, executeComplete] = useMutation(COMPLETE_ONBOARDING_MUTATION);
+  const [finishing, setFinishing] = useState(false);
 
   const handleFinish = (path: string) => {
+    if (finishing) return;
+    setFinishing(true);
     // Fire-and-forget: mark completed server-side (best-effort)
     executeComplete({});
     // Mark completed client-side (localStorage) and close modal
@@ -208,6 +212,7 @@ export function Step5Done() {
           <Button
             variant="primary"
             size="lg"
+            disabled={finishing}
             onClick={() => handleFinish('/')}
             className="px-8 shadow-[0_0_24px_rgba(255,90,94,0.2)]"
           >
@@ -216,7 +221,13 @@ export function Step5Done() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
             </svg>
           </Button>
-          <Button variant="secondary" size="lg" onClick={() => handleFinish('/chat')} className="px-6">
+          <Button
+            variant="secondary"
+            size="lg"
+            disabled={finishing}
+            onClick={() => handleFinish('/chat')}
+            className="px-6"
+          >
             Open chat
             <svg className="ml-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path

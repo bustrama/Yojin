@@ -463,16 +463,19 @@ export async function confirmPositionsMutation(
   const { platform, positions } = args.input;
 
   if (snapshotStore) {
+    const CRYPTO_PLATFORMS = new Set(['binance', 'coinbase', 'metamask', 'phantom', 'polymarket']);
+    const inferredClass = CRYPTO_PLATFORMS.has(platform.toLowerCase()) ? 'CRYPTO' : 'EQUITY';
+
     const snapshotPositions = positions.map((p) => ({
       symbol: p.symbol,
       name: p.name || p.symbol,
       quantity: p.quantity || 0,
       costBasis: p.avgEntry || 0,
-      currentPrice: p.marketValue && p.quantity ? p.marketValue / p.quantity : p.avgEntry || 0,
+      currentPrice: p.quantity && p.quantity > 0 ? (p.marketValue ?? 0) / p.quantity : (p.avgEntry ?? 0),
       marketValue: p.marketValue || 0,
       unrealizedPnl: 0,
       unrealizedPnlPercent: 0,
-      assetClass: 'EQUITY' as const,
+      assetClass: inferredClass as 'EQUITY' | 'CRYPTO',
       platform,
     }));
 
@@ -509,7 +512,14 @@ export async function saveBriefingConfigMutation(
   }
 
   // Convert time + timezone to a cron-like schedule
-  const [hours, minutes] = time.split(':').map(Number);
+  const timeParts = time.split(':');
+  if (timeParts.length !== 2) {
+    throw new Error(`Invalid time format: "${time}". Expected HH:MM.`);
+  }
+  const [hours, minutes] = timeParts.map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    throw new Error(`Invalid time value: "${time}". Hours must be 0-23 and minutes 0-59.`);
+  }
   alertsConfig.digestSchedule = {
     time: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
     timezone,
