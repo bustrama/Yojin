@@ -108,7 +108,7 @@ export class SignalArchive {
 
   /** Find a single signal by ID (returns early on first match). */
   async getById(id: string): Promise<Signal | null> {
-    const files = await this.listFiles();
+    const files = (await this.listFiles()).reverse(); // newest first — matches query() strategy
 
     for (const file of files) {
       const signals = await this.readFile(file);
