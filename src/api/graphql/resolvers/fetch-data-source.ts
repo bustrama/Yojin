@@ -71,8 +71,9 @@ interface RssItem {
 function parseRssXml(xml: string): RssItem[] {
   const items: RssItem[] = [];
 
-  // Try RSS <item> tags first, then Atom <entry> tags
-  const isAtom = !/<item>/i.test(xml) && /<entry>/i.test(xml);
+  // Check root element (first ~500 chars) to distinguish RSS vs Atom
+  const head = xml.slice(0, 500);
+  const isAtom = /<feed[\s>]/i.test(head) && !/<rss[\s>]/i.test(head);
   const blockRegex = isAtom ? /<entry>([\s\S]*?)<\/entry>/gi : /<item>([\s\S]*?)<\/item>/gi;
   let match;
 
@@ -348,8 +349,9 @@ export async function fetchDataSourceResolver(
   }
 
   // For RSS sources with configured feeds: fetch all feeds (or a single URL if provided)
+  const isFeedSource = config.feeds !== undefined || !config.args?.includes('search');
   const feedUrls = args.url ? [args.url] : (config.feeds ?? []);
-  if (feedUrls.length > 0) {
+  if (isFeedSource && feedUrls.length > 0) {
     return fetchMultipleFeeds(config, config.command, feedUrls, env);
   }
 
