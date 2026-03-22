@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,7 +26,7 @@ describe('resolveDataRoot', () => {
   it('returns ~/.yojin when $YOJIN_HOME is not set', async () => {
     delete process.env.YOJIN_HOME;
     const { resolveDataRoot } = await import('../src/paths.js');
-    expect(resolveDataRoot()).toBe(`${homedir()}/.yojin`);
+    expect(resolveDataRoot()).toBe(join(homedir(), '.yojin'));
   });
 
   it('strips trailing slash from $YOJIN_HOME', async () => {
@@ -40,7 +40,7 @@ describe('resolveDefaultsRoot', () => {
   it('returns a path containing data/default', async () => {
     const { resolveDefaultsRoot } = await import('../src/paths.js');
     const result = resolveDefaultsRoot();
-    expect(result).toContain('data/default');
+    expect(result).toContain(['data', 'default'].join(sep));
   });
 
   it('returns a path where persona.default.md exists', async () => {

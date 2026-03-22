@@ -5,6 +5,7 @@
 import { z } from 'zod';
 
 import { PostureNameSchema } from '../guards/types.js';
+import { resolveDataRoot } from '../paths.js';
 import { ApprovalGateConfigSchema } from './approval/config.js';
 
 export const TrustConfigSchema = z.object({
@@ -13,7 +14,7 @@ export const TrustConfigSchema = z.object({
   /** Vault configuration. */
   vault: z
     .object({
-      path: z.string().default('vault/secrets.json'),
+      path: z.string().default(`${resolveDataRoot()}/vault/secrets.json`),
     })
     .default({}),
   /** Approval gate configuration. */
