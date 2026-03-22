@@ -98,6 +98,32 @@ describe('BM25Index', () => {
     });
   });
 
+  describe('score normalization', () => {
+    it('returns scores in 0-1 range', () => {
+      const index = new BM25Index();
+      index.build([
+        'apple earnings beat strong revenue growth',
+        'oil prices decline global demand weak',
+        'tech sector rotation into value stocks',
+      ]);
+      const results = index.search('apple earnings growth');
+      for (const r of results) {
+        expect(r.score).toBeGreaterThanOrEqual(0);
+        expect(r.score).toBeLessThanOrEqual(1);
+      }
+      expect(results[0].score).toBeGreaterThan(0.5);
+    });
+
+    it('returns 0 scores for non-matching documents', () => {
+      const index = new BM25Index();
+      index.build(['apple earnings beat', 'oil prices decline']);
+      const results = index.search('crypto bitcoin blockchain');
+      for (const r of results) {
+        expect(r.score).toBe(0);
+      }
+    });
+  });
+
   describe('custom constants', () => {
     it('accepts custom k1 and b', () => {
       const idx = new BM25Index({ k1: 1.5, b: 0.5 });

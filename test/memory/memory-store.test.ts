@@ -119,17 +119,55 @@ describe('SignalMemoryStore', () => {
         confidence: 0.8,
       });
 
-      await store.reflect(id, {
+      const result = await store.reflect(id, {
         outcome: 'AAPL rose 5%',
         lesson: 'Earnings beat in risk-on macro is reliable',
         actualReturn: 5.0,
         grade: 'CORRECT',
       });
 
+      expect(result).toEqual({ success: true });
+
       const results = await store.recall('Test situation');
       expect(results[0].entry.grade).toBe('CORRECT');
       expect(results[0].entry.lesson).toBe('Earnings beat in risk-on macro is reliable');
       expect(results[0].entry.reflectedAt).toBeTruthy();
+    });
+
+    it('returns error result for unknown entry id', async () => {
+      const result = await store.reflect('nonexistent', {
+        outcome: 'Some outcome',
+        lesson: 'Some lesson',
+        actualReturn: 1.0,
+        grade: 'CORRECT',
+      });
+      expect(result).toEqual({ success: false, error: 'Memory entry not found: nonexistent' });
+    });
+
+    it('returns error result when entry is already reflected', async () => {
+      const id = await store.store({
+        tickers: ['AAPL'],
+        situation: 'Test situation',
+        recommendation: 'Bullish',
+        confidence: 0.8,
+      });
+
+      await store.reflect(id, {
+        outcome: 'AAPL rose 5%',
+        lesson: 'First reflection',
+        actualReturn: 5.0,
+        grade: 'CORRECT',
+      });
+
+      const result = await store.reflect(id, {
+        outcome: 'Trying again',
+        lesson: 'Second reflection',
+        actualReturn: 3.0,
+        grade: 'PARTIALLY_CORRECT',
+      });
+
+      expect(result).toMatchObject({ success: false });
+      expect((result as { success: false; error: string }).error).toMatch(/already reflected/);
     });
   });
 
@@ -186,6 +224,41 @@ describe('SignalMemoryStore', () => {
 
       const pruned = await smallStore.prune();
       expect(pruned).toBe(1);
+    });
+
+    it('persists pruned entries to JSONL so reloads respect the cap', async () => {
+      const smallStore = new SignalMemoryStore({ role: 'analyst', dataDir: dir, maxEntries: 3 });
+      await smallStore.initialize();
+
+      const id1 = await smallStore.store({ tickers: ['A'], situation: 'S1', recommendation: 'R1', confidence: 0.5 });
+      const id2 = await smallStore.store({ tickers: ['B'], situation: 'S2', recommendation: 'R2', confidence: 0.5 });
+      await smallStore.store({ tickers: ['C'], situation: 'S3', recommendation: 'R3', confidence: 0.5 });
+      await smallStore.store({ tickers: ['D'], situation: 'S4', recommendation: 'R4', confidence: 0.5 });
+
+      await smallStore.reflect(id1, { outcome: 'O1', lesson: 'L1', actualReturn: 1, grade: 'CORRECT' });
+      await smallStore.reflect(id2, { outcome: 'O2', lesson: 'L2', actualReturn: 2, grade: 'CORRECT' });
+
+      const pruned = await smallStore.prune();
+      expect(pruned).toBe(1);
+
+      // Verify JSONL file only has 3 lines
+      const content = await readFile(join(dir, 'analyst', 'entries.jsonl'), 'utf-8');
+      const lines = content
+        .trim()
+        .split('\n')
+        .filter((l) => l.trim());
+      expect(lines).toHaveLength(3);
+
+      // Verify a fresh store reloads exactly 3 entries
+      const reloaded = new SignalMemoryStore({ role: 'analyst', dataDir: dir, maxEntries: 3 });
+      await reloaded.initialize();
+      // Verify reloaded JSONL still has exactly 3 entries
+      const reloadedContent = await readFile(join(dir, 'analyst', 'entries.jsonl'), 'utf-8');
+      const reloadedLines = reloadedContent
+        .trim()
+        .split('\n')
+        .filter((l) => l.trim());
+      expect(reloadedLines).toHaveLength(3);
     });
   });
 

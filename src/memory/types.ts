@@ -56,7 +56,7 @@ export type PriceOutcome = z.infer<typeof PriceOutcomeSchema>;
 /** Result of reflecting on a single entry. */
 export type ReflectionResult =
   | { success: true }
-  | { success: false; reason: 'price_unavailable' | 'llm_error' | 'already_reflected'; entryId: string };
+  | { success: false; reason: 'price_unavailable' | 'llm_error'; entryId: string };
 
 /** Summary of a batch reflection sweep. */
 export interface ReflectionSweepResult {
@@ -78,9 +78,4 @@ export interface LlmProvider {
     content: Array<{ type: string; text?: string }>;
     stopReason: string;
   }>;
-}
-
-/** Minimal PII redactor interface — subset of DefaultPiiRedactor needed for memory. */
-export interface PiiRedactor {
-  redact<T extends Record<string, unknown>>(data: T): { data: T; metadata: unknown };
 }

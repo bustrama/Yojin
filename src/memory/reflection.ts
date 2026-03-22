@@ -4,13 +4,13 @@ import type {
   LlmProvider,
   MemoryAgentRole,
   MemoryEntry,
-  PiiRedactor,
   PriceOutcome,
   PriceProvider,
   ReflectionResult,
   ReflectionSweepResult,
 } from './types.js';
 import { getLogger } from '../logging/index.js';
+import type { PiiRedactor } from '../trust/pii/types.js';
 
 const log = getLogger().sub('reflection-engine');
 
@@ -27,14 +27,14 @@ interface ReflectionEngineOptions {
   providerRouter: LlmProvider;
   memoryStores: Map<MemoryAgentRole, SignalMemoryStore>;
   priceProvider: PriceProvider;
-  piiRedactor?: PiiRedactor;
+  piiRedactor: PiiRedactor;
 }
 
 export class ReflectionEngine {
   private readonly provider: LlmProvider;
   private readonly stores: Map<MemoryAgentRole, SignalMemoryStore>;
   private readonly priceProvider: PriceProvider;
-  private readonly piiRedactor?: PiiRedactor;
+  private readonly piiRedactor: PiiRedactor;
 
   constructor(options: ReflectionEngineOptions) {
     this.provider = options.providerRouter;
@@ -86,20 +86,26 @@ export class ReflectionEngine {
     // Step 4: Build outcome text and apply PII redaction
     const outcome = `${entry.tickers[0]} returned ${price.returnPct.toFixed(1)}% (${price.priceAtAnalysis.toFixed(2)} → ${price.priceNow.toFixed(2)}). Period range: ${price.lowInPeriod.toFixed(2)}-${price.highInPeriod.toFixed(2)}.`;
 
-    const redacted = this.piiRedactor
-      ? { outcome: this.redactText(outcome), lesson: this.redactText(lesson) }
-      : { outcome, lesson };
+    const redacted = {
+      outcome: this.redactText(outcome),
+      lesson: this.redactText(lesson),
+    };
 
     // Step 5: Update memory atomically
     const store = this.stores.get(entry.agentRole);
     if (!store) throw new Error(`No memory store for role: ${entry.agentRole}`);
 
-    await store.reflect(entry.id, {
+    const reflectResult = await store.reflect(entry.id, {
       outcome: redacted.outcome,
       lesson: redacted.lesson,
       actualReturn: price.returnPct,
       grade,
     });
+
+    if (!reflectResult.success) {
+      log.warn('Failed to persist reflection', { entryId: entry.id, error: reflectResult.error });
+      return { success: false, reason: 'llm_error', entryId: entry.id };
+    }
 
     log.info('Reflection complete', { entryId: entry.id, grade, returnPct: price.returnPct });
     return { success: true };
@@ -120,6 +126,8 @@ export class ReflectionEngine {
         const r = await this.reflectOnEntry(entry);
         if (r.success) {
           result.reflected++;
+        } else if (r.reason === 'price_unavailable') {
+          result.skipped++;
         } else {
           result.errors++;
         }
@@ -148,20 +156,31 @@ export class ReflectionEngine {
     return reflected;
   }
 
+  /** Magnitude threshold — returns below this % are "way off" for a directional call. */
+  private static readonly MAGNITUDE_THRESHOLD = 1.0;
+
   private grade(recommendation: string, returnPct: number): Grade {
     const isBullish = BULLISH.test(recommendation);
     const isBearish = BEARISH.test(recommendation);
+    const absReturn = Math.abs(returnPct);
 
+    // Direction right but magnitude negligible — partially correct
+    if (isBullish && returnPct > 0 && absReturn < ReflectionEngine.MAGNITUDE_THRESHOLD) return 'PARTIALLY_CORRECT';
+    if (isBearish && returnPct < 0 && absReturn < ReflectionEngine.MAGNITUDE_THRESHOLD) return 'PARTIALLY_CORRECT';
+
+    // Direction correct with meaningful magnitude
     if (isBullish && returnPct > 0) return 'CORRECT';
     if (isBearish && returnPct < 0) return 'CORRECT';
+
+    // Direction wrong
     if (isBullish && returnPct < 0) return 'INCORRECT';
     if (isBearish && returnPct > 0) return 'INCORRECT';
 
+    // Ambiguous recommendation (neither bullish nor bearish keywords)
     return 'PARTIALLY_CORRECT';
   }
 
   private redactText(text: string): string {
-    if (!this.piiRedactor) return text;
     const { data } = this.piiRedactor.redact({ text });
     return data.text as string;
   }

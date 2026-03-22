@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 import type { SignalMemoryStore } from './memory-store.js';
 import { MemoryAgentRoleSchema } from './types.js';
-import type { MemoryAgentRole, MemoryEntry, PiiRedactor } from './types.js';
+import type { MemoryAgentRole, MemoryEntry } from './types.js';
 import type { ToolDefinition, ToolResult } from '../core/types.js';
+import type { PiiRedactor } from '../trust/pii/types.js';
 
 interface MemoryToolsOptions {
   stores: Map<MemoryAgentRole, SignalMemoryStore>;
@@ -42,7 +43,7 @@ export function createMemoryTools(options: MemoryToolsOptions): ToolDefinition[]
           recommendation: redactText(piiRedactor, params.recommendation),
           confidence: params.confidence,
         });
-        return { content: `Memory stored (id: ${id})` };
+        return { content: JSON.stringify({ id }) };
       } catch (err) {
         return { content: `Failed to store memory: ${err}`, isError: true };
       }

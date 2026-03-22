@@ -1,9 +1,12 @@
+import { join } from 'node:path';
+
 import { SignalMemoryStore } from './memory-store.js';
 import { ReflectionEngine } from './reflection.js';
 import { createMemoryTools } from './tools.js';
-import type { LlmProvider, MemoryAgentRole, PiiRedactor, PriceProvider } from './types.js';
+import type { LlmProvider, MemoryAgentRole, PriceProvider } from './types.js';
 import type { ToolDefinition } from '../core/types.js';
 import { getLogger } from '../logging/index.js';
+import type { PiiRedactor } from '../trust/pii/types.js';
 
 const log = getLogger().sub('memory-adapter');
 
@@ -25,7 +28,7 @@ interface WireMemoryResult {
 /** Wire up all memory components. Called from the composition root. */
 export async function wireMemory(options: WireMemoryOptions): Promise<WireMemoryResult> {
   const { dataRoot, providerRouter, priceProvider, piiRedactor } = options;
-  const memoryDir = `${dataRoot}/memory`;
+  const memoryDir = join(dataRoot, 'memory');
 
   // Create per-role stores
   const stores = new Map<MemoryAgentRole, SignalMemoryStore>();
@@ -52,4 +55,22 @@ export async function wireMemory(options: WireMemoryOptions): Promise<WireMemory
   log.info('Memory system wired', { roles: MEMORY_ROLES, storeCount: stores.size });
 
   return { stores, reflectionEngine, tools };
+}
+
+/**
+ * Late-wire the ReflectionEngine after the provider is available.
+ * Called from run-main.ts once ProviderRouter is constructed.
+ */
+export function createReflectionEngine(options: {
+  stores: Map<MemoryAgentRole, SignalMemoryStore>;
+  providerRouter: LlmProvider;
+  priceProvider: PriceProvider;
+  piiRedactor: PiiRedactor;
+}): ReflectionEngine {
+  return new ReflectionEngine({
+    providerRouter: options.providerRouter,
+    memoryStores: options.stores,
+    priceProvider: options.priceProvider,
+    piiRedactor: options.piiRedactor,
+  });
 }

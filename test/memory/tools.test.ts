@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { SignalMemoryStore } from '../../src/memory/memory-store.js';
 import { createMemoryTools } from '../../src/memory/tools.js';
-import type { MemoryAgentRole, PiiRedactor } from '../../src/memory/types.js';
+import type { MemoryAgentRole } from '../../src/memory/types.js';
+import type { PiiRedactor } from '../../src/trust/pii/types.js';
 
 type MockStore = {
   [K in keyof SignalMemoryStore]: ReturnType<typeof vi.fn>;
@@ -21,7 +22,12 @@ function makeMockStore(): MockStore {
 
 function makeMockRedactor(): PiiRedactor {
   return {
-    redact: vi.fn(<T extends Record<string, unknown>>(data: T) => ({ data, metadata: {} })),
+    redact: vi.fn(<T extends Record<string, unknown>>(data: T) => ({
+      data,
+      metadata: { fieldsRedacted: 0, rulesApplied: [], hash: '' },
+    })),
+    addRule: vi.fn(),
+    getStats: vi.fn().mockReturnValue({ fieldsRedacted: 0, callsProcessed: 0 }),
   };
 }
 
@@ -40,7 +46,7 @@ describe('createMemoryTools', () => {
   });
 
   describe('store_signal_memory', () => {
-    it('stores a memory and returns the id', async () => {
+    it('stores a memory and returns structured { id } result', async () => {
       const store = makeMockStore();
       const tools = createMemoryTools({
         stores: makeStores([['analyst', store]]),
@@ -57,7 +63,8 @@ describe('createMemoryTools', () => {
       });
 
       expect(result.isError).toBeFalsy();
-      expect(result.content).toContain('mock-id');
+      const parsed = JSON.parse(result.content);
+      expect(parsed).toEqual({ id: 'mock-id' });
       expect(store.store).toHaveBeenCalled();
     });
 

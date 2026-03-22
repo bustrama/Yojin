@@ -3,6 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SignalMemoryStore } from '../../src/memory/memory-store.js';
 import { ReflectionEngine } from '../../src/memory/reflection.js';
 import type { LlmProvider, MemoryAgentRole, MemoryEntry, PriceOutcome, PriceProvider } from '../../src/memory/types.js';
+import type { PiiRedactor } from '../../src/trust/pii/types.js';
+
+function makeMockRedactor(): PiiRedactor {
+  return {
+    redact: vi.fn(<T extends Record<string, unknown>>(data: T) => ({
+      data,
+      metadata: { fieldsRedacted: 0, rulesApplied: [], hash: '' },
+    })),
+    addRule: vi.fn(),
+    getStats: vi.fn().mockReturnValue({ fieldsRedacted: 0, callsProcessed: 0 }),
+  };
+}
 
 function makeEntry(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
   return {
@@ -28,7 +40,7 @@ type MockStore = {
 
 function makeMockStore(): MockStore {
   return {
-    reflect: vi.fn(),
+    reflect: vi.fn().mockResolvedValue({ success: true }),
     findUnreflected: vi.fn().mockResolvedValue([]),
     recall: vi.fn().mockResolvedValue([]),
     store: vi.fn(),
@@ -68,6 +80,7 @@ describe('ReflectionEngine', () => {
         providerRouter: makeMockProvider(),
         memoryStores: makeStores([['analyst', store]]),
         priceProvider: makePriceProvider(5.0),
+        piiRedactor: makeMockRedactor(),
       });
 
       const result = await engine.reflectOnEntry(makeEntry());
@@ -81,6 +94,7 @@ describe('ReflectionEngine', () => {
         providerRouter: makeMockProvider(),
         memoryStores: makeStores([['analyst', store]]),
         priceProvider: makePriceProvider(-5.0),
+        piiRedactor: makeMockRedactor(),
       });
 
       const result = await engine.reflectOnEntry(makeEntry());
@@ -94,10 +108,51 @@ describe('ReflectionEngine', () => {
         providerRouter: makeMockProvider(),
         memoryStores: makeStores([['analyst', store]]),
         priceProvider: makePriceProvider(-3.0),
+        piiRedactor: makeMockRedactor(),
       });
 
       const entry = makeEntry({ recommendation: 'Bearish — expect downside' });
       const result = await engine.reflectOnEntry(entry);
+      expect(result.success).toBe(true);
+      expect(store.reflect).toHaveBeenCalledWith('test-id', expect.objectContaining({ grade: 'CORRECT' }));
+    });
+
+    it('grades bullish + tiny positive return as PARTIALLY_CORRECT (magnitude mismatch)', async () => {
+      const store = makeMockStore();
+      const engine = new ReflectionEngine({
+        providerRouter: makeMockProvider(),
+        memoryStores: makeStores([['analyst', store]]),
+        priceProvider: makePriceProvider(0.3),
+        piiRedactor: makeMockRedactor(),
+      });
+      const result = await engine.reflectOnEntry(makeEntry({ confidence: 0.8 }));
+      expect(result.success).toBe(true);
+      expect(store.reflect).toHaveBeenCalledWith('test-id', expect.objectContaining({ grade: 'PARTIALLY_CORRECT' }));
+    });
+
+    it('grades bearish + tiny negative return as PARTIALLY_CORRECT (magnitude mismatch)', async () => {
+      const store = makeMockStore();
+      const engine = new ReflectionEngine({
+        providerRouter: makeMockProvider(),
+        memoryStores: makeStores([['analyst', store]]),
+        priceProvider: makePriceProvider(-0.2),
+        piiRedactor: makeMockRedactor(),
+      });
+      const entry = makeEntry({ recommendation: 'Bearish — expect downside', confidence: 0.8 });
+      const result = await engine.reflectOnEntry(entry);
+      expect(result.success).toBe(true);
+      expect(store.reflect).toHaveBeenCalledWith('test-id', expect.objectContaining({ grade: 'PARTIALLY_CORRECT' }));
+    });
+
+    it('grades bullish + strong positive return as CORRECT', async () => {
+      const store = makeMockStore();
+      const engine = new ReflectionEngine({
+        providerRouter: makeMockProvider(),
+        memoryStores: makeStores([['analyst', store]]),
+        priceProvider: makePriceProvider(8.0),
+        piiRedactor: makeMockRedactor(),
+      });
+      const result = await engine.reflectOnEntry(makeEntry({ confidence: 0.8 }));
       expect(result.success).toBe(true);
       expect(store.reflect).toHaveBeenCalledWith('test-id', expect.objectContaining({ grade: 'CORRECT' }));
     });
@@ -108,6 +163,7 @@ describe('ReflectionEngine', () => {
         providerRouter: makeMockProvider(),
         memoryStores: makeStores([['analyst', store]]),
         priceProvider: makePriceProvider(5.0),
+        piiRedactor: makeMockRedactor(),
       });
 
       const entry = makeEntry({ reflectedAt: '2026-03-22T10:00:00Z', grade: 'CORRECT' });
@@ -123,6 +179,7 @@ describe('ReflectionEngine', () => {
         providerRouter: makeMockProvider(),
         memoryStores: makeStores([['analyst', store]]),
         priceProvider: failingProvider,
+        piiRedactor: makeMockRedactor(),
       });
 
       const result = await engine.reflectOnEntry(makeEntry());
@@ -138,6 +195,7 @@ describe('ReflectionEngine', () => {
         providerRouter: failingLlm,
         memoryStores: makeStores([['analyst', store]]),
         priceProvider: makePriceProvider(5.0),
+        piiRedactor: makeMockRedactor(),
       });
 
       const result = await engine.reflectOnEntry(makeEntry());
@@ -146,6 +204,25 @@ describe('ReflectionEngine', () => {
   });
 
   describe('runSweep', () => {
+    it('counts price_unavailable as skipped, not errors', async () => {
+      const entry = makeEntry({ id: 'e1' });
+      const store = makeMockStore();
+      store.findUnreflected.mockResolvedValue([entry]);
+
+      const failingPrice: PriceProvider = vi.fn().mockRejectedValue(new Error('No data'));
+      const engine = new ReflectionEngine({
+        providerRouter: makeMockProvider(),
+        memoryStores: makeStores([['analyst', store]]),
+        priceProvider: failingPrice,
+        piiRedactor: makeMockRedactor(),
+      });
+
+      const result = await engine.runSweep();
+      expect(result.skipped).toBe(1);
+      expect(result.errors).toBe(0);
+      expect(result.reflected).toBe(0);
+    });
+
     it('reflects on all unreflected entries across stores', async () => {
       const entry1 = makeEntry({ id: 'e1', agentRole: 'analyst' });
       const entry2 = makeEntry({ id: 'e2', agentRole: 'strategist' });
@@ -162,6 +239,7 @@ describe('ReflectionEngine', () => {
           ['strategist', store2],
         ]),
         priceProvider: makePriceProvider(3.0),
+        piiRedactor: makeMockRedactor(),
       });
 
       const result = await engine.runSweep({ olderThanDays: 7 });
@@ -181,6 +259,7 @@ describe('ReflectionEngine', () => {
         providerRouter: makeMockProvider(),
         memoryStores: makeStores([['analyst', store]]),
         priceProvider: makePriceProvider(5.0),
+        piiRedactor: makeMockRedactor(),
       });
 
       const lessons = await engine.reflectOnRevisit('analyst', 'AAPL');

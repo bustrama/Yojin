@@ -349,6 +349,8 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   });
 
   // --- Signal memory ---
+  // ReflectionEngine requires providerRouter + priceProvider, which are created
+  // after buildContext (in run-main.ts). Use createReflectionEngine() to late-wire.
   const memoryResult = await wireMemory({
     dataRoot,
     piiRedactor,

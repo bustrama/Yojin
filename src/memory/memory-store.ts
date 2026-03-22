@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { BM25Index } from './bm25.js';
@@ -70,9 +70,16 @@ export class SignalMemoryStore {
     return entry.id;
   }
 
-  async reflect(id: string, reflection: ReflectionInput): Promise<void> {
+  async reflect(
+    id: string,
+    reflection: ReflectionInput,
+  ): Promise<{ success: true } | { success: false; error: string }> {
     const existing = this.entries.get(id);
-    if (!existing) throw new Error(`Memory entry not found: ${id}`);
+    if (!existing) return { success: false, error: `Memory entry not found: ${id}` };
+
+    if (existing.reflectedAt !== null) {
+      return { success: false, error: `Memory entry already reflected: ${id}` };
+    }
 
     const updated: MemoryEntry = {
       ...existing,
@@ -86,6 +93,7 @@ export class SignalMemoryStore {
     await this.appendEntry(updated);
     this.entries.set(id, updated);
     this.rebuildIndex();
+    return { success: true };
   }
 
   async recall(
@@ -143,6 +151,10 @@ export class SignalMemoryStore {
     for (const entry of toRemove) {
       this.entries.delete(entry.id);
     }
+
+    // Compact the JSONL file so pruned entries don't resurface on restart
+    const retained = [...this.entries.values()];
+    await writeFile(this.filePath, retained.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf-8');
 
     this.rebuildIndex();
     return toRemove.length;

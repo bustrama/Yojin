@@ -151,6 +151,14 @@ export class BM25Index {
       scores.push({ index: i, score });
     }
 
+    // Normalize scores to 0-1 range (divide by max score)
+    const maxScore = scores.reduce((max, s) => Math.max(max, s.score), 0);
+    if (maxScore > 0) {
+      for (const s of scores) {
+        s.score = s.score / maxScore;
+      }
+    }
+
     scores.sort((a, b) => b.score - a.score);
     const limit = topN ?? scores.length;
     return scores.slice(0, limit);

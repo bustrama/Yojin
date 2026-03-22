@@ -1,6 +1,7 @@
 import type { AgentStepResult, Workflow, WorkflowStep } from './types.js';
 import type { AgentRuntime } from '../core/agent-runtime.js';
 import { createSubsystemLogger } from '../logging/logger.js';
+import type { ReflectionEngine } from '../memory/reflection.js';
 
 const logger = createSubsystemLogger('orchestrator');
 
@@ -28,6 +29,7 @@ export class Orchestrator {
     logger.info(`Executing workflow: ${workflow.name}`, { workflowId });
     const outputs = new Map<string, AgentStepResult>();
 
+    let stageIndex = 0;
     for (const stage of workflow.stages) {
       if (Array.isArray(stage)) {
         const results = await Promise.all(stage.map((step) => this.executeStep(step, outputs, trigger, true)));
@@ -38,6 +40,13 @@ export class Orchestrator {
         const result = await this.executeStep(stage, outputs, trigger);
         outputs.set(result.agentId, result);
       }
+
+      // Run after-stage hook if registered
+      const hook = workflow.afterStageHooks?.get(stageIndex);
+      if (hook) {
+        await hook();
+      }
+      stageIndex++;
     }
 
     logger.info(`Workflow complete: ${workflow.name}`, {
@@ -65,10 +74,25 @@ export class Orchestrator {
   }
 }
 
-export function registerBuiltinWorkflows(orchestrator: Orchestrator): void {
+export function registerBuiltinWorkflows(
+  orchestrator: Orchestrator,
+  options?: { reflectionEngine?: ReflectionEngine },
+): void {
+  const afterStageHooks = new Map<number, () => Promise<void>>();
+
+  if (options?.reflectionEngine) {
+    afterStageHooks.set(0, async () => {
+      const engine = options.reflectionEngine;
+      if (!engine) return;
+      const result = await engine.runSweep({ olderThanDays: 7 });
+      logger.info('Post-scrape reflection sweep', { ...result });
+    });
+  }
+
   orchestrator.register({
     id: 'morning-digest',
     name: 'Morning Digest',
+    afterStageHooks: afterStageHooks.size > 0 ? afterStageHooks : undefined,
     stages: [
       {
         agentId: 'trader',
