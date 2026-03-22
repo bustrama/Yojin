@@ -29,7 +29,6 @@ let connectionManager: ConnectionManager | undefined;
 let snapshotStore: PortfolioSnapshotStore | undefined;
 let dataRoot = '.';
 
-
 export function setOnboardingVault(v: EncryptedVault): void {
   vault = v;
 }
