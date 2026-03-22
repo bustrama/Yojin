@@ -92,7 +92,6 @@ export class SignalMemoryStore {
 
     await this.appendEntry(updated);
     this.entries.set(id, updated);
-    this.rebuildIndex();
     return { success: true };
   }
 

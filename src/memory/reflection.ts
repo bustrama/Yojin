@@ -28,6 +28,8 @@ interface ReflectionEngineOptions {
   memoryStores: Map<MemoryAgentRole, SignalMemoryStore>;
   priceProvider: PriceProvider;
   piiRedactor: PiiRedactor;
+  /** Model to use for lesson generation (default: provider's default). */
+  model?: string;
 }
 
 export class ReflectionEngine {
@@ -35,12 +37,14 @@ export class ReflectionEngine {
   private readonly stores: Map<MemoryAgentRole, SignalMemoryStore>;
   private readonly priceProvider: PriceProvider;
   private readonly piiRedactor: PiiRedactor;
+  private readonly model: string;
 
   constructor(options: ReflectionEngineOptions) {
     this.provider = options.providerRouter;
     this.stores = options.memoryStores;
     this.priceProvider = options.priceProvider;
     this.piiRedactor = options.piiRedactor;
+    this.model = options.model ?? 'claude-sonnet-4-6';
   }
 
   async reflectOnEntry(entry: MemoryEntry): Promise<ReflectionResult> {
@@ -50,6 +54,7 @@ export class ReflectionEngine {
     }
 
     // Step 1: Fetch price outcome
+    // V1: uses first ticker only. Multi-ticker correlation is out of scope (see spec).
     let price: PriceOutcome;
     try {
       price = await this.priceProvider(entry.tickers[0], new Date(entry.createdAt));
@@ -65,7 +70,7 @@ export class ReflectionEngine {
     let lesson: string;
     try {
       const response = await this.provider.completeWithTools({
-        model: undefined,
+        model: this.model,
         system: REFLECTION_SYSTEM_PROMPT,
         messages: [
           {
@@ -132,6 +137,12 @@ export class ReflectionEngine {
           result.errors++;
         }
       }
+    }
+
+    // Enforce maxEntries cap after reflection adds data to entries
+    for (const [role, store] of this.stores) {
+      const pruned = await store.prune();
+      if (pruned > 0) log.info('Pruned memory entries', { role, pruned });
     }
 
     log.info('Reflection sweep complete', { ...result });

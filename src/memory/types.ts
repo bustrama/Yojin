@@ -68,10 +68,10 @@ export interface ReflectionSweepResult {
 /** Price provider function signature — injected via composition root. */
 export type PriceProvider = (ticker: string, since: Date) => Promise<PriceOutcome>;
 
-/** Minimal LLM provider interface — subset of AgentLoopProvider needed for reflection. */
+/** Minimal LLM provider interface — subset of ProviderRouter needed for reflection. */
 export interface LlmProvider {
   completeWithTools(params: {
-    model: string | undefined;
+    model: string;
     system?: string;
     messages: Array<{ role: string; content: string }>;
   }): Promise<{
