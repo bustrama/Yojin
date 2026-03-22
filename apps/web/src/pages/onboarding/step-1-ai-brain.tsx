@@ -21,13 +21,13 @@ const PROVIDERS: ProviderConfig[] = [
   { id: 'openrouter', name: 'OpenRouter', subtitle: 'Multi-model gateway', logo: '/ai-providers/openrouter.png' },
 ];
 
-type AuthMode = 'magic-link' | 'api-key';
+type AuthMode = 'oauth' | 'magic-link' | 'api-key';
 
 export function Step1AiBrain() {
   const { state, updateState, nextStep, prevStep, isReset } = useOnboarding();
 
   const [provider, setProvider] = useState<Provider>('claude');
-  const [authMode, setAuthMode] = useState<AuthMode>('magic-link');
+  const [authMode, setAuthMode] = useState<AuthMode>('oauth');
   const [apiKey, setApiKey] = useState('');
   const [email, setEmail] = useState('');
   const [magicLinkUrl, setMagicLinkUrl] = useState('');
@@ -37,12 +37,18 @@ export function Step1AiBrain() {
   const [validated, setValidated] = useState(state.aiProvider?.validated ?? false);
   const [validatedModel, setValidatedModel] = useState(state.aiProvider?.model ?? '');
   const [error, setError] = useState('');
-  const [envDetected, setEnvDetected] = useState(false);
+  const [autoDetected, setAutoDetected] = useState(false);
 
-  // Check for env-detected credential on mount
+  // OAuth flow state
+  const [oauthUrl, setOauthUrl] = useState('');
+  const [oauthStarted, setOauthStarted] = useState(false);
+  const [oauthCode, setOauthCode] = useState('');
+
+  // Check for env-detected or keychain credential on mount
   useEffect(() => {
     let cancelled = false;
     async function detect() {
+      // 1. Check env vars / vault
       try {
         const res = await fetch('/graphql', {
           method: 'POST',
@@ -52,13 +58,34 @@ export function Step1AiBrain() {
         const json = await res.json();
         const cred = json?.data?.detectAiCredential;
         if (!cancelled && cred) {
-          setEnvDetected(true);
+          setAutoDetected(true);
           setValidated(true);
           setValidatedModel(cred.model || 'Claude');
           updateState({ aiProvider: { method: 'env-detected', model: cred.model, validated: true } });
+          return;
         }
       } catch {
         // No env credential
+      }
+
+      // 2. Check macOS Keychain
+      try {
+        const res = await fetch('/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: '{ detectKeychainToken { found model error } }' }),
+        });
+        const json = await res.json();
+        const keychain = json?.data?.detectKeychainToken;
+        if (!cancelled && keychain?.found && !keychain?.error) {
+          setAutoDetected(true);
+          setValidated(true);
+          setValidatedModel(keychain.model || 'Claude (Keychain)');
+          updateState({ aiProvider: { method: 'env-detected', model: keychain.model, validated: true } });
+          return;
+        }
+      } catch {
+        // No keychain token
       }
     }
     if (!isReset && !validated) detect();
@@ -70,14 +97,17 @@ export function Step1AiBrain() {
   const handleSelectProvider = (p: Provider) => {
     if (p === provider) return;
     setProvider(p);
-    setAuthMode(p === 'claude' ? 'magic-link' : 'api-key');
+    setAuthMode(p === 'claude' ? 'oauth' : 'api-key');
     setApiKey('');
     setEmail('');
     setMagicLinkUrl('');
     setMagicLinkSent(false);
+    setOauthUrl('');
+    setOauthStarted(false);
+    setOauthCode('');
     setVerifying(false);
     setError('');
-    if (!envDetected) {
+    if (!autoDetected) {
       setValidated(false);
       setValidatedModel('');
     }
@@ -184,12 +214,73 @@ export function Step1AiBrain() {
     }
   }, [magicLinkUrl, updateState]);
 
+  // ── OAuth PKCE flow ──────────────────────────────────────────────────────
+
+  const handleStartOAuth = useCallback(async () => {
+    setError('');
+    setValidating(true);
+    try {
+      const res = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `mutation { startOAuthFlow { authUrl state } }`,
+        }),
+      });
+      const json = await res.json();
+      const result = json?.data?.startOAuthFlow;
+      if (result?.authUrl) {
+        setOauthUrl(result.authUrl);
+        setOauthStarted(true);
+        // Open the authorization URL in a new browser tab
+        window.open(result.authUrl, '_blank', 'noopener');
+      } else {
+        setError('Failed to start OAuth flow.');
+      }
+    } catch {
+      setError('Connection failed. Make sure the backend is running.');
+    } finally {
+      setValidating(false);
+    }
+  }, []);
+
+  const handleCompleteOAuth = useCallback(async () => {
+    if (!oauthCode.trim()) return;
+    setError('');
+    setValidating(true);
+    try {
+      const res = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `mutation ($code: String!) { completeOAuthFlow(code: $code) { success model error } }`,
+          variables: { code: oauthCode.trim() },
+        }),
+      });
+      const json = await res.json();
+      const result = json?.data?.completeOAuthFlow;
+      if (result?.success) {
+        setValidated(true);
+        setValidatedModel(result.model || 'Claude (OAuth)');
+        updateState({ aiProvider: { method: 'env-detected', model: result.model, validated: true } });
+      } else {
+        setError(result?.error || 'Failed to exchange authorization code.');
+      }
+    } catch {
+      setError('Connection failed.');
+    } finally {
+      setValidating(false);
+    }
+  }, [oauthCode, updateState]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
   const handleContinue = () => {
     if (validated) nextStep();
   };
 
-  // Env-detected banner
-  if (envDetected && validated) {
+  // Auto-detected banner (env vars, vault, or keychain)
+  if (autoDetected && validated) {
     return (
       <OnboardingShell currentStep={1}>
         <div className="w-full max-w-2xl">
@@ -313,11 +404,26 @@ export function Step1AiBrain() {
               </div>
             )}
 
-            {/* Claude: Magic link or API key toggle */}
+            {/* Claude: OAuth, Magic link, or API key toggle */}
             {!validated && provider === 'claude' && (
               <div className="space-y-4">
                 {/* Auth mode toggle */}
                 <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('oauth');
+                      setError('');
+                    }}
+                    className={cn(
+                      'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                      authMode === 'oauth'
+                        ? 'bg-bg-tertiary text-text-primary'
+                        : 'text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
+                    )}
+                  >
+                    Sign in with Claude
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -349,6 +455,100 @@ export function Step1AiBrain() {
                     API key
                   </button>
                 </div>
+
+                {/* OAuth — initial state: authorize button */}
+                {authMode === 'oauth' && !oauthStarted && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-text-muted">
+                      Sign in with your Anthropic account. A browser window will open for you to authorize Yojin.
+                    </p>
+                    {error && <p className="text-xs text-error">{error}</p>}
+                    <Button
+                      variant="primary"
+                      size="md"
+                      loading={validating}
+                      onClick={handleStartOAuth}
+                      className="w-full"
+                    >
+                      <svg
+                        className="mr-1.5 h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.5}
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                        />
+                      </svg>
+                      Authorize with Anthropic
+                    </Button>
+                  </div>
+                )}
+
+                {/* OAuth — paste code step */}
+                {authMode === 'oauth' && oauthStarted && (
+                  <div className="space-y-3">
+                    <div className="rounded-lg bg-bg-tertiary/50 p-3">
+                      <p className="mb-1.5 text-xs font-medium text-text-primary">Authorize in the browser window</p>
+                      <p className="text-[11px] leading-relaxed text-text-muted">
+                        1. Sign in to your Anthropic account
+                        <br />
+                        2. Click <span className="text-text-secondary">Allow</span> to authorize Yojin
+                        <br />
+                        3. Copy the authorization code from the redirect page
+                        <br />
+                        4. Paste it below
+                      </p>
+                    </div>
+                    <Input
+                      label="Authorization code"
+                      type="text"
+                      placeholder="Paste the code from the redirect page"
+                      value={oauthCode}
+                      onChange={(e) => setOauthCode(e.target.value)}
+                      error={error || undefined}
+                      size="md"
+                      onKeyDown={(e) => e.key === 'Enter' && handleCompleteOAuth()}
+                    />
+                    <Button
+                      variant="primary"
+                      size="md"
+                      loading={validating}
+                      disabled={!oauthCode.trim()}
+                      onClick={handleCompleteOAuth}
+                      className="w-full"
+                    >
+                      Complete setup
+                    </Button>
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Re-open the auth URL
+                          if (oauthUrl) window.open(oauthUrl, '_blank', 'noopener');
+                        }}
+                        className="cursor-pointer text-xs text-text-muted transition-colors hover:text-text-secondary"
+                      >
+                        Re-open authorization page
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOauthStarted(false);
+                          setOauthUrl('');
+                          setOauthCode('');
+                          setError('');
+                        }}
+                        className="cursor-pointer text-xs text-text-muted transition-colors hover:text-text-secondary"
+                      >
+                        Start over
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Magic link — enter email */}
                 {authMode === 'magic-link' && !magicLinkSent && !verifying && (

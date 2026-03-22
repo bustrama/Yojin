@@ -1,11 +1,11 @@
 import { execFile, spawn } from 'node:child_process';
-import { platform } from 'node:os';
 import { promisify } from 'node:util';
 
 import Anthropic from '@anthropic-ai/sdk';
 
 import { toAnthropicMessages } from './anthropic-messages.js';
 import type { AIProvider } from './types.js';
+import { readTokenFromKeychain } from '../auth/keychain.js';
 import { getTokenManager } from '../auth/token-manager.js';
 import type { AgentMessage, ContentBlock, ToolSchema } from '../core/types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
@@ -22,25 +22,6 @@ function isAuthError(error: unknown): boolean {
 /** Detect OAuth tokens by prefix. */
 function isOAuthToken(token: string): boolean {
   return token.startsWith('sk-ant-oat');
-}
-
-/**
- * Attempt to read Claude Code OAuth token from macOS Keychain.
- */
-async function readTokenFromKeychain(): Promise<string | null> {
-  if (platform() !== 'darwin') return null;
-  try {
-    const { stdout } = await execFileAsync(
-      'security',
-      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      { encoding: 'utf8', timeout: 3000 },
-    );
-    const parsed = JSON.parse(stdout.trim()) as { claudeAiOauth?: { accessToken?: string } };
-    const token = parsed.claudeAiOauth?.accessToken;
-    return token && isOAuthToken(token) ? token : null;
-  } catch {
-    return null;
-  }
 }
 
 /**
