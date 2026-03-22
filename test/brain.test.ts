@@ -10,11 +10,11 @@ import { FrontalLobe } from '../src/brain/frontal-lobe.js';
 import { PersonaManager, loadAgentPrompt } from '../src/brain/persona.js';
 import { DEFAULT_EMOTION_VALUES } from '../src/brain/types.js';
 
+let defaultsRoot: string = '';
+
 vi.mock('../src/paths.js', () => ({
   resolveDefaultsRoot: () => defaultsRoot,
 }));
-
-let defaultsRoot: string = '';
 
 let tmpDir: string;
 
