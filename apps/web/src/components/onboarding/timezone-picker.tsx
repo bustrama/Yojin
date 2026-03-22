@@ -128,8 +128,8 @@ export function TimezonePicker({ value, onChange }: TimezonePickerProps) {
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors',
-          'border-border bg-bg-tertiary text-text-secondary hover:border-text-muted hover:text-text-primary',
+          'cursor-pointer flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors',
+          'border-border bg-bg-tertiary text-text-secondary hover:border-accent-primary/30 hover:bg-bg-hover/50 hover:text-text-primary',
         )}
       >
         <svg
@@ -183,7 +183,7 @@ export function TimezonePicker({ value, onChange }: TimezonePickerProps) {
                       setOpen(false);
                     }}
                     className={cn(
-                      'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors',
+                      'cursor-pointer flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors',
                       tz === value
                         ? 'bg-accent-primary/10 text-accent-primary'
                         : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',

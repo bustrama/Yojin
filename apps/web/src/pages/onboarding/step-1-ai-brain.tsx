@@ -6,7 +6,7 @@ import Input from '../../components/common/input';
 import Badge from '../../components/common/badge';
 import { cn } from '../../lib/utils';
 
-type Provider = 'claude' | 'openrouter';
+type Provider = 'claude' | 'openai' | 'openrouter';
 
 interface ProviderConfig {
   id: Provider;
@@ -17,25 +17,27 @@ interface ProviderConfig {
 
 const PROVIDERS: ProviderConfig[] = [
   { id: 'claude', name: 'Claude', subtitle: 'Anthropic', logo: '/ai-providers/claude.png' },
+  { id: 'openai', name: 'OpenAI', subtitle: 'GPT models', logo: '/ai-providers/openai.png' },
   { id: 'openrouter', name: 'OpenRouter', subtitle: 'Multi-model gateway', logo: '/ai-providers/openrouter.png' },
 ];
 
-type AuthMode = 'oauth' | 'api-key';
+type AuthMode = 'magic-link' | 'api-key';
 
 export function Step1AiBrain() {
   const { state, updateState, nextStep, prevStep, isReset } = useOnboarding();
 
   const [provider, setProvider] = useState<Provider>('claude');
-  const [authMode, setAuthMode] = useState<AuthMode>('oauth');
+  const [authMode, setAuthMode] = useState<AuthMode>('magic-link');
   const [apiKey, setApiKey] = useState('');
+  const [email, setEmail] = useState('');
+  const [magicLinkUrl, setMagicLinkUrl] = useState('');
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validated, setValidated] = useState(state.aiProvider?.validated ?? false);
   const [validatedModel, setValidatedModel] = useState(state.aiProvider?.model ?? '');
   const [error, setError] = useState('');
   const [envDetected, setEnvDetected] = useState(false);
-  const [oauthState, setOauthState] = useState('');
-  const [oauthCode, setOauthCode] = useState('');
-  const [oauthPopupOpened, setOauthPopupOpened] = useState(false);
 
   // Check for env-detected credential on mount
   useEffect(() => {
@@ -68,11 +70,13 @@ export function Step1AiBrain() {
   const handleSelectProvider = (p: Provider) => {
     if (p === provider) return;
     setProvider(p);
-    setAuthMode(p === 'claude' ? 'oauth' : 'api-key');
+    setAuthMode(p === 'claude' ? 'magic-link' : 'api-key');
     setApiKey('');
+    setEmail('');
+    setMagicLinkUrl('');
+    setMagicLinkSent(false);
+    setVerifying(false);
     setError('');
-    setOauthPopupOpened(false);
-    setOauthCode('');
     if (!envDetected) {
       setValidated(false);
       setValidatedModel('');
@@ -96,7 +100,7 @@ export function Step1AiBrain() {
             input: {
               method: 'API_KEY',
               apiKey: apiKey.trim(),
-              provider: provider === 'openrouter' ? 'OPENROUTER' : 'ANTHROPIC',
+              provider: provider === 'openrouter' ? 'OPENROUTER' : provider === 'openai' ? 'OPENAI' : 'ANTHROPIC',
             },
           },
         }),
@@ -117,31 +121,11 @@ export function Step1AiBrain() {
     }
   }, [apiKey, provider, updateState]);
 
-  const handleOAuth = useCallback(async () => {
-    setError('');
-    setValidating(true);
-    try {
-      const res = await fetch('/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'mutation { initiateOAuth { authUrl state } }' }),
-      });
-      const json = await res.json();
-      const { authUrl, state: returnedState } = json?.data?.initiateOAuth ?? {};
-      if (!authUrl) throw new Error('No auth URL');
-
-      setOauthState(returnedState);
-      setOauthPopupOpened(true);
-      setValidating(false);
-      window.open(authUrl, '_blank');
-    } catch {
-      setError('Failed to start OAuth. Try using an API key instead.');
-      setValidating(false);
+  const handleSendMagicLink = useCallback(async () => {
+    if (!email.trim()) {
+      setError('Please enter your email');
+      return;
     }
-  }, []);
-
-  const handleExchangeCode = useCallback(async () => {
-    if (!oauthCode.trim() || !oauthState) return;
     setError('');
     setValidating(true);
     try {
@@ -149,25 +133,56 @@ export function Step1AiBrain() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: `mutation ($code: String!, $state: String!) { exchangeOAuthCode(code: $code, state: $state) { success model error } }`,
-          variables: { code: oauthCode.trim(), state: oauthState },
+          query: `mutation ($email: String!) { sendMagicLink(email: $email) { success error } }`,
+          variables: { email: email.trim() },
         }),
       });
       const json = await res.json();
-      const result = json?.data?.exchangeOAuthCode;
+      const result = json?.data?.sendMagicLink;
       if (result?.success) {
-        setValidated(true);
-        setValidatedModel(result.model || 'Claude');
-        updateState({ aiProvider: { method: 'oauth', model: result.model, validated: true } });
+        setMagicLinkSent(true);
       } else {
-        setError(result?.error || 'Code exchange failed. Try again.');
+        setError(result?.error || 'Failed to send verification email.');
       }
     } catch {
-      setError('Connection failed.');
+      setError('Connection failed. Make sure the backend is running.');
     } finally {
       setValidating(false);
     }
-  }, [oauthCode, oauthState, updateState]);
+  }, [email]);
+
+  const handleCompleteMagicLink = useCallback(async () => {
+    if (!magicLinkUrl.trim()) return;
+    setError('');
+    setVerifying(true);
+    setValidating(true);
+    try {
+      const res = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `mutation ($magicLinkUrl: String!) { completeMagicLink(magicLinkUrl: $magicLinkUrl) { success model error } }`,
+          variables: { magicLinkUrl: magicLinkUrl.trim() },
+        }),
+      });
+      const json = await res.json();
+      const result = json?.data?.completeMagicLink;
+      if (result?.success) {
+        setValidated(true);
+        setValidatedModel(result.model || 'Claude');
+        updateState({ aiProvider: { method: 'magic-link', model: result.model, validated: true } });
+        setVerifying(false);
+      } else {
+        setError(result?.error || 'Failed to complete authentication. Try again.');
+        setVerifying(false);
+      }
+    } catch {
+      setError('Connection failed.');
+      setVerifying(false);
+    } finally {
+      setValidating(false);
+    }
+  }, [magicLinkUrl, updateState]);
 
   const handleContinue = () => {
     if (validated) nextStep();
@@ -177,7 +192,7 @@ export function Step1AiBrain() {
   if (envDetected && validated) {
     return (
       <OnboardingShell currentStep={1}>
-        <div className="w-full max-w-lg">
+        <div className="w-full max-w-2xl">
           <div
             className="mb-8 text-center opacity-0 [animation:onboarding-fade-up_0.5s_ease-out_forwards]"
             style={{ animationDelay: '0ms' }}
@@ -226,7 +241,7 @@ export function Step1AiBrain() {
 
   return (
     <OnboardingShell currentStep={1}>
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-2xl">
         {/* Header */}
         <div
           className="mb-8 text-center opacity-0 [animation:onboarding-fade-up_0.5s_ease-out_forwards]"
@@ -241,7 +256,7 @@ export function Step1AiBrain() {
           style={{ animationDelay: '100ms' }}
         >
           {/* Provider cards row */}
-          <div className="mb-6 grid grid-cols-2 gap-3">
+          <div className="mb-6 grid grid-cols-3 gap-3">
             {PROVIDERS.map((p) => {
               const isSelected = provider === p.id;
               return (
@@ -250,10 +265,10 @@ export function Step1AiBrain() {
                   type="button"
                   onClick={() => handleSelectProvider(p.id)}
                   className={cn(
-                    'relative flex items-center gap-3 rounded-xl border p-4 transition-all duration-200',
+                    'relative cursor-pointer flex items-center gap-3 rounded-xl border p-4 transition-all duration-200',
                     isSelected
                       ? 'border-accent-primary/60 bg-accent-glow'
-                      : 'border-border bg-bg-card hover:border-border-light hover:bg-bg-hover/50',
+                      : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
                   )}
                 >
                   <img src={p.logo} alt={p.name} className="h-10 w-10 rounded-lg" />
@@ -298,7 +313,7 @@ export function Step1AiBrain() {
               </div>
             )}
 
-            {/* Claude: OAuth or API key toggle */}
+            {/* Claude: Magic link or API key toggle */}
             {!validated && provider === 'claude' && (
               <div className="space-y-4">
                 {/* Auth mode toggle */}
@@ -306,17 +321,17 @@ export function Step1AiBrain() {
                   <button
                     type="button"
                     onClick={() => {
-                      setAuthMode('oauth');
+                      setAuthMode('magic-link');
                       setError('');
                     }}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                      authMode === 'oauth'
+                      'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                      authMode === 'magic-link'
                         ? 'bg-bg-tertiary text-text-primary'
-                        : 'text-text-muted hover:text-text-secondary',
+                        : 'text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
                     )}
                   >
-                    OAuth login
+                    Email verification
                   </button>
                   <button
                     type="button"
@@ -325,50 +340,115 @@ export function Step1AiBrain() {
                       setError('');
                     }}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                      'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
                       authMode === 'api-key'
                         ? 'bg-bg-tertiary text-text-primary'
-                        : 'text-text-muted hover:text-text-secondary',
+                        : 'text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
                     )}
                   >
                     API key
                   </button>
                 </div>
 
-                {/* OAuth form */}
-                {authMode === 'oauth' && !oauthPopupOpened && (
-                  <div>
-                    <p className="mb-3 text-xs text-text-muted">Uses your Claude subscription. No API key needed.</p>
-                    <Button variant="primary" size="md" loading={validating} onClick={handleOAuth} className="w-full">
-                      Log in with Claude
-                    </Button>
-                  </div>
-                )}
-
-                {authMode === 'oauth' && oauthPopupOpened && (
+                {/* Magic link — enter email */}
+                {authMode === 'magic-link' && !magicLinkSent && !verifying && (
                   <div className="space-y-3">
                     <p className="text-xs text-text-muted">
-                      Authorize in the tab that opened, then paste the code here.
+                      Enter your Anthropic account email. We'll trigger a magic link from Claude.
                     </p>
                     <Input
-                      label="Authentication code"
-                      placeholder="Paste the code from Claude..."
-                      value={oauthCode}
-                      onChange={(e) => setOauthCode(e.target.value)}
+                      label="Email address"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       error={error || undefined}
                       size="md"
-                      onKeyDown={(e) => e.key === 'Enter' && handleExchangeCode()}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendMagicLink()}
                     />
                     <Button
                       variant="primary"
                       size="md"
                       loading={validating}
-                      disabled={!oauthCode.trim()}
-                      onClick={handleExchangeCode}
+                      disabled={!email.trim()}
+                      onClick={handleSendMagicLink}
                       className="w-full"
                     >
-                      Verify code
+                      <svg
+                        className="mr-1.5 h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.5}
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"
+                        />
+                      </svg>
+                      Send magic link
                     </Button>
+                  </div>
+                )}
+
+                {/* Magic link — paste URL */}
+                {authMode === 'magic-link' && magicLinkSent && !verifying && (
+                  <div className="space-y-3">
+                    <div className="rounded-lg bg-bg-tertiary/50 p-3">
+                      <p className="mb-1.5 text-xs font-medium text-text-primary">Check your email for a magic link</p>
+                      <p className="text-[11px] leading-relaxed text-text-muted">
+                        1. Open the email from Anthropic
+                        <br />
+                        2. Right-click the link &rarr; <span className="text-text-secondary">Copy Link Address</span>
+                        <br />
+                        3. Paste it below
+                      </p>
+                    </div>
+                    <Input
+                      label="Magic link URL"
+                      type="url"
+                      placeholder="https://claude.ai/magic-link#..."
+                      value={magicLinkUrl}
+                      onChange={(e) => setMagicLinkUrl(e.target.value)}
+                      error={error || undefined}
+                      size="md"
+                      onKeyDown={(e) => e.key === 'Enter' && handleCompleteMagicLink()}
+                    />
+                    <Button
+                      variant="primary"
+                      size="md"
+                      loading={validating}
+                      disabled={!magicLinkUrl.trim()}
+                      onClick={handleCompleteMagicLink}
+                      className="w-full"
+                    >
+                      Complete setup
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMagicLinkSent(false);
+                        setMagicLinkUrl('');
+                        setError('');
+                      }}
+                      className="cursor-pointer w-full text-center text-xs text-text-muted transition-colors hover:text-text-secondary"
+                    >
+                      Use a different email
+                    </button>
+                  </div>
+                )}
+
+                {/* Verifying progress */}
+                {authMode === 'magic-link' && verifying && (
+                  <div className="flex flex-col items-center gap-3 py-4">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-text-primary">Completing authentication…</p>
+                      <p className="mt-1 text-xs text-text-muted">
+                        This may take up to 30 seconds. Do not close this page.
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -398,6 +478,33 @@ export function Step1AiBrain() {
                     </Button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* OpenAI: API key only */}
+            {!validated && provider === 'openai' && (
+              <div className="space-y-3">
+                <Input
+                  label="OpenAI API key"
+                  type="password"
+                  placeholder="sk-..."
+                  hint="platform.openai.com/api-keys"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  error={error || undefined}
+                  size="md"
+                  onKeyDown={(e) => e.key === 'Enter' && handleValidateApiKey()}
+                />
+                <Button
+                  variant="primary"
+                  size="md"
+                  loading={validating}
+                  disabled={!apiKey.trim()}
+                  onClick={handleValidateApiKey}
+                  className="w-full"
+                >
+                  Verify key
+                </Button>
               </div>
             )}
 

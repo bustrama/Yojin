@@ -225,10 +225,10 @@ export function Step2Persona() {
                     type="button"
                     onClick={() => setRisk(opt.value)}
                     className={cn(
-                      'rounded-xl border p-4 text-center transition-all duration-200',
+                      'cursor-pointer rounded-xl border p-4 text-center transition-all duration-200',
                       isSelected
                         ? 'border-accent-primary/60 bg-accent-glow'
-                        : 'border-border bg-bg-card hover:border-border-light',
+                        : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
                     )}
                   >
                     <div
@@ -261,10 +261,10 @@ export function Step2Persona() {
                     type="button"
                     onClick={() => setStyle(opt.value)}
                     className={cn(
-                      'rounded-xl border p-4 text-center transition-all duration-200',
+                      'cursor-pointer rounded-xl border p-4 text-center transition-all duration-200',
                       isSelected
                         ? 'border-accent-primary/60 bg-accent-glow'
-                        : 'border-border bg-bg-card hover:border-border-light',
+                        : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
                     )}
                   >
                     <div
@@ -319,8 +319,8 @@ export function Step2Persona() {
 
           {/* Persona Preview */}
           {preview && (
-            <div className="rounded-xl border border-border bg-bg-secondary p-5">
-              <div className="mb-3 flex items-center justify-between">
+            <div className="rounded-xl border border-border bg-bg-secondary p-4">
+              <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <svg
                     className="h-4 w-4 text-accent-primary"
@@ -335,7 +335,7 @@ export function Step2Persona() {
                       d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"
                     />
                   </svg>
-                  <span className="text-sm font-medium text-text-primary">Persona preview</span>
+                  <span className="text-xs font-medium text-text-primary">Persona preview</span>
                 </div>
                 <Button variant="ghost" size="sm" loading={generating} onClick={generatePreview}>
                   Regenerate
@@ -343,16 +343,16 @@ export function Step2Persona() {
               </div>
               <div
                 className={cn(
-                  'prose prose-sm prose-invert max-w-none text-text-secondary',
+                  'prose prose-sm prose-invert max-h-48 max-w-none overflow-y-auto text-text-secondary',
                   // Headings
-                  '[&_h1]:font-headline [&_h1]:text-base [&_h1]:text-text-primary [&_h1]:mb-3 [&_h1]:pb-2 [&_h1]:border-b [&_h1]:border-border',
-                  '[&_h2]:text-xs [&_h2]:uppercase [&_h2]:tracking-wider [&_h2]:text-text-muted [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:font-medium',
+                  '[&_h1]:font-headline [&_h1]:text-sm [&_h1]:text-text-primary [&_h1]:mb-2 [&_h1]:pb-1.5 [&_h1]:border-b [&_h1]:border-border',
+                  '[&_h2]:text-[11px] [&_h2]:uppercase [&_h2]:tracking-wider [&_h2]:text-text-muted [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h2]:font-medium',
                   // Lists
-                  '[&_ul]:space-y-2 [&_ul]:mt-2',
-                  '[&_li]:text-xs [&_li]:leading-relaxed [&_li]:text-text-secondary [&_li]:pl-1',
+                  '[&_ul]:space-y-1 [&_ul]:mt-1',
+                  '[&_li]:text-xs [&_li]:leading-snug [&_li]:text-text-secondary [&_li]:pl-0.5',
                   '[&_li::marker]:text-accent-primary',
                   // Paragraphs
-                  '[&_p]:text-xs [&_p]:leading-relaxed',
+                  '[&_p]:text-xs [&_p]:leading-snug',
                   // Inline
                   '[&_strong]:text-text-primary [&_strong]:font-medium',
                 )}

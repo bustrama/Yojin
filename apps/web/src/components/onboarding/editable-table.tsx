@@ -111,7 +111,7 @@ export function EditableTable({ positions, onChange, className }: EditableTableP
                     <button
                       type="button"
                       onClick={() => startEdit(rowIdx, 'symbol')}
-                      className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-bg-tertiary"
+                      className="cursor-pointer flex items-center gap-2 rounded px-1 py-0.5 hover:bg-bg-tertiary"
                     >
                       <SymbolLogo symbol={pos.symbol} size="sm" />
                       <span className="text-sm font-medium text-text-primary">{pos.symbol}</span>
@@ -133,7 +133,7 @@ export function EditableTable({ positions, onChange, className }: EditableTableP
                     <button
                       type="button"
                       onClick={() => startEdit(rowIdx, 'name')}
-                      className="truncate rounded px-1 py-0.5 text-sm text-text-secondary hover:bg-bg-tertiary"
+                      className="cursor-pointer truncate rounded px-1 py-0.5 text-sm text-text-secondary hover:bg-bg-tertiary"
                     >
                       {pos.name || '—'}
                     </button>
@@ -154,7 +154,7 @@ export function EditableTable({ positions, onChange, className }: EditableTableP
                     <button
                       type="button"
                       onClick={() => startEdit(rowIdx, 'quantity')}
-                      className="rounded px-1 py-0.5 text-sm text-text-primary hover:bg-bg-tertiary"
+                      className="cursor-pointer rounded px-1 py-0.5 text-sm text-text-primary hover:bg-bg-tertiary"
                     >
                       {pos.quantity != null ? Number(pos.quantity).toLocaleString() : '—'}
                     </button>
@@ -175,7 +175,7 @@ export function EditableTable({ positions, onChange, className }: EditableTableP
                     <button
                       type="button"
                       onClick={() => startEdit(rowIdx, 'avgEntry')}
-                      className="rounded px-1 py-0.5 text-sm text-text-primary hover:bg-bg-tertiary"
+                      className="cursor-pointer rounded px-1 py-0.5 text-sm text-text-primary hover:bg-bg-tertiary"
                     >
                       {pos.avgEntry != null ? `$${Number(pos.avgEntry).toLocaleString()}` : '—'}
                     </button>
@@ -196,7 +196,7 @@ export function EditableTable({ positions, onChange, className }: EditableTableP
                     <button
                       type="button"
                       onClick={() => startEdit(rowIdx, 'marketValue')}
-                      className="rounded px-1 py-0.5 text-sm text-text-primary hover:bg-bg-tertiary"
+                      className="cursor-pointer rounded px-1 py-0.5 text-sm text-text-primary hover:bg-bg-tertiary"
                     >
                       {pos.marketValue != null ? `$${Number(pos.marketValue).toLocaleString()}` : '—'}
                     </button>
@@ -207,7 +207,7 @@ export function EditableTable({ positions, onChange, className }: EditableTableP
                   <button
                     type="button"
                     onClick={() => removeRow(rowIdx)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    className="cursor-pointer inline-flex h-6 w-6 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />

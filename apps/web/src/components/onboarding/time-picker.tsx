@@ -69,10 +69,10 @@ export function TimePicker({ value, onChange, className }: TimePickerProps) {
             type="button"
             onClick={() => handlePeriod(p)}
             className={cn(
-              'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+              'cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
               period === p
                 ? 'border border-border bg-bg-card text-text-primary'
-                : 'border border-transparent text-text-muted hover:text-text-secondary',
+                : 'border border-transparent text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
             )}
           >
             {p}

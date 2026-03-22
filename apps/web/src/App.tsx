@@ -1,9 +1,15 @@
-import { Routes, Route, Navigate, useParams, useLocation } from 'react-router';
+import { useState, useCallback } from 'react';
+import { Routes, Route, Navigate, useParams } from 'react-router';
 import { Provider, useQuery } from 'urql';
 import { ChatProvider } from './lib/chat-context';
 import { ChatPanelProvider } from './lib/chat-panel-context';
 import { graphqlClient } from './lib/graphql';
-import { isOnboardingComplete, isOnboardingSkipped, ONBOARDING_KEYS } from './lib/onboarding-context';
+import {
+  isOnboardingComplete,
+  isOnboardingSkipped,
+  ONBOARDING_KEYS,
+  OnboardingModalContext,
+} from './lib/onboarding-context';
 import { ThemeProvider } from './lib/theme';
 import AppShell from './components/layout/app-shell';
 import Position from './pages/position';
@@ -24,41 +30,51 @@ function RedirectPositionSymbol() {
 
 /**
  * Guards app routes behind onboarding completion.
- * When localStorage is cleared, queries the backend to check if onboarding
- * was already completed server-side and re-hydrates the flag.
+ * When onboarding is not complete, renders the app blurred in the background
+ * with the onboarding flow in a modal overlay. The modal can be re-opened
+ * from anywhere via useOnboardingModal().
  */
 function OnboardingGuard() {
-  const location = useLocation();
-  const localDone = isOnboardingComplete() || isOnboardingSkipped();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const completed = isOnboardingComplete();
+  const skipped = isOnboardingSkipped();
 
   const [result] = useQuery<OnboardingStatusQueryResult>({
     query: ONBOARDING_STATUS_QUERY,
-    pause: localDone,
+    pause: completed || skipped,
   });
 
-  if (localDone) return <AppShell />;
+  const openOnboarding = useCallback(() => setModalOpen(true), []);
+  const closeOnboarding = useCallback(() => setModalOpen(false), []);
 
-  // Query still in flight — wait before deciding
-  if (result.fetching) return null;
+  // Still loading backend status — wait
+  if (!completed && !skipped && result.fetching) return null;
 
-  // Backend confirms onboarding was completed — re-hydrate localStorage and show app
-  if (result.data?.onboardingStatus?.completed) {
+  // Backend confirms completed — re-hydrate localStorage
+  if (!completed && !skipped && result.data?.onboardingStatus?.completed) {
     localStorage.setItem(ONBOARDING_KEYS.COMPLETE_KEY, 'true');
-    return <AppShell />;
   }
 
-  // Neither local nor server says done — redirect to onboarding
-  if (location.pathname !== '/onboarding') {
-    return <Navigate to="/onboarding" replace />;
-  }
-  return <AppShell />;
-}
+  // Show modal when: first visit (not completed, not skipped) OR manually re-opened
+  const serverCompleted = result.data?.onboardingStatus?.completed;
+  const isComplete = completed || serverCompleted;
+  const showModal = !isComplete && (!skipped || modalOpen);
 
-function OnboardingRedirectIfComplete() {
-  if (isOnboardingComplete()) {
-    return <Navigate to="/" replace />;
-  }
-  return <OnboardingPage />;
+  return (
+    <OnboardingModalContext.Provider value={{ openOnboarding }}>
+      {showModal ? (
+        <>
+          <div className="pointer-events-none select-none blur-sm" aria-hidden="true">
+            <AppShell />
+          </div>
+          <OnboardingPage onDismiss={closeOnboarding} />
+        </>
+      ) : (
+        <AppShell />
+      )}
+    </OnboardingModalContext.Provider>
+  );
 }
 
 export default function App() {
@@ -68,9 +84,6 @@ export default function App() {
         <ChatProvider>
           <ChatPanelProvider>
             <Routes>
-              {/* Onboarding — outside AppShell */}
-              <Route path="onboarding" element={<OnboardingRedirectIfComplete />} />
-
               {/* Main app — guarded by onboarding check */}
               <Route element={<OnboardingGuard />}>
                 <Route index element={<Dashboard />} />

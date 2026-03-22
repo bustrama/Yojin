@@ -1,7 +1,7 @@
-import { NavLink, useNavigate } from 'react-router';
+import { NavLink } from 'react-router';
 import { useQuery } from 'urql';
 import { useTheme } from '../../lib/theme';
-import { isOnboardingComplete } from '../../lib/onboarding-context';
+import { isOnboardingComplete, useOnboardingModal } from '../../lib/onboarding-context';
 import { ONBOARDING_STATUS_QUERY } from '../../api/documents';
 import type { OnboardingStatusQueryResult } from '../../api/types';
 import UserMenu from './user-menu';
@@ -123,7 +123,7 @@ export default function Sidebar() {
 }
 
 function OnboardingCta() {
-  const navigate = useNavigate();
+  const { openOnboarding } = useOnboardingModal();
 
   const [result] = useQuery<OnboardingStatusQueryResult>({
     query: ONBOARDING_STATUS_QUERY,
@@ -143,8 +143,8 @@ function OnboardingCta() {
     <div className="mx-2 mb-2">
       <button
         type="button"
-        onClick={() => navigate('/onboarding')}
-        className="group w-full rounded-xl border border-accent-primary/20 bg-accent-glow p-3 text-left transition-colors hover:border-accent-primary/40"
+        onClick={openOnboarding}
+        className="cursor-pointer group w-full rounded-xl border border-accent-primary/20 bg-accent-glow p-3 text-left transition-colors hover:border-accent-primary/40 hover:bg-accent-glow"
       >
         <div className="mb-2 flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-accent-primary/10">

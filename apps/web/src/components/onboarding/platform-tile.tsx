@@ -120,10 +120,10 @@ export function PlatformTile({ platform, connected, onClick, className }: Platfo
       type="button"
       onClick={onClick}
       className={cn(
-        'group relative flex flex-col items-center gap-3 rounded-xl border p-5 transition-all duration-200',
+        'cursor-pointer group relative flex flex-col items-center gap-3 rounded-xl border p-5 transition-all duration-200',
         connected
           ? 'border-success/30 bg-success/[0.04]'
-          : 'border-border bg-bg-card hover:border-border-light hover:bg-bg-hover/50',
+          : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
         className,
       )}
     >

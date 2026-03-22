@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { isOnboardingSkipped } from '../../lib/onboarding-context';
+import { isOnboardingSkipped, useOnboardingModal } from '../../lib/onboarding-context';
 import { cn } from '../../lib/utils';
 import Button from '../common/button';
 
 export function SetupBanner() {
-  const navigate = useNavigate();
+  const { openOnboarding } = useOnboardingModal();
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed || !isOnboardingSkipped()) return null;
@@ -36,12 +35,12 @@ export function SetupBanner() {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button variant="primary" size="sm" onClick={() => navigate('/onboarding')}>
+        <Button variant="primary" size="sm" onClick={openOnboarding}>
           Continue setup
         </Button>
         <button
           onClick={() => setDismissed(true)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg-hover hover:text-text-secondary"
+          className="cursor-pointer flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg-hover hover:text-text-secondary"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />

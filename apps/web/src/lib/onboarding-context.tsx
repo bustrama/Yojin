@@ -1,9 +1,8 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router';
 
 export interface AiProviderState {
-  method: 'oauth' | 'api-key' | 'env-detected';
+  method: 'magic-link' | 'api-key' | 'env-detected';
   model?: string;
   validated: boolean;
 }
@@ -90,12 +89,13 @@ export function OnboardingProvider({
   children,
   initialStep,
   isReset = false,
+  onDismiss,
 }: {
   children: ReactNode;
   initialStep?: number;
   isReset?: boolean;
+  onDismiss?: () => void;
 }) {
-  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(() => initialStep ?? readStep());
   const [state, setState] = useState<OnboardingState>(readState);
 
@@ -127,15 +127,16 @@ export function OnboardingProvider({
 
   const skipOnboarding = useCallback(() => {
     localStorage.setItem(SKIPPED_KEY, 'true');
-    navigate('/', { replace: true });
-  }, [navigate]);
+    onDismiss?.();
+  }, [onDismiss]);
 
   const completeOnboarding = useCallback(() => {
     localStorage.setItem(COMPLETE_KEY, 'true');
     localStorage.removeItem(SKIPPED_KEY);
     localStorage.removeItem(STEP_KEY);
     localStorage.removeItem(STATE_KEY);
-  }, []);
+    onDismiss?.();
+  }, [onDismiss]);
 
   return (
     <OnboardingContext.Provider
@@ -160,4 +161,18 @@ export function useOnboarding() {
   const ctx = useContext(OnboardingContext);
   if (!ctx) throw new Error('useOnboarding must be used within OnboardingProvider');
   return ctx;
+}
+
+/**
+ * Context for opening the onboarding modal from anywhere in the app
+ * (e.g., setup banner, sidebar CTA). Provided by OnboardingGuard.
+ */
+const OnboardingModalContext = createContext<{ openOnboarding: () => void }>({
+  openOnboarding: () => {},
+});
+
+export { OnboardingModalContext };
+
+export function useOnboardingModal() {
+  return useContext(OnboardingModalContext);
 }

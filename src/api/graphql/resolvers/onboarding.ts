@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-import { buildClaudeOAuthUrl, exchangeClaudeOAuthCode, generatePkceParams } from '../../../auth/claude-oauth.js';
+import { completeMagicLinkFlow, startMagicLinkFlow } from '../../../auth/magic-link-flow.js';
 import type { PersonaManager } from '../../../brain/types.js';
 import type { AgentLoopProvider } from '../../../core/types.js';
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
@@ -29,8 +29,6 @@ let connectionManager: ConnectionManager | undefined;
 let snapshotStore: PortfolioSnapshotStore | undefined;
 let dataRoot = '.';
 
-// Pending OAuth flows (state → PKCE params)
-const pendingOAuth = new Map<string, { codeVerifier: string; codeChallenge: string }>();
 
 export function setOnboardingVault(v: EncryptedVault): void {
   vault = v;
@@ -62,7 +60,7 @@ export function setOnboardingDataRoot(root: string): void {
 // ---------------------------------------------------------------------------
 
 interface DetectedCredential {
-  method: 'OAUTH' | 'API_KEY' | 'ENV_DETECTED';
+  method: 'MAGIC_LINK' | 'API_KEY' | 'ENV_DETECTED';
   model?: string;
 }
 
@@ -70,6 +68,9 @@ export async function detectAiCredentialQuery(): Promise<DetectedCredential | nu
   // Check environment variables
   if (process.env.ANTHROPIC_API_KEY) {
     return { method: 'ENV_DETECTED', model: 'Claude (env key)' };
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return { method: 'ENV_DETECTED', model: 'OpenAI (env key)' };
   }
   if (process.env.OPENROUTER_API_KEY) {
     return { method: 'ENV_DETECTED', model: 'Claude via OpenRouter (env key)' };
@@ -79,6 +80,9 @@ export async function detectAiCredentialQuery(): Promise<DetectedCredential | nu
   if (vault?.isUnlocked) {
     if (await vault.has('anthropic_api_key')) {
       return { method: 'ENV_DETECTED', model: 'Claude (vault)' };
+    }
+    if (await vault.has('openai_api_key')) {
+      return { method: 'ENV_DETECTED', model: 'OpenAI (vault)' };
     }
     if (await vault.has('openrouter_api_key')) {
       return { method: 'ENV_DETECTED', model: 'Claude via OpenRouter (vault)' };
@@ -138,9 +142,9 @@ export async function completeOnboardingMutation(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 interface ValidateCredentialInput {
-  method: 'OAUTH' | 'API_KEY' | 'ENV_DETECTED';
+  method: 'MAGIC_LINK' | 'API_KEY' | 'ENV_DETECTED';
   apiKey?: string;
-  provider?: 'ANTHROPIC' | 'OPENROUTER';
+  provider?: 'ANTHROPIC' | 'OPENAI' | 'OPENROUTER';
 }
 
 interface ValidateCredentialResult {
@@ -176,6 +180,32 @@ async function validateAnthropicKey(apiKey: string): Promise<ValidateCredentialR
     ? String((body as Record<string, Record<string, unknown>>).error?.message || 'Invalid API key')
     : `API returned ${res.status}`;
   return { success: false, error: errorMsg };
+}
+
+async function validateOpenAiKey(apiKey: string): Promise<ValidateCredentialResult> {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'hi' }],
+    }),
+  });
+
+  if (res.ok) {
+    if (vault?.isUnlocked) {
+      await vault.set('openai_api_key', apiKey);
+    }
+    return { success: true, model: 'OpenAI' };
+  }
+
+  const body = await res.json().catch(() => ({}));
+  const errorMsg = (body as Record<string, Record<string, unknown>>)?.error?.message;
+  return { success: false, error: errorMsg ? String(errorMsg) : 'Invalid OpenAI API key' };
 }
 
 async function validateOpenRouterKey(apiKey: string): Promise<ValidateCredentialResult> {
@@ -220,6 +250,9 @@ export async function validateAiCredentialMutation(
       if (keyProvider === 'OPENROUTER') {
         return await validateOpenRouterKey(apiKey.trim());
       }
+      if (keyProvider === 'OPENAI') {
+        return await validateOpenAiKey(apiKey.trim());
+      }
       return await validateAnthropicKey(apiKey.trim());
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Connection failed' };
@@ -237,55 +270,55 @@ export async function validateAiCredentialMutation(
   return { success: false, error: 'Unsupported method' };
 }
 
-interface OAuthInitResult {
-  authUrl: string;
-  state: string;
+interface MagicLinkResult {
+  success: boolean;
+  error?: string;
 }
 
-export function initiateOAuthMutation(): OAuthInitResult {
-  const { codeVerifier, codeChallenge, state } = generatePkceParams();
-  const authUrl = buildClaudeOAuthUrl({ codeChallenge, state });
-
-  // Store PKCE params for the callback exchange
-  pendingOAuth.set(state, { codeVerifier, codeChallenge });
-
-  // Clean up stale entries after 10 minutes
-  setTimeout(() => pendingOAuth.delete(state), 10 * 60 * 1000);
-
-  return { authUrl, state };
+interface MagicLinkVerifyResult {
+  success: boolean;
+  model?: string;
+  error?: string;
 }
 
-export async function exchangeOAuthCodeMutation(
+/**
+ * Launch a headless browser, navigate to Claude's OAuth page, and enter the
+ * user's email. Claude will send a magic-link email to that address.
+ */
+export async function sendMagicLinkMutation(_parent: unknown, args: { email: string }): Promise<MagicLinkResult> {
+  const email = args.email.trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    return { success: false, error: 'Please enter a valid email address.' };
+  }
+
+  return startMagicLinkFlow(email);
+}
+
+/**
+ * Navigate the existing headless browser to the magic-link URL the user
+ * received from Anthropic. The browser clicks through the authorize flow,
+ * captures the OAuth callback, and exchanges the code for an access token.
+ */
+export async function completeMagicLinkMutation(
   _parent: unknown,
-  args: { code: string; state: string },
-): Promise<ValidateCredentialResult> {
-  const pending = pendingOAuth.get(args.state);
-  if (!pending) {
-    return { success: false, error: 'OAuth session expired or invalid. Please try again.' };
+  args: { magicLinkUrl: string },
+): Promise<MagicLinkVerifyResult> {
+  const url = args.magicLinkUrl.trim();
+  if (!url) {
+    return { success: false, error: 'Magic link URL is required.' };
   }
 
-  try {
-    const result = await exchangeClaudeOAuthCode({
-      code: args.code,
-      codeVerifier: pending.codeVerifier,
-      state: args.state,
-    });
+  const result = await completeMagicLinkFlow(url);
 
-    pendingOAuth.delete(args.state);
-
-    // Store the access token in the vault
-    if (vault?.isUnlocked && result.accessToken) {
-      await vault.set('anthropic_oauth_token', result.accessToken);
-      if (result.refreshToken) {
-        await vault.set('anthropic_oauth_refresh_token', result.refreshToken);
-      }
+  if (result.success && result.token) {
+    // Store the OAuth token in the vault
+    if (vault?.isUnlocked) {
+      await vault.set('anthropic_oauth_token', result.token);
     }
-
-    return { success: true, model: 'Claude (OAuth)' };
-  } catch (err) {
-    pendingOAuth.delete(args.state);
-    return { success: false, error: err instanceof Error ? err.message : 'OAuth code exchange failed' };
+    return { success: true, model: result.model || 'Claude (OAuth)' };
   }
+
+  return { success: false, error: result.error || 'Failed to complete OAuth flow.' };
 }
 
 interface PersonaInput {
@@ -307,28 +340,24 @@ export async function generatePersonaMutation(_parent: unknown, args: { input: P
 
   const { name, riskTolerance, assetClasses, communicationStyle, hardRules } = args.input;
 
-  const prompt = `Generate a concise persona profile in Markdown for a personal AI finance agent's "Strategist" personality.
+  const prompt = `User: ${name || 'user'} | risk: ${riskTolerance.toLowerCase()} | assets: ${assetClasses.join(', ')} | style: ${communicationStyle.toLowerCase()}${hardRules ? ` | rules: ${hardRules}` : ''}
 
-The user provided these preferences:
-- Name: ${name || 'not provided'}
-- Risk tolerance: ${riskTolerance.toLowerCase() || 'moderate'}
-- Asset classes: ${assetClasses.join(', ') || 'stocks and crypto'}
-- Communication style: ${communicationStyle.toLowerCase() || 'concise'}
-- Hard rules: ${hardRules || 'none specified'}
+Fill this exact template (replace [...] only, keep structure identical):
 
-Generate a Markdown document with:
-1. A "# Persona:" title line with a short descriptive name
-2. 4-6 bullet-style personality/behavior rules (first person "I")
-3. A "## Communication Style" section with 3-5 style rules
-${hardRules ? '4. A "## Hard Rules" section with the user\'s constraints' : ''}
+# Persona: [2-3 word name]
+[one-sentence investing philosophy, max 15 words]
+[one-sentence risk rule, max 15 words]${hardRules ? '\n[one-sentence hard rule, max 15 words]' : ''}
 
-Keep it under 20 lines. Be specific and actionable, not generic. Use the user's name if provided.
-Output ONLY the Markdown — no code fences, no preamble.`;
+## Style
+- [communication rule 1, max 12 words]
+- [communication rule 2, max 12 words]`;
 
   const response = await provider.completeWithTools({
     model: providerModel,
-    system: 'You are a helpful assistant that generates persona profiles. Output only Markdown, no code fences.',
+    system:
+      'Fill the template exactly. No extra lines, no explanations, no bullets beyond what the template shows. Max 8 lines of output.',
     messages: [{ role: 'user', content: prompt }],
+    maxTokens: 150,
   });
 
   const markdown =
@@ -524,12 +553,7 @@ export async function resetOnboardingMutation(): Promise<boolean> {
 
   // Remove AI credentials from vault
   if (vault?.isUnlocked) {
-    for (const key of [
-      'anthropic_api_key',
-      'openrouter_api_key',
-      'anthropic_oauth_token',
-      'anthropic_oauth_refresh_token',
-    ]) {
+    for (const key of ['anthropic_api_key', 'openai_api_key', 'openrouter_api_key', 'anthropic_verified_email']) {
       if (await vault.has(key)) {
         await vault.delete(key);
       }

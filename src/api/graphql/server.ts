@@ -28,17 +28,17 @@ import { fetchDataSourceResolver } from './resolvers/fetch-data-source.js';
 import { onAlertSubscription, onPortfolioUpdateSubscription, onPriceMoveSubscription } from './resolvers/live.js';
 import { newsQuery, quoteQuery, sectorExposureQuery } from './resolvers/market.js';
 import {
+  completeMagicLinkMutation,
   completeOnboardingMutation,
   confirmPersonaMutation,
   confirmPositionsMutation,
   detectAiCredentialQuery,
-  exchangeOAuthCodeMutation,
   generatePersonaMutation,
-  initiateOAuthMutation,
   onboardingStatusQuery,
   parsePortfolioScreenshotMutation,
   resetOnboardingMutation,
   saveBriefingConfigMutation,
+  sendMagicLinkMutation,
   validateAiCredentialMutation,
 } from './resolvers/onboarding.js';
 import {
@@ -108,8 +108,8 @@ const schema = createSchema({
       updateVaultSecret: updateVaultSecretMutation,
       deleteVaultSecret: deleteVaultSecretMutation,
       validateAiCredential: validateAiCredentialMutation,
-      initiateOAuth: initiateOAuthMutation,
-      exchangeOAuthCode: exchangeOAuthCodeMutation,
+      sendMagicLink: sendMagicLinkMutation,
+      completeMagicLink: completeMagicLinkMutation,
       generatePersona: generatePersonaMutation,
       confirmPersona: confirmPersonaMutation,
       parsePortfolioScreenshot: parsePortfolioScreenshotMutation,

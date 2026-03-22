@@ -162,10 +162,10 @@ export function Step4Briefing() {
                 type="button"
                 onClick={() => setChannel('web')}
                 className={cn(
-                  'flex flex-1 items-center gap-3 rounded-xl border p-4 transition-colors',
+                  'cursor-pointer flex flex-1 items-center gap-3 rounded-xl border p-4 transition-colors',
                   channel === 'web'
                     ? 'border-accent-primary/60 bg-accent-glow'
-                    : 'border-border bg-bg-card hover:border-border-light',
+                    : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
                 )}
               >
                 <div
@@ -199,10 +199,10 @@ export function Step4Briefing() {
                 type="button"
                 onClick={() => setChannel('telegram')}
                 className={cn(
-                  'flex flex-1 items-center gap-3 rounded-xl border p-4 transition-colors',
+                  'cursor-pointer flex flex-1 items-center gap-3 rounded-xl border p-4 transition-colors',
                   channel === 'telegram'
                     ? 'border-accent-primary/60 bg-accent-glow'
-                    : 'border-border bg-bg-card hover:border-border-light',
+                    : 'border-border bg-bg-card hover:border-accent-primary/30 hover:bg-bg-hover/60',
                 )}
               >
                 <div

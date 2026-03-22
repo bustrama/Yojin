@@ -103,7 +103,7 @@ export function Step0Welcome() {
           </Button>
           <button
             onClick={skipOnboarding}
-            className="text-sm text-text-muted transition-colors hover:text-text-secondary"
+            className="cursor-pointer text-sm text-text-muted transition-colors hover:text-text-secondary"
           >
             I'll do this later
           </button>

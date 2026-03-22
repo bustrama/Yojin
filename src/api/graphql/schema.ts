@@ -431,7 +431,7 @@ export const typeDefs = /* GraphQL */ `
   # ---------------------------------------------------------------------------
 
   enum AiAuthMethod {
-    OAUTH
+    MAGIC_LINK
     API_KEY
     ENV_DETECTED
   }
@@ -443,6 +443,7 @@ export const typeDefs = /* GraphQL */ `
 
   enum AiKeyProvider {
     ANTHROPIC
+    OPENAI
     OPENROUTER
   }
 
@@ -458,9 +459,15 @@ export const typeDefs = /* GraphQL */ `
     error: String
   }
 
-  type OAuthInitResult {
-    authUrl: String!
-    state: String!
+  type MagicLinkResult {
+    success: Boolean!
+    error: String
+  }
+
+  type MagicLinkVerifyResult {
+    success: Boolean!
+    model: String
+    error: String
   }
 
   input PersonaInput {
@@ -599,8 +606,8 @@ export const typeDefs = /* GraphQL */ `
     updateVaultSecret(input: VaultSecretInput!): VaultResult!
     deleteVaultSecret(key: String!): VaultResult!
     validateAiCredential(input: ValidateCredentialInput!): ValidateCredentialResult!
-    initiateOAuth: OAuthInitResult!
-    exchangeOAuthCode(code: String!, state: String!): ValidateCredentialResult!
+    sendMagicLink(email: String!): MagicLinkResult!
+    completeMagicLink(magicLinkUrl: String!): MagicLinkVerifyResult!
     generatePersona(input: PersonaInput!): PersonaResult!
     confirmPersona(markdown: String!): Boolean!
     parsePortfolioScreenshot(input: ScreenshotInput!): ScreenshotResult!

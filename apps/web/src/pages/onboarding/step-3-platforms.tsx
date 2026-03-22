@@ -333,7 +333,7 @@ export function Step3Platforms() {
                   <button
                     type="button"
                     onClick={() => removeManualRow(idx)}
-                    className="mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -345,7 +345,7 @@ export function Step3Platforms() {
             <button
               type="button"
               onClick={addManualRow}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2.5 text-sm text-text-muted transition-colors hover:border-border-light hover:text-text-secondary"
+              className="cursor-pointer flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2.5 text-sm text-text-muted transition-colors hover:border-accent-primary/30 hover:bg-bg-hover/40 hover:text-text-secondary"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
