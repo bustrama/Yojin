@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useOnboarding } from '../../lib/onboarding-context';
 import { OnboardingShell } from '../../components/onboarding/onboarding-shell';
@@ -9,10 +8,10 @@ export function Step5Done() {
   const { state, completeOnboarding } = useOnboarding();
   const navigate = useNavigate();
 
-  // Mark onboarding as complete on mount
-  useEffect(() => {
+  const handleFinish = (path: string) => {
     completeOnboarding();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    navigate(path, { replace: true });
+  };
 
   // Build summary data from wizard state
   const aiConnected = state.aiProvider?.validated ?? false;
@@ -72,13 +71,13 @@ export function Step5Done() {
           className="flex items-center justify-center gap-3 opacity-0 [animation:onboarding-fade-up_0.5s_ease-out_forwards]"
           style={{ animationDelay: '300ms' }}
         >
-          <Button variant="primary" size="lg" onClick={() => navigate('/', { replace: true })} className="px-6">
+          <Button variant="primary" size="lg" onClick={() => handleFinish('/')} className="px-6">
             Go to dashboard
             <svg className="ml-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
             </svg>
           </Button>
-          <Button variant="secondary" size="lg" onClick={() => navigate('/chat', { replace: true })} className="px-6">
+          <Button variant="secondary" size="lg" onClick={() => handleFinish('/chat')} className="px-6">
             Open chat
             <svg className="ml-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path

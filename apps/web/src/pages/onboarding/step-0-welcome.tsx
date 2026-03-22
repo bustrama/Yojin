@@ -7,7 +7,7 @@ import Button from '../../components/common/button';
 export function Step0Welcome() {
   const { nextStep, skipOnboarding } = useOnboarding();
   const { resolved } = useTheme();
-  const logoSrc = resolved === 'dark' ? '/yojin_logo_white.png' : '/yojin_logo.png';
+  const logoSrc = resolved === 'dark' ? '/brand/yojin_logo_white.png' : '/brand/yojin_logo.png';
 
   return (
     <OnboardingShell currentStep={0} showProgress={false}>

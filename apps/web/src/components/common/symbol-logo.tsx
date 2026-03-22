@@ -36,68 +36,14 @@ function getColor(symbol: string): string {
   return PALETTE[Math.abs(hash) % PALETTE.length];
 }
 
-// CoinGecko requires coin IDs, not ticker symbols. Map common ones.
-const COINGECKO_IDS: Record<string, string> = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  SOL: 'solana',
-  BNB: 'binancecoin',
-  XRP: 'ripple',
-  ADA: 'cardano',
-  DOGE: 'dogecoin',
-  DOT: 'polkadot',
-  MATIC: 'matic-network',
-  POL: 'matic-network',
-  LINK: 'chainlink',
-  AVAX: 'avalanche-2',
-  UNI: 'uniswap',
-  ATOM: 'cosmos',
-  LTC: 'litecoin',
-  ARB: 'arbitrum',
-  OP: 'optimism',
-  APT: 'aptos',
-  SUI: 'sui',
-  NEAR: 'near',
-  FIL: 'filecoin',
-  AAVE: 'aave',
-  MKR: 'maker',
-  CRV: 'curve-dao-token',
-  SNX: 'havven',
-  COMP: 'compound-governance-token',
-  LDO: 'lido-dao',
-  RENDER: 'render-token',
-  FET: 'fetch-ai',
-  INJ: 'injective-protocol',
-  TIA: 'celestia',
-  SEI: 'sei-network',
-  PEPE: 'pepe',
-  SHIB: 'shiba-inu',
-  WLD: 'worldcoin-wld',
-  WETH: 'weth',
-  WBTC: 'wrapped-bitcoin',
-  USDT: 'tether',
-  USDC: 'usd-coin',
-  DAI: 'dai',
-  VIRTUAL: 'virtual-protocol',
-  LXP: 'linea-voyage-xp',
-  YSARB: 'lucky-money-arb',
-};
-
 function getLogoUrls(symbol: string, assetClass: AssetClass): string[] {
-  const upper = symbol.toUpperCase();
   const urls: string[] = [];
 
   // 1. Parqet (works well for equities and some crypto)
   const parqetPath = assetClass === 'crypto' ? 'crypto' : 'symbol';
   urls.push(`https://assets.parqet.com/logos/${parqetPath}/${symbol}`);
 
-  // 2. CoinGecko (for crypto with known IDs)
-  const geckoId = COINGECKO_IDS[upper];
-  if (geckoId) {
-    urls.push(`https://assets.coingecko.com/coins/images/${geckoId}/small/${geckoId}.png`);
-  }
-
-  // 3. Also try Parqet crypto path if asset class is equity (might be misclassified)
+  // 2. Also try Parqet crypto path if asset class is equity (might be misclassified)
   if (assetClass !== 'crypto') {
     urls.push(`https://assets.parqet.com/logos/crypto/${symbol}`);
   }

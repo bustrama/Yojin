@@ -3,7 +3,7 @@ import { Provider } from 'urql';
 import { ChatProvider } from './lib/chat-context';
 import { ChatPanelProvider } from './lib/chat-panel-context';
 import { graphqlClient } from './lib/graphql';
-import { isOnboardingComplete } from './lib/onboarding-context';
+import { isOnboardingComplete, isOnboardingSkipped } from './lib/onboarding-context';
 import { ThemeProvider } from './lib/theme';
 import AppShell from './components/layout/app-shell';
 import Position from './pages/position';
@@ -22,14 +22,14 @@ function RedirectPositionSymbol() {
 
 function OnboardingGuard() {
   const location = useLocation();
-  if (!isOnboardingComplete() && location.pathname !== '/onboarding') {
+  if (!isOnboardingComplete() && !isOnboardingSkipped() && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
   }
   return <AppShell />;
 }
 
 function OnboardingRedirectIfComplete() {
-  if (isOnboardingComplete()) {
+  if (isOnboardingComplete() || isOnboardingSkipped()) {
     return <Navigate to="/" replace />;
   }
   return <OnboardingPage />;
