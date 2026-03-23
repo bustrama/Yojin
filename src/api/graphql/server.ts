@@ -43,6 +43,7 @@ import {
   sendMagicLinkMutation,
   startOAuthFlowMutation,
   validateAiCredentialMutation,
+  validateJintelKeyMutation,
 } from './resolvers/onboarding.js';
 import {
   addManualPositionMutation,
@@ -123,6 +124,7 @@ const schema = createSchema({
       saveBriefingConfig: saveBriefingConfigMutation,
       completeOnboarding: completeOnboardingMutation,
       resetOnboarding: resetOnboardingMutation,
+      validateJintelKey: validateJintelKeyMutation,
     },
     Subscription: {
       onAlert: onAlertSubscription,

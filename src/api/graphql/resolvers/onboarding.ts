@@ -291,6 +291,7 @@ interface OnboardingStatusResult {
   aiCredentialConfigured: boolean;
   connectedPlatforms: string[];
   briefingConfigured: boolean;
+  jintelConfigured: boolean;
 }
 
 /** Path to the persistent onboarding completion marker. */
@@ -319,7 +320,9 @@ export async function onboardingStatusQuery(): Promise<OnboardingStatusResult> {
   const alertsConfigPath = `${dataRoot}/config/alerts.json`;
   const briefingConfigured = existsSync(alertsConfigPath);
 
-  return { completed, personaExists, aiCredentialConfigured, connectedPlatforms, briefingConfigured };
+  const jintelConfigured = vault?.isUnlocked ? !!(await vault.get('jintel-api-key')) : false;
+
+  return { completed, personaExists, aiCredentialConfigured, connectedPlatforms, briefingConfigured, jintelConfigured };
 }
 
 /** Mark onboarding as completed (called at the end of the flow). */
@@ -328,6 +331,43 @@ export async function completeOnboardingMutation(): Promise<boolean> {
   await ensureDir(dirname(filePath));
   await writeFile(filePath, JSON.stringify({ completedAt: new Date().toISOString() }), 'utf-8');
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Jintel key validation
+// ---------------------------------------------------------------------------
+
+export async function validateJintelKeyMutation(
+  _parent: unknown,
+  args: { apiKey: string },
+): Promise<{ success: boolean; error?: string }> {
+  // Validate the key is non-empty
+  if (!args.apiKey.trim()) {
+    return { success: false, error: 'API key cannot be empty.' };
+  }
+
+  // Create a temporary client to test the key
+  const { JintelClient } = await import('../../../jintel/client.js');
+  const baseUrl = process.env.JINTEL_API_URL ?? 'https://api.jintel.ai/api';
+  const testClient = new JintelClient({ baseUrl, apiKey: args.apiKey });
+  const health = await testClient.healthCheck();
+
+  if (!health.healthy) {
+    return { success: false, error: health.error ?? 'Failed to connect to Jintel API.' };
+  }
+
+  // Store in vault
+  if (!vault?.isUnlocked) {
+    return { success: false, error: 'Vault is locked. Unlock it first.' };
+  }
+
+  try {
+    await vault.set('jintel-api-key', args.apiKey);
+    return { success: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Failed to store key: ${msg}` };
+  }
 }
 
 // ---------------------------------------------------------------------------

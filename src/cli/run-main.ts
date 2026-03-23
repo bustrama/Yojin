@@ -18,12 +18,18 @@ import { buildContext } from '../composition.js';
 import { AgentRuntime } from '../core/agent-runtime.js';
 import { EventLog } from '../core/event-log.js';
 import { Gateway } from '../gateway/server.js';
+import { createJintelPriceProvider } from '../jintel/price-provider.js';
+import { getLogger } from '../logging/index.js';
+import { createReflectionEngine } from '../memory/adapter.js';
+import type { LlmProvider } from '../memory/types.js';
 import { resolveDataRoot } from '../paths.js';
 import { JsonlSessionStore } from '../sessions/jsonl-store.js';
 import { runSecretCommand } from '../trust/vault/cli.js';
 
 const require = createRequire(import.meta.url);
 const { version: PKG_VERSION } = require('../../package.json') as { version: string };
+
+const log = getLogger().sub('run-main');
 
 export async function runMain(args: string[]): Promise<void> {
   const command = args[0] ?? 'start';
@@ -84,6 +90,18 @@ async function buildFullRuntime(): Promise<{
   providerRouter.startConfigRefresh();
   setOnboardingProvider(providerRouter);
   setOnboardingClaudeCodeProvider(claudeProvider);
+
+  // Late-wire ReflectionEngine now that we have both providerRouter and jintelClient
+  if (services.jintelClient) {
+    const priceProvider = createJintelPriceProvider(services.jintelClient);
+    services.reflectionEngine = createReflectionEngine({
+      stores: services.memoryStores,
+      providerRouter: providerRouter as unknown as LlmProvider,
+      priceProvider,
+      piiRedactor: services.piiRedactor,
+    });
+    log.info('ReflectionEngine wired with Jintel PriceProvider');
+  }
 
   const agentRuntime = new AgentRuntime({
     agentRegistry: services.agentRegistry,

@@ -42,6 +42,8 @@ import { POSTURE_CONFIGS } from './guards/posture.js';
 import { createDefaultGuards } from './guards/registry.js';
 import type { OutputDlpGuard } from './guards/security/output-dlp.js';
 import type { PostureName } from './guards/types.js';
+import { JintelClient } from './jintel/client.js';
+import { createJintelTools } from './jintel/tools.js';
 import { getLogger } from './logging/index.js';
 import { wireMemory } from './memory/adapter.js';
 import type { SignalMemoryStore } from './memory/memory-store.js';
@@ -56,6 +58,7 @@ import { loadCredentialLookup } from './scraper/platform-credentials.js';
 import { registerAllConnectors } from './scraper/platforms/index.js';
 import { SignalArchive } from './signals/archive.js';
 import { SignalIngestor } from './signals/ingestor.js';
+import { createSignalTools } from './signals/tools.js';
 import { createApiHealthTools } from './tools/api-health.js';
 import { createBrainTools } from './tools/brain-tools.js';
 import { createDataSourceQueryTools } from './tools/data-source-query.js';
@@ -93,6 +96,7 @@ export interface YojinServices {
   connectionManager?: ConnectionManager;
   pluginRegistry: PluginRegistry;
   dataSourceRegistry: DataSourceRegistry;
+  jintelClient?: JintelClient;
   personaManager: PersonaManager;
   snapshotStore: PortfolioSnapshotStore;
   piiRedactor: DefaultPiiRedactor;
@@ -280,6 +284,30 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   // 6c. Run data source health checks (non-blocking)
   runHealthChecks().catch((err) => log.warn('Data source health check failed', { error: String(err) }));
 
+  // 6d. Jintel client (primary intelligence source)
+  let jintelClient: JintelClient | undefined;
+  if (vault?.isUnlocked) {
+    try {
+      const jintelApiKey = await vault.get('jintel-api-key');
+      const jintelBaseUrl = process.env.JINTEL_API_URL ?? 'https://api.jintel.ai/api';
+      if (jintelApiKey) {
+        jintelClient = new JintelClient({
+          baseUrl: jintelBaseUrl,
+          apiKey: jintelApiKey,
+          debug: process.env.JINTEL_DEBUG === '1',
+        });
+        log.info('Jintel client ready');
+      } else {
+        log.warn(
+          'Jintel API key not configured — intelligence features disabled. Complete onboarding or add key "jintel-api-key" in Settings → Vault.',
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn(`Jintel client init failed: ${msg}`);
+    }
+  }
+
   // 7. ToolRegistry — register all tools
   const toolRegistry = new ToolRegistry();
 
@@ -306,6 +334,16 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
 
   // Security audit tool (1 tool)
   for (const tool of createSecurityAuditTools({ guardRunner })) {
+    toolRegistry.register(tool);
+  }
+
+  // Jintel tools (5 tools — always registered; return config error if client unavailable)
+  for (const tool of createJintelTools({ client: jintelClient, ingestor: signalIngestor })) {
+    toolRegistry.register(tool);
+  }
+
+  // Signal tools (3 tools: glob_signals, grep_signals, read_signal)
+  for (const tool of createSignalTools({ archive: signalArchive })) {
     toolRegistry.register(tool);
   }
 
@@ -387,6 +425,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     connectionManager,
     pluginRegistry,
     dataSourceRegistry,
+    jintelClient,
     personaManager: persona,
     snapshotStore,
     piiRedactor,
