@@ -19,7 +19,7 @@ describe('buildContext', () => {
     expect(services.vault).toBeUndefined();
   });
 
-  it('registers 24 tools (with vault-locked stubs)', async () => {
+  it('registers 27 tools (with vault-locked stubs)', async () => {
     const services = await buildContext({ skipVault: true });
     const schemas = services.toolRegistry.toSchemas();
 
@@ -27,8 +27,9 @@ describe('buildContext', () => {
     // + 1 error analysis + 1 api health + 1 portfolio reasoning
     // + 2 portfolio tools (save_portfolio_positions, get_portfolio)
     // + 2 data source query tools (query_data_source, list_data_sources)
-    // + 2 memory tools (store_signal_memory, recall_signal_memories) = 24
-    expect(schemas.length).toBe(24);
+    // + 2 memory tools (store_signal_memory, recall_signal_memories)
+    // + 3 display tools (display_portfolio_overview, display_positions_list, display_allocation) = 27
+    expect(schemas.length).toBe(27);
 
     const names = schemas.map((s) => s.name).sort();
     expect(names).toContain('get_current_time');
@@ -51,6 +52,9 @@ describe('buildContext', () => {
     expect(names).toContain('portfolio_reasoning');
     expect(names).toContain('store_signal_memory');
     expect(names).toContain('recall_signal_memories');
+    expect(names).toContain('display_portfolio_overview');
+    expect(names).toContain('display_positions_list');
+    expect(names).toContain('display_allocation');
   });
 
   it('registers 4 agent profiles', async () => {
