@@ -39,9 +39,9 @@ export interface FeedItem {
 /* ── Category config (drives label color + icon tint) ─────────────── */
 
 const categoryConfig: Record<EventCategory, { variant: BadgeVariant; color: string; iconBg: string }> = {
-  Action: { variant: 'accent', color: 'text-accent-primary', iconBg: 'bg-accent-primary/10' },
-  Alert: { variant: 'warning', color: 'text-warning', iconBg: 'bg-warning/10' },
-  Insight: { variant: 'success', color: 'text-success', iconBg: 'bg-success/10' },
+  Action: { variant: 'accent', color: 'text-accent-primary/60', iconBg: 'bg-accent-primary/5' },
+  Alert: { variant: 'warning', color: 'text-warning/60', iconBg: 'bg-warning/5' },
+  Insight: { variant: 'success', color: 'text-success/60', iconBg: 'bg-success/5' },
 };
 
 const SECTION_ORDER: EventCategory[] = ['Action', 'Alert', 'Insight'];

@@ -19,6 +19,78 @@ interface ManualEntry {
 
 const EMPTY_MANUAL: ManualEntry = { symbol: '', name: '', quantity: '', avgEntry: '', marketValue: '' };
 
+/** Common symbol → company name lookup for auto-complete. */
+const SYMBOL_NAMES: Record<string, string> = {
+  AAPL: 'Apple Inc.',
+  MSFT: 'Microsoft Corp.',
+  GOOGL: 'Alphabet Inc.',
+  AMZN: 'Amazon.com Inc.',
+  META: 'Meta Platforms Inc.',
+  NVDA: 'NVIDIA Corp.',
+  TSLA: 'Tesla Inc.',
+  BRK: 'Berkshire Hathaway',
+  JPM: 'JPMorgan Chase',
+  V: 'Visa Inc.',
+  JNJ: 'Johnson & Johnson',
+  WMT: 'Walmart Inc.',
+  PG: 'Procter & Gamble',
+  MA: 'Mastercard Inc.',
+  UNH: 'UnitedHealth Group',
+  HD: 'Home Depot',
+  DIS: 'Walt Disney Co.',
+  BAC: 'Bank of America',
+  ADBE: 'Adobe Inc.',
+  CRM: 'Salesforce Inc.',
+  NFLX: 'Netflix Inc.',
+  AMD: 'Advanced Micro Devices',
+  INTC: 'Intel Corp.',
+  PYPL: 'PayPal Holdings',
+  CSCO: 'Cisco Systems',
+  PEP: 'PepsiCo Inc.',
+  AVGO: 'Broadcom Inc.',
+  COST: 'Costco Wholesale',
+  TMO: 'Thermo Fisher',
+  ABT: 'Abbott Labs',
+  NKE: 'Nike Inc.',
+  MRK: 'Merck & Co.',
+  BTC: 'Bitcoin',
+  ETH: 'Ethereum',
+  SOL: 'Solana',
+  DOGE: 'Dogecoin',
+  ADA: 'Cardano',
+  XRP: 'Ripple',
+  DOT: 'Polkadot',
+  AVAX: 'Avalanche',
+  MATIC: 'Polygon',
+  LINK: 'Chainlink',
+  COIN: 'Coinbase Global',
+  SQ: 'Block Inc.',
+  SHOP: 'Shopify Inc.',
+  UBER: 'Uber Technologies',
+  ABNB: 'Airbnb Inc.',
+  SNAP: 'Snap Inc.',
+  PLTR: 'Palantir Technologies',
+  RIVN: 'Rivian Automotive',
+  SPY: 'SPDR S&P 500 ETF',
+  QQQ: 'Invesco QQQ Trust',
+  IWM: 'iShares Russell 2000',
+  VOO: 'Vanguard S&P 500',
+  VTI: 'Vanguard Total Market',
+  ARKK: 'ARK Innovation ETF',
+  GLD: 'SPDR Gold Shares',
+};
+
+function lookupName(symbol: string): string {
+  return SYMBOL_NAMES[symbol.toUpperCase().trim()] ?? '';
+}
+
+function computeValue(qty: string, avgEntry: string): string {
+  const q = parseFloat(qty);
+  const a = parseFloat(avgEntry);
+  if (isNaN(q) || isNaN(a)) return '';
+  return (q * a).toFixed(2);
+}
+
 interface AddAccountModalProps {
   open: boolean;
   onClose: () => void;
@@ -176,7 +248,22 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   };
 
   const updateManualEntry = (idx: number, field: keyof ManualEntry, value: string) => {
-    setManualEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, [field]: value } : e)));
+    setManualEntries((prev) =>
+      prev.map((e, i) => {
+        if (i !== idx) return e;
+        const updated = { ...e, [field]: value };
+        if (field === 'symbol') {
+          updated.name = lookupName(value);
+        }
+        if (field === 'quantity' || field === 'avgEntry') {
+          updated.marketValue = computeValue(
+            field === 'quantity' ? value : e.quantity,
+            field === 'avgEntry' ? value : e.avgEntry,
+          );
+        }
+        return updated;
+      }),
+    );
   };
 
   const addManualRow = () => setManualEntries((prev) => [...prev, { ...EMPTY_MANUAL }]);
@@ -311,11 +398,11 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
                 />
                 <Input
                   label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Apple Inc."
+                  placeholder="Auto"
                   value={entry.name}
-                  onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
+                  readOnly
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 opacity-60"
                 />
                 <Input
                   label={idx === 0 ? 'Qty' : undefined}
@@ -335,11 +422,11 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
                 />
                 <Input
                   label={idx === 0 ? 'Value' : undefined}
-                  placeholder="1500.00"
+                  placeholder="Auto"
                   value={entry.marketValue}
-                  onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
+                  readOnly
                   size="sm"
-                  className="w-24"
+                  className="w-24 opacity-60"
                 />
                 {manualEntries.length > 1 && (
                   <button
@@ -408,11 +495,11 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
                 />
                 <Input
                   label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Apple Inc."
+                  placeholder="Auto"
                   value={entry.name}
-                  onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
+                  readOnly
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 opacity-60"
                 />
                 <Input
                   label={idx === 0 ? 'Qty' : undefined}
@@ -432,11 +519,11 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
                 />
                 <Input
                   label={idx === 0 ? 'Value' : undefined}
-                  placeholder="1500.00"
+                  placeholder="Auto"
                   value={entry.marketValue}
-                  onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
+                  readOnly
                   size="sm"
-                  className="w-24"
+                  className="w-24 opacity-60"
                 />
                 {manualEntries.length > 1 && (
                   <button

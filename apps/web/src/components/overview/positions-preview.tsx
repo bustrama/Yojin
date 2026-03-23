@@ -31,7 +31,7 @@ function Sparkline({ symbol, data, dayChangePercent }: { symbol: string; data: n
         : 'var(--color-text-muted)';
 
   return (
-    <div className="h-8 w-[100px]">
+    <div className="pointer-events-none h-8 w-[100px]">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
           <defs>
