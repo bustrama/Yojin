@@ -140,9 +140,10 @@ mutation { disconnectPlatform(platform: COINBASE, removeCredentials: true) { suc
 
 ## Security & Privacy
 
-Your data never leaves your machine.
+Your data never leaves your machine. 
+Sensitive data is scrubbed before it reaches the AI model. Your credentials, positions, and account details are stored and processed on your computer — not on our servers, not in the cloud.
 
-Your credentials, positions, and account details are stored and processed on your computer — not on our servers, not in the cloud. The architecture below enforces this at four independent layers, so no single point of failure can expose your data.
+The architecture below enforces this at four independent layers, so no single point of failure can expose your data.
 
 ### Layer 1 — Credential Vault
 
