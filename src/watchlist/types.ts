@@ -11,6 +11,7 @@ export const WatchlistEntrySchema = z.object({
   assetClass: AssetClassSchema,
   addedAt: z.string().datetime(),
   jintelEntityId: z.string().min(1).optional(),
+  resolveAttemptedAt: z.string().datetime().optional(),
 });
 
 export type WatchlistEntry = z.infer<typeof WatchlistEntrySchema>;

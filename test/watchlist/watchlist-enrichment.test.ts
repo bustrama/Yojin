@@ -121,6 +121,37 @@ describe('WatchlistEnrichment', () => {
 
       expect(store.list()[0].jintelEntityId).toBeUndefined();
     });
+
+    it('short-circuits when jintelEntityId is already set', async () => {
+      const searchFn = vi.fn().mockResolvedValue({ success: true, data: [MOCK_ENTITY] });
+      const client = mockJintelClient({ searchEntities: searchFn });
+      const enrichment = new WatchlistEnrichment({ store, jintelClient: client, dataDir: dir });
+      await enrichment.initialize();
+
+      await store.add({ symbol: 'AAPL', name: 'Apple Inc.', assetClass: 'EQUITY', jintelEntityId: 'jintel-aapl' });
+      const result = await enrichment.resolveEntity('AAPL');
+
+      expect(result).toBe('jintel-aapl');
+      expect(searchFn).not.toHaveBeenCalled();
+    });
+
+    it('throttles retry for unresolvable entries within TTL', async () => {
+      const searchFn = vi.fn().mockResolvedValue({ success: true, data: [] });
+      const client = mockJintelClient({ searchEntities: searchFn });
+      const enrichment = new WatchlistEnrichment({ store, jintelClient: client, dataDir: dir, ttlSeconds: 3600 });
+      await enrichment.initialize();
+
+      await store.add({ symbol: 'XXXX', name: 'Unknown Corp', assetClass: 'EQUITY' });
+
+      // First attempt — makes API calls
+      await enrichment.resolveEntity('XXXX');
+      expect(searchFn).toHaveBeenCalledTimes(2); // symbol + name fallback
+
+      // Second attempt within TTL — skipped
+      searchFn.mockClear();
+      await enrichment.resolveEntity('XXXX');
+      expect(searchFn).not.toHaveBeenCalled();
+    });
   });
 
   describe('enrichSymbol', () => {
@@ -250,6 +281,30 @@ describe('WatchlistEnrichment', () => {
 
       expect(result).not.toBeNull();
       expect(result!.quote?.price).toBe(175.5);
+    });
+  });
+
+  describe('getEnrichedBatch', () => {
+    it('enriches all symbols concurrently and flushes once', async () => {
+      const enrichFn = vi.fn().mockResolvedValue({ success: true, data: MOCK_ENRICHED });
+      const client = mockJintelClient({ enrichEntity: enrichFn });
+      const enrichment = new WatchlistEnrichment({ store, jintelClient: client, dataDir: dir, ttlSeconds: 0 });
+      await enrichment.initialize();
+
+      await store.add({ symbol: 'AAPL', name: 'Apple Inc.', assetClass: 'EQUITY', jintelEntityId: 'jintel-aapl' });
+      await store.add({ symbol: 'MSFT', name: 'Microsoft', assetClass: 'EQUITY', jintelEntityId: 'jintel-msft' });
+
+      const results = await enrichment.getEnrichedBatch(['AAPL', 'MSFT']);
+
+      expect(results.size).toBe(2);
+      expect(results.get('AAPL')).not.toBeNull();
+      expect(results.get('MSFT')).not.toBeNull();
+      expect(enrichFn).toHaveBeenCalledTimes(2);
+
+      // Verify cache was persisted (single flush at end)
+      const raw = await readFile(join(dir, 'watchlist', 'enrichment-cache.jsonl'), 'utf-8');
+      const lines = raw.trim().split('\n').filter(Boolean);
+      expect(lines).toHaveLength(2);
     });
   });
 

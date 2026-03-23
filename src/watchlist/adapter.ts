@@ -163,9 +163,11 @@ function createWatchlistTools(deps: {
         return { content: 'Watchlist is empty.' };
       }
 
+      const enriched = await enrichment.getEnrichedBatch(entries.map((e) => e.symbol));
+
       const lines: string[] = [];
       for (const entry of entries) {
-        const cached = await enrichment.getEnriched(entry.symbol);
+        const cached = enriched.get(entry.symbol);
         let line = `**${entry.symbol}** — ${entry.name} (${entry.assetClass})`;
 
         if (cached?.quote) {

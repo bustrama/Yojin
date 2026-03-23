@@ -73,7 +73,10 @@ export class WatchlistStore {
     return this.entries.has(symbol.toUpperCase());
   }
 
-  async updateEntry(symbol: string, update: Partial<Pick<WatchlistEntry, 'jintelEntityId'>>): Promise<Result> {
+  async updateEntry(
+    symbol: string,
+    update: Partial<Pick<WatchlistEntry, 'jintelEntityId' | 'resolveAttemptedAt'>>,
+  ): Promise<Result> {
     const key = symbol.toUpperCase();
     const entry = this.entries.get(key);
     if (!entry) return { success: false, error: 'symbol not found' };

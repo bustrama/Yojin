@@ -61,11 +61,18 @@ export class WatchlistEnrichment {
     const entry = this.store.list().find((e) => e.symbol === key);
     if (!entry) return undefined;
 
+    if (entry.jintelEntityId) return entry.jintelEntityId;
+
+    if (entry.resolveAttemptedAt) {
+      const elapsed = Date.now() - new Date(entry.resolveAttemptedAt).getTime();
+      if (elapsed < this.ttlSeconds * 1000) return undefined;
+    }
+
     // Try symbol first
     const bySymbol = await this.jintelClient.searchEntities(key, { limit: 1 });
     if (bySymbol.success && bySymbol.data.length > 0) {
       const entityId = bySymbol.data[0].id;
-      await this.store.updateEntry(key, { jintelEntityId: entityId });
+      await this.store.updateEntry(key, { jintelEntityId: entityId, resolveAttemptedAt: new Date().toISOString() });
       return entityId;
     }
 
@@ -73,15 +80,17 @@ export class WatchlistEnrichment {
     const byName = await this.jintelClient.searchEntities(entry.name, { limit: 1 });
     if (byName.success && byName.data.length > 0) {
       const entityId = byName.data[0].id;
-      await this.store.updateEntry(key, { jintelEntityId: entityId });
+      await this.store.updateEntry(key, { jintelEntityId: entityId, resolveAttemptedAt: new Date().toISOString() });
       return entityId;
     }
 
+    // Record the failed attempt to avoid retrying on every list call
+    await this.store.updateEntry(key, { resolveAttemptedAt: new Date().toISOString() });
     log.warn('Could not resolve Jintel entity', { symbol: key, name: entry.name });
     return undefined;
   }
 
-  async enrichSymbol(symbol: string): Promise<EnrichmentCacheEntry | null> {
+  async enrichSymbol(symbol: string, options?: { skipFlush?: boolean }): Promise<EnrichmentCacheEntry | null> {
     if (!this.jintelClient) return null;
 
     const key = symbol.toUpperCase();
@@ -101,11 +110,13 @@ export class WatchlistEnrichment {
     };
 
     this.cache.set(key, cacheEntry);
-    await this.flushCache();
+    if (!options?.skipFlush) {
+      await this.flush();
+    }
     return cacheEntry;
   }
 
-  async getEnriched(symbol: string): Promise<EnrichmentCacheEntry | null> {
+  async getEnriched(symbol: string, options?: { skipFlush?: boolean }): Promise<EnrichmentCacheEntry | null> {
     const key = symbol.toUpperCase();
     const cached = this.cache.get(key);
 
@@ -120,7 +131,16 @@ export class WatchlistEnrichment {
       return cached;
     }
 
-    return this.enrichSymbol(key);
+    return this.enrichSymbol(key, options);
+  }
+
+  /** Enrich all symbols concurrently, flushing cache once at the end (avoids O(N²) writes). */
+  async getEnrichedBatch(symbols: string[]): Promise<Map<string, EnrichmentCacheEntry | null>> {
+    const results = await Promise.all(
+      symbols.map(async (s) => [s.toUpperCase(), await this.getEnriched(s, { skipFlush: true })] as const),
+    );
+    await this.flush();
+    return new Map(results);
   }
 
   getCached(symbol: string): EnrichmentCacheEntry | null {
@@ -130,7 +150,7 @@ export class WatchlistEnrichment {
   async removeCache(symbol: string): Promise<void> {
     const key = symbol.toUpperCase();
     this.cache.delete(key);
-    await this.flushCache();
+    await this.flush();
   }
 
   private isStale(entry: EnrichmentCacheEntry): boolean {
@@ -139,7 +159,8 @@ export class WatchlistEnrichment {
     return now - enrichedAt >= this.ttlSeconds * 1000;
   }
 
-  private async flushCache(): Promise<void> {
+  /** Persist the in-memory cache to disk. */
+  async flush(): Promise<void> {
     const lines = Array.from(this.cache.values())
       .map((e) => JSON.stringify(e))
       .join('\n');
