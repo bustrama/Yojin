@@ -27,7 +27,7 @@ All state is file-driven — JSONL sessions, JSON configs, Markdown personas. No
 
 | Agent | Role |
 |---|---|
-| **Analyst** | Ingests signals from Jintel, runs technical analysis (SMA, RSI, BBANDS), extracts tickers from news — the same data a human analyst would use: fundamentals, price data, technicals, 8-K activity, real-time news |
+| **Analyst** | Ingests signals from Jintel, runs technical analysis (SMA, RSI, BBANDS), extracts tickers from news. Maintains a self-evolving working memory — past analyses, recommendations, and their actual outcomes are stored and retrieved via BM25 to inform every future decision. |
 | **Strategist** | Owns the Brain (persona, working memory, emotions). Runs bull/bear debate analysis. Defines strategy — asset allocation, rebalancing rules, entry/exit logic tailored to your goals. |
 | **Risk Manager** | Analyzes exposure, concentration, correlation, drawdown. Monitors markets 24/7. Delivers alerts via Telegram and daily portfolio digests. |
 | **Trader** | Executes trades on target platforms (Robinhood, Coinbase, IBKR, Schwab, Binance, and more). |
@@ -74,7 +74,22 @@ The Strategist is the only stateful agent. Its brain persists across sessions, s
 - **Signal memory** — reflects on past signals over time, building a view of what matters for your positions
 - **Commit history** — git-like versioned snapshots at decision points
 
-Other agents are stateless — they produce outputs on demand.
+### Memory System
+
+Agents learn from their own track record. Every analysis produces a `(situation, recommendation, outcome)` tuple stored in a per-role memory file. When the same agent faces a new decision, BM25Okapi retrieval surfaces the most lexically similar past situations — and what actually happened after acting on them.
+
+After an evaluation window closes (configurable: 1d, 7d, 30d), the reflection engine compares the predicted direction against the actual market outcome, grades the call (CORRECT / PARTIALLY_CORRECT / INCORRECT), and writes a structured lesson back into memory. That lesson is injected into future prompts automatically — no retraining, no embeddings, no external API.
+
+Each agent role maintains an independent store:
+
+| Role | Memory Contains |
+|---|---|
+| Bull Researcher | Past bullish arguments + outcomes |
+| Bear Researcher | Past bearish arguments + outcomes |
+| Research Manager | Past judge decisions + outcomes |
+| Risk Manager | Past risk assessments + outcomes |
+
+Fully offline — BM25 only, no vector database. Configurable capacity (default 1,000 entries per role) with pruning when exceeded. Persisted as local JSON in `data/memory/`.
 
 ### Jintel
 
@@ -84,8 +99,6 @@ Jintel is the intelligence layer that powers Yojin's market awareness. It is acc
 - **Sentiment** — aggregated market sentiment per asset, updated continuously
 - **Entity schema** — a standardized representation of each asset (equity, crypto, commodity) that unifies data from disparate sources into a single queryable model
 - **Portfolio-aware processing** — signals are filtered and ranked against your actual positions, so you only see intelligence that's relevant to what you hold
-- **Signal memory** — the Strategist builds a running reflection of past signals, tracking which types of events have historically moved your positions
-
 Jintel runs as a separate service. PII redaction runs before every Jintel call — Jintel receives sanitized, anonymized data only.
 
 ### AI Providers
@@ -320,6 +333,7 @@ yojin/
 │   ├── core/           # AgentRuntime, ToolRegistry, ProviderRouter, event log
 │   ├── agents/         # Multi-agent profiles and orchestrator
 │   ├── brain/          # Strategist's persistent memory, persona, emotion
+│   ├── memory/         # BM25 memory store, reflection engine, per-role learning
 │   ├── signals/        # Signal ingestion, archive, ticker extraction
 │   ├── data-sources/   # Data source registry and interfaces (Jintel)
 │   ├── scraper/        # Playwright automation (platforms/)
