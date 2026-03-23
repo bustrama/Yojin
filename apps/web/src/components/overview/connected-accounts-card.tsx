@@ -1,39 +1,40 @@
 import { useMemo, useState } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { cn } from '../../lib/utils';
 import { usePositions } from '../../api';
+import { useOnboardingStatus } from '../../lib/onboarding-context';
 import Spinner from '../common/spinner';
+import Button from '../common/button';
 import { DashboardCard } from '../common/dashboard-card';
 import AddAccountModal from './add-account-modal';
 
-const PLATFORM_DISPLAY: Record<string, { name: string; logo: string }> = {
-  INTERACTIVE_BROKERS: { name: 'IBKR', logo: '/platforms/interactive-brokers.png' },
-  ROBINHOOD: { name: 'Robinhood', logo: '/platforms/robinhood.png' },
-  COINBASE: { name: 'Coinbase', logo: '/platforms/coinbase.png' },
-  BINANCE: { name: 'Binance', logo: '/platforms/binance.png' },
-  METAMASK: { name: 'MetaMask', logo: '/platforms/metamask.png' },
-  WEBULL: { name: 'WeBull', logo: '/platforms/webull.png' },
-  SOFI: { name: 'SoFi', logo: '/platforms/sofi.png' },
-  SCHWAB: { name: 'Schwab', logo: '/platforms/schwab.png' },
-  FIDELITY: { name: 'Fidelity', logo: '/platforms/fidelity.png' },
-  MOOMOO: { name: 'Moomoo', logo: '/platforms/moomoo.png' },
-  PHANTOM: { name: 'Phantom', logo: '/platforms/phantom.png' },
-  MANUAL: { name: 'Manual', logo: '' },
+const PLATFORM_DISPLAY: Record<string, string> = {
+  INTERACTIVE_BROKERS: 'IBKR',
+  ROBINHOOD: 'Robinhood',
+  COINBASE: 'Coinbase',
+  BINANCE: 'Binance',
+  METAMASK: 'MetaMask',
+  WEBULL: 'WeBull',
+  SOFI: 'SoFi',
+  SCHWAB: 'Schwab',
+  FIDELITY: 'Fidelity',
+  MOOMOO: 'Moomoo',
+  PHANTOM: 'Phantom',
+  MANUAL: 'Manual',
 };
 
-const ASSET_CLASS_COLORS: Record<string, string> = {
-  EQUITY: 'var(--color-accent-primary)',
-  CRYPTO: 'var(--color-accent-secondary)',
-  BOND: 'var(--color-success)',
-  COMMODITY: 'var(--color-warning)',
-  CURRENCY: 'var(--color-info)',
-  OTHER: 'var(--color-text-muted)',
-};
+const PLATFORM_PALETTE = [
+  'var(--color-accent-primary)',
+  'var(--color-accent-secondary)',
+  'var(--color-success)',
+  'var(--color-warning)',
+  'var(--color-info)',
+  'var(--color-text-muted)',
+];
 
 interface AccountSummary {
   platform: string;
   name: string;
-  logo: string;
   totalValue: number;
   change: number;
 }
@@ -53,31 +54,11 @@ function formatChange(n: number): string {
   return `${sign}${n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}`;
 }
 
-const LOGO_PALETTE = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#6366f1'];
-
-function getInitialColor(name: string): string {
-  let hash = 0;
-  for (const char of name) hash = char.charCodeAt(0) + ((hash << 5) - hash);
-  return LOGO_PALETTE[Math.abs(hash) % LOGO_PALETTE.length];
-}
-
-function PlatformLogo({ name, logo }: { name: string; logo: string }) {
-  const [imgError, setImgError] = useState(false);
-
-  if (!logo || imgError) {
-    return (
-      <div
-        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
-        style={{ backgroundColor: getInitialColor(name) }}
-      >
-        <span className="text-[9px] font-bold text-white">{name.slice(0, 2).toUpperCase()}</span>
-      </div>
-    );
-  }
-
+function DonutTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number }> }) {
+  if (!active || !payload?.[0]) return null;
   return (
-    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg-tertiary">
-      <img src={logo} alt={`${name} logo`} className="h-full w-full object-contain" onError={() => setImgError(true)} />
+    <div className="rounded-lg border border-border bg-bg-card px-2.5 py-1.5 text-2xs shadow-lg">
+      <span className="text-text-primary">{payload[0].name}</span>
     </div>
   );
 }
@@ -85,6 +66,7 @@ function PlatformLogo({ name, logo }: { name: string; logo: string }) {
 export default function ConnectedAccountsCard() {
   const [{ data, fetching, error }, reexecuteQuery] = usePositions();
   const [modalOpen, setModalOpen] = useState(false);
+  const { openOnboarding } = useOnboardingStatus();
 
   const accounts = useMemo<AccountSummary[]>(() => {
     const positions = data?.positions ?? [];
@@ -99,36 +81,24 @@ export default function ConnectedAccountsCard() {
     }
 
     return Object.entries(grouped)
-      .map(([platform, agg]) => {
-        const info = PLATFORM_DISPLAY[platform];
-        return {
-          platform,
-          name: info?.name ?? platform,
-          logo: info?.logo ?? '',
-          totalValue: agg.totalValue,
-          change: agg.change,
-        };
-      })
+      .map(([platform, agg]) => ({
+        platform,
+        name: PLATFORM_DISPLAY[platform] ?? platform,
+        totalValue: agg.totalValue,
+        change: agg.change,
+      }))
       .sort((a, b) => b.totalValue - a.totalValue);
   }, [data?.positions]);
 
   const allocation = useMemo<AllocationSlice[]>(() => {
-    const positions = data?.positions ?? [];
-    if (positions.length === 0) return [];
+    if (accounts.length === 0) return [];
 
-    const totals: Record<string, number> = {};
-    for (const pos of positions) {
-      totals[pos.assetClass] = (totals[pos.assetClass] ?? 0) + pos.marketValue;
-    }
-
-    return Object.entries(totals)
-      .map(([assetClass, value]) => ({
-        name: assetClass.charAt(0) + assetClass.slice(1).toLowerCase(),
-        value,
-        color: ASSET_CLASS_COLORS[assetClass] ?? ASSET_CLASS_COLORS.OTHER,
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [data?.positions]);
+    return accounts.map((account, idx) => ({
+      name: account.name,
+      value: account.totalValue,
+      color: PLATFORM_PALETTE[idx % PLATFORM_PALETTE.length],
+    }));
+  }, [accounts]);
 
   const connectedPlatformIds = accounts.map((a) => a.platform);
 
@@ -168,8 +138,11 @@ export default function ConnectedAccountsCard() {
   if (error || accounts.length === 0) {
     return (
       <DashboardCard title="Connected Accounts" headerAction={addButton}>
-        <div className="flex flex-1 items-center justify-center px-4 pb-4">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 pb-4">
           <p className="text-xs text-text-muted">No accounts connected yet</p>
+          <Button variant="primary" size="sm" onClick={openOnboarding}>
+            Continue setup
+          </Button>
         </div>
         {modal}
       </DashboardCard>
@@ -185,15 +158,14 @@ export default function ConnectedAccountsCard() {
             const isPositive = account.change > 0;
             const isNeutral = account.change === 0;
             return (
-              <div key={account.platform} className="flex items-center gap-2.5">
-                <PlatformLogo name={account.name} logo={account.logo} />
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-primary">{account.name}</span>
+              <div key={account.platform} className="flex items-baseline gap-2">
+                <span className="text-xs font-medium text-text-primary">{account.name}</span>
                 <span className="text-xs font-medium text-text-primary tabular-nums">
                   {formatCurrency(account.totalValue)}
                 </span>
                 <span
                   className={cn(
-                    'min-w-[52px] text-right text-xs tabular-nums',
+                    'text-xs tabular-nums',
                     isNeutral ? 'text-text-muted' : isPositive ? 'text-success' : 'text-error',
                   )}
                 >
@@ -204,7 +176,7 @@ export default function ConnectedAccountsCard() {
           })}
         </div>
 
-        {/* Donut chart */}
+        {/* Donut chart — labels only on hover */}
         {allocation.length > 0 && (
           <div className="flex flex-shrink-0 flex-col items-center">
             <div className="h-[72px] w-[72px]">
@@ -224,16 +196,9 @@ export default function ConnectedAccountsCard() {
                       <Cell key={slice.name} fill={slice.color} />
                     ))}
                   </Pie>
+                  <Tooltip content={<DonutTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
-            </div>
-            <div className="mt-1.5 flex flex-col gap-0.5">
-              {allocation.map((slice) => (
-                <div key={slice.name} className="flex items-center gap-1.5">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: slice.color }} />
-                  <span className="text-[10px] leading-tight text-text-muted">{slice.name}</span>
-                </div>
-              ))}
             </div>
           </div>
         )}
