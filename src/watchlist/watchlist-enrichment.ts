@@ -106,16 +106,16 @@ export class WatchlistEnrichment {
   }
 
   async getEnriched(symbol: string): Promise<EnrichmentCacheEntry | null> {
-    if (!this.jintelClient) return null;
-
     const key = symbol.toUpperCase();
+    const cached = this.cache.get(key);
+
+    if (!this.jintelClient) return cached ?? null;
 
     const entry = this.store.list().find((e) => e.symbol === key);
     if (entry && !entry.jintelEntityId) {
       await this.resolveEntity(key);
     }
 
-    const cached = this.cache.get(key);
     if (cached && !this.isStale(cached)) {
       return cached;
     }

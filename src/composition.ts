@@ -348,7 +348,11 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   }
 
   // Watchlist tools (3 tools: watchlist.add, watchlist.remove, watchlist.list)
-  const { enrichment: watchlistEnrichment, tools: watchlistTools } = await wireWatchlist({
+  const {
+    enrichment: watchlistEnrichment,
+    toolOptions: watchlistToolOptions,
+    tools: watchlistTools,
+  } = await wireWatchlist({
     dataDir: dataRoot,
     jintelClient,
     ttlSeconds: config.watchlist.enrichmentTtlSeconds,
@@ -367,6 +371,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     jintelToolOptions.client = newClient;
     jintelClient = newClient;
     watchlistEnrichment.setJintelClient(newClient);
+    watchlistToolOptions.client = newClient;
     log.info('Jintel client hot-swapped after key validation');
   });
 

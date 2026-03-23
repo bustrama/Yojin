@@ -200,7 +200,7 @@ describe('WatchlistEnrichment', () => {
       expect(result).not.toBeNull();
     });
 
-    it('returns null when Jintel client is unavailable', async () => {
+    it('returns null when Jintel client is unavailable and no cache exists', async () => {
       const enrichment = new WatchlistEnrichment({ store, dataDir: dir });
       await enrichment.initialize();
 
@@ -208,6 +208,25 @@ describe('WatchlistEnrichment', () => {
       const result = await enrichment.getEnriched('AAPL');
 
       expect(result).toBeNull();
+    });
+
+    it('returns cached data when Jintel client becomes unavailable', async () => {
+      const client = mockJintelClient({
+        enrichEntity: vi.fn().mockResolvedValue({ success: true, data: MOCK_ENRICHED }),
+      });
+      // Enrich with client available
+      const enrichment1 = new WatchlistEnrichment({ store, jintelClient: client, dataDir: dir });
+      await enrichment1.initialize();
+      await store.add({ symbol: 'AAPL', name: 'Apple Inc.', assetClass: 'EQUITY', jintelEntityId: 'jintel-aapl' });
+      await enrichment1.enrichSymbol('AAPL');
+
+      // Reload without client — should still return cached data
+      const enrichment2 = new WatchlistEnrichment({ store, dataDir: dir });
+      await enrichment2.initialize();
+      const result = await enrichment2.getEnriched('AAPL');
+
+      expect(result).not.toBeNull();
+      expect(result!.quote?.price).toBe(175.5);
     });
 
     it('returns stale cache on enrichment failure', async () => {
