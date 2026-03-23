@@ -54,7 +54,6 @@ export interface ChatImageData {
 export interface ActiveSessionInfo {
   sessionId: string | null;
   threadId: string;
-  isReadOnly: boolean;
 }
 
 interface ChatContextValue {
@@ -67,10 +66,10 @@ interface ChatContextValue {
   sendMessage: (content: string, image?: ChatImageData) => void;
   /** Current session info. */
   activeSession: ActiveSessionInfo;
-  /** Switch to a past session (read-only). Pass null to start a new session. */
+  /** Switch to an existing session or start a new one (pass null). */
   switchSession: (sessionId: string | null, threadId?: string) => void;
-  /** Continue a past session (makes it the active live session). */
-  continueSession: () => void;
+  /** Increments when session list may have changed (message sent, session created, etc.). */
+  sessionVersion: number;
 }
 
 const STORAGE_KEY = 'yojin-active-thread';
@@ -99,7 +98,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     return stored || `web-${crypto.randomUUID()}`;
   });
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isReadOnly, setIsReadOnly] = useState(false);
+
+  // Version counter — bumped whenever the backend session list may have changed
+  const [sessionVersion, setSessionVersion] = useState(0);
+  // Guard against stale async results in switchSession
+  const switchVersionRef = useRef(0);
 
   const completedMessagesRef = useRef(new Set<string>());
   const queueRef = useRef<string[]>([]);
@@ -112,10 +115,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // Persist active threadId to localStorage
   useEffect(() => {
-    if (!isReadOnly) {
-      localStorage.setItem(STORAGE_KEY, threadId);
-    }
-  }, [threadId, isReadOnly]);
+    localStorage.setItem(STORAGE_KEY, threadId);
+  }, [threadId]);
 
   const resetStreamingState = useCallback(() => {
     setStreamingContent('');
@@ -204,6 +205,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             piiTypes: piiTypesRef.current,
           },
         ]);
+        // Notify sidebar that the session list may have changed (new session created, message count updated)
+        setSessionVersion((v) => v + 1);
         resetStreamingState();
         setTimeout(() => processQueue(), 0);
       } else if (event.type === 'ERROR') {
@@ -220,12 +223,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [processQueue, resetStreamingState],
   );
 
-  // Only subscribe when not in read-only mode
-  useSubscription({ query: CHAT_SUBSCRIPTION, variables: { threadId }, pause: isReadOnly }, handleSubscription);
+  // Always subscribe to the active thread
+  useSubscription({ query: CHAT_SUBSCRIPTION, variables: { threadId } }, handleSubscription);
 
   const sendMessage = useCallback(
     (content: string, image?: ChatImageData) => {
-      if (isReadOnly) return;
       if (isProcessingRef.current) {
         queueRef.current.push(content);
         // Show queued message separately so it renders after the current streaming response.
@@ -235,7 +237,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         processMessage(content, image);
       }
     },
-    [processMessage, isReadOnly],
+    [processMessage],
   );
 
   /** Switch to a session. Pass null to start a new session. */
@@ -247,25 +249,31 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       queueRef.current = [];
       setPendingMessages([]);
 
+      // Increment switch version — any in-flight fetch from a previous switch will be discarded
+      const version = ++switchVersionRef.current;
+
       if (newSessionId === null) {
         // New session — use provided threadId if available (e.g. from createSession mutation)
         const fresh = newThreadId ?? `web-${crypto.randomUUID()}`;
         setThreadId(fresh);
         setSessionId(null);
-        setIsReadOnly(false);
         setMessages([]);
-        localStorage.setItem(STORAGE_KEY, fresh);
         return;
       }
 
-      // Load past session
+      // Load existing session — set threadId synchronously so the UI resets immediately
       setSessionId(newSessionId);
-      setIsReadOnly(true);
       setMessages([]);
+      if (newThreadId) setThreadId(newThreadId);
 
-      // Fetch session messages
+      // Fetch session messages (network-only to avoid stale cached data)
       void (async () => {
-        const result = await client.query(SESSION_DETAIL_QUERY, { id: newSessionId }).toPromise();
+        const result = await client
+          .query(SESSION_DETAIL_QUERY, { id: newSessionId }, { requestPolicy: 'network-only' })
+          .toPromise();
+
+        // Stale guard: if another switch happened since we started, discard this result
+        if (switchVersionRef.current !== version) return;
 
         if (result.data?.session) {
           const session = result.data.session as {
@@ -286,16 +294,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [client, resetStreamingState],
   );
 
-  /** Continue the currently viewed session (switch from read-only to live). */
-  const continueSession = useCallback(() => {
-    setIsReadOnly(false);
-    localStorage.setItem(STORAGE_KEY, threadId);
-  }, [threadId]);
-
   const activeSessionInfo: ActiveSessionInfo = {
     sessionId,
     threadId,
-    isReadOnly,
   };
 
   const value: ChatContextValue = {
@@ -308,7 +309,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     sendMessage,
     activeSession: activeSessionInfo,
     switchSession,
-    continueSession,
+    sessionVersion,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

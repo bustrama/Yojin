@@ -67,7 +67,6 @@ export default function Chat() {
     activeTools,
     sendMessage,
     activeSession,
-    continueSession,
   } = useChatContext();
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -186,24 +185,11 @@ export default function Chat() {
 
       {/* Main chat area */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Read-only banner for past sessions */}
-        {activeSession.isReadOnly && (
-          <div className="flex items-center justify-between border-b border-border bg-bg-tertiary px-4 py-2">
-            <span className="text-xs text-text-secondary">Viewing past conversation</span>
-            <button
-              onClick={continueSession}
-              className="cursor-pointer rounded-md bg-accent-primary px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-accent-secondary"
-            >
-              Continue conversation
-            </button>
-          </div>
-        )}
-
         {/* Messages area */}
         <div ref={scrollRef} className="flex-1 overflow-auto px-6 py-6">
           <div className="mx-auto max-w-3xl space-y-6">
-            {/* Morning briefing — shown only for new/live sessions with no messages */}
-            {!activeSession.isReadOnly && messages.length === 0 && (
+            {/* Morning briefing — shown only for sessions with no messages */}
+            {messages.length === 0 && (
               <ChatMessage role="assistant">
                 <MorningBriefing
                   date={new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -301,8 +287,8 @@ export default function Chat() {
           </div>
         </div>
 
-        {/* Query builder / waterfall / manual entry — shown when no messages in live mode */}
-        {!activeSession.isReadOnly && messages.length === 0 && !localMessages.some((m) => m.type === 'tool-result') && (
+        {/* Query builder / waterfall / manual entry — shown when no messages */}
+        {messages.length === 0 && !localMessages.some((m) => m.type === 'tool-result') && (
           <div className="px-6 pb-4 pt-2">
             <div className="mx-auto max-w-3xl">
               {activeAction === 'add-asset' ? (
@@ -321,14 +307,12 @@ export default function Chat() {
           </div>
         )}
 
-        {/* Chat input — pinned bottom, hidden in read-only mode */}
-        {!activeSession.isReadOnly && (
-          <div className="px-6 pb-6">
-            <div className="mx-auto max-w-3xl">
-              <ChatInput onSend={handleSend} disableAttachment={isLoading} initialValue={presetMessage} />
-            </div>
+        {/* Chat input — always visible */}
+        <div className="px-6 pb-6">
+          <div className="mx-auto max-w-3xl">
+            <ChatInput onSend={handleSend} disableAttachment={isLoading} initialValue={presetMessage} />
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
