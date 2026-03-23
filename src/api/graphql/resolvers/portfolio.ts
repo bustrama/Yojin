@@ -228,18 +228,30 @@ export async function refreshPositionsMutation(
 // Position field resolvers — computed fields (mock until real market data)
 // ---------------------------------------------------------------------------
 
+/** Cache mock day-change per position object to avoid redundant computation across field resolvers. */
+const dayChangeCache = new WeakMap<Position, { dayChange: number; dayChangePercent: number }>();
+
+function getCachedDayChange(pos: Position): { dayChange: number; dayChangePercent: number } {
+  let cached = dayChangeCache.get(pos);
+  if (!cached) {
+    cached = mockDayChange(pos.symbol, pos.currentPrice);
+    dayChangeCache.set(pos, cached);
+  }
+  return cached;
+}
+
 export const positionFieldResolvers = {
   dayChange: (pos: Position) => {
     if (pos.dayChange != null) return pos.dayChange;
-    return mockDayChange(pos.symbol, pos.currentPrice).dayChange;
+    return getCachedDayChange(pos).dayChange;
   },
   dayChangePercent: (pos: Position) => {
     if (pos.dayChangePercent != null) return pos.dayChangePercent;
-    return mockDayChange(pos.symbol, pos.currentPrice).dayChangePercent;
+    return getCachedDayChange(pos).dayChangePercent;
   },
   sparkline: (pos: Position) => {
     if (pos.sparkline) return pos.sparkline;
-    const { dayChangePercent } = mockDayChange(pos.symbol, pos.currentPrice);
+    const { dayChangePercent } = getCachedDayChange(pos);
     return mockSparkline(pos.symbol, pos.currentPrice, dayChangePercent);
   },
 };

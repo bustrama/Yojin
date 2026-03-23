@@ -36,9 +36,14 @@ export default function PortfolioValueCard() {
     );
   }
 
-  const { totalValue, totalPnl, totalPnlPercent } = data.portfolio;
-  const isPositive = totalPnl > 0;
-  const isNeutral = totalPnl === 0;
+  const { totalValue, positions } = data.portfolio;
+
+  // Sum per-position dayChange for actual daily change (not all-time unrealized PnL)
+  const change = (positions ?? []).reduce((sum: number, p: { dayChange?: number }) => sum + (p.dayChange ?? 0), 0);
+  const dayChangePercent = totalValue > 0 ? Math.round((change / (totalValue - change)) * 10000) / 100 : 0;
+
+  const isPositive = change > 0;
+  const isNeutral = change === 0;
 
   return (
     <div className="flex min-w-0 flex-col justify-center rounded-lg border border-border bg-bg-card p-6">
@@ -51,8 +56,8 @@ export default function PortfolioValueCard() {
         )}
       >
         {!isNeutral && <span className="text-2xs">{isPositive ? '\u25B2' : '\u25BC'}</span>}
-        <span className="font-medium">{formatChange(totalPnl)}</span>
-        <span className="font-medium">{formatPercent(totalPnlPercent)}</span>
+        <span className="font-medium">{formatChange(change)}</span>
+        <span className="font-medium">{formatPercent(dayChangePercent)}</span>
         <span className="text-text-muted">today</span>
       </div>
     </div>

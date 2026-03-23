@@ -94,7 +94,7 @@ export default function ConnectedAccountsCard() {
       const key = pos.platform;
       if (!grouped[key]) grouped[key] = { totalValue: 0, change: 0 };
       grouped[key].totalValue += pos.marketValue;
-      grouped[key].change += pos.unrealizedPnl;
+      grouped[key].change += pos.dayChange ?? 0;
     }
 
     return Object.entries(grouped)

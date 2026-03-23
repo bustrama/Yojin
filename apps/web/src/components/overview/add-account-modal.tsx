@@ -153,6 +153,8 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
         resetState();
         onClose();
         onSuccess();
+      } else {
+        setUploadError(json?.errors?.[0]?.message ?? 'Failed to save positions. Please try again.');
       }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Failed to save positions.');
@@ -162,8 +164,11 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   }, [selectedPlatformId, extractedPositions, onClose, onSuccess]);
 
   const handleBack = () => {
-    if (screen === 'detail' || screen === 'manual' || screen === 'custom') {
+    if (screen === 'detail' || screen === 'custom') {
       setScreen('grid');
+      setUploadError(undefined);
+    } else if (screen === 'manual') {
+      setScreen('detail');
       setUploadError(undefined);
     } else if (screen === 'verify') {
       setScreen(selectedPlatformId && !PLATFORMS.some((p) => p.id === selectedPlatformId) ? 'custom' : 'detail');
