@@ -6,18 +6,13 @@ import FeedDetailModal from './feed-detail-modal';
 import type { FeedDetailData } from './feed-detail-modal';
 import { cn } from '../../lib/utils';
 
-/* ── Unified item type ───────────────────────────────────────────── */
+/* ── Types ─────────────────────────────────────────────────────────── */
 
-type FeedCategory =
-  | 'Action'
-  | 'Alert'
-  | 'Insight'
-  | 'Fundamentals'
-  | 'News'
-  | 'Sentiment'
-  | 'Filings'
-  | 'Socials'
-  | 'Macro';
+type EventCategory = 'Action' | 'Alert' | 'Insight';
+
+type EventType = 'Fundamentals' | 'Filings' | 'News' | 'Socials' | 'Macro' | 'Trading Logic Trigger';
+
+type FilterTab = 'All' | EventCategory;
 
 interface FeedItemDetail {
   keyPoints: string[];
@@ -30,7 +25,8 @@ interface FeedItemDetail {
 }
 
 export interface FeedItem {
-  category: FeedCategory;
+  category: EventCategory;
+  eventType: EventType;
   source: string;
   time: string;
   title: string;
@@ -40,23 +36,24 @@ export interface FeedItem {
   detail: FeedItemDetail;
 }
 
-/* ── Category config ─────────────────────────────────────────────── */
+/* ── Category config (drives label color + icon tint) ─────────────── */
 
-const categoryConfig: Record<FeedCategory, { variant: BadgeVariant; color: string; iconBg: string }> = {
+const categoryConfig: Record<EventCategory, { variant: BadgeVariant; color: string; iconBg: string }> = {
   Action: { variant: 'accent', color: 'text-accent-primary', iconBg: 'bg-accent-primary/10' },
   Alert: { variant: 'warning', color: 'text-warning', iconBg: 'bg-warning/10' },
   Insight: { variant: 'success', color: 'text-success', iconBg: 'bg-success/10' },
-  Fundamentals: { variant: 'success', color: 'text-success', iconBg: 'bg-success/10' },
-  News: { variant: 'info', color: 'text-info', iconBg: 'bg-info/10' },
-  Sentiment: { variant: 'market', color: 'text-market', iconBg: 'bg-market/10' },
-  Filings: { variant: 'neutral', color: 'text-text-muted', iconBg: 'bg-bg-hover' },
-  Socials: { variant: 'accent', color: 'text-accent-primary', iconBg: 'bg-accent-primary/10' },
-  Macro: { variant: 'warning', color: 'text-warning', iconBg: 'bg-warning/10' },
 };
 
-/* ── Icons ───────────────────────────────────────────────────────── */
+const SECTION_ORDER: EventCategory[] = ['Action', 'Alert', 'Insight'];
 
-/* Intel icons (24×24 viewBox, Heroicons outline) */
+const FILTER_TABS: { label: string; value: FilterTab }[] = [
+  { label: 'All', value: 'All' },
+  { label: 'Actions', value: 'Action' },
+  { label: 'Alerts', value: 'Alert' },
+  { label: 'Insights', value: 'Insight' },
+];
+
+/* ── Icons (by event type) ─────────────────────────────────────────── */
 
 function ActionIcon({ className }: { className?: string }) {
   return (
@@ -94,8 +91,6 @@ function InsightIcon({ className }: { className?: string }) {
   );
 }
 
-/* News icons (16×16 viewBox, stroke-based) */
-
 function FundamentalsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -111,14 +106,6 @@ function NewsIcon({ className }: { className?: string }) {
       <rect x="2" y="2.5" width="10" height="11" rx="1" />
       <path d="M12 5.5h1.5a.5.5 0 0 1 .5.5v6a2 2 0 0 1-2 2" />
       <path strokeLinecap="round" d="M4.5 5.5h2.5v2.5H4.5zM9 5.5h1.5M9 7.5h1.5M4.5 10h5" />
-    </svg>
-  );
-}
-
-function SentimentIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M1.5 8h2.5l1.5-3.5 2 7 1.5-4.5 1 1H13.5" />
     </svg>
   );
 }
@@ -152,16 +139,23 @@ function MacroIcon({ className }: { className?: string }) {
   );
 }
 
-const categoryIcon: Record<FeedCategory, FC<{ className?: string }>> = {
+/* ── Event type → icon mapping ─────────────────────────────────────── */
+
+const eventTypeIcon: Record<EventType, FC<{ className?: string }>> = {
+  Fundamentals: FundamentalsIcon,
+  Filings: FilingsIcon,
+  News: NewsIcon,
+  Socials: SocialsIcon,
+  Macro: MacroIcon,
+  'Trading Logic Trigger': ActionIcon,
+};
+
+/* ── Fallback category icon (when no event type match) ─────────────── */
+
+const categoryFallbackIcon: Record<EventCategory, FC<{ className?: string }>> = {
   Action: ActionIcon,
   Alert: AlertIcon,
   Insight: InsightIcon,
-  Fundamentals: FundamentalsIcon,
-  News: NewsIcon,
-  Sentiment: SentimentIcon,
-  Filings: FilingsIcon,
-  Socials: SocialsIcon,
-  Macro: MacroIcon,
 };
 
 /* ── Button icons ────────────────────────────────────────────────── */
@@ -193,9 +187,10 @@ function AgentIcon() {
 /* ── Mock data ───────────────────────────────────────────────────── */
 
 const feedItems: FeedItem[] = [
-  /* ─ Intel alerts ─ */
+  /* ── Actions ─────────────────────────────────────────────────── */
   {
     category: 'Action',
+    eventType: 'Trading Logic Trigger',
     source: 'Risk Manager',
     time: 'Now',
     title: 'Rebalance Portfolio',
@@ -218,7 +213,34 @@ const feedItems: FeedItem[] = [
     },
   },
   {
+    category: 'Action',
+    eventType: 'Trading Logic Trigger',
+    source: 'Risk Manager',
+    time: '30m',
+    title: 'Stop Loss Approaching',
+    description: 'META approaching -8% drawdown threshold. Review exit strategy.',
+    urgency: 'high',
+    preview:
+      'META has declined 7.8% from recent peak, approaching your -8% drawdown threshold. Current unrealized P&L: -$2,340. Only $1.08 (0.2%) above trigger level.',
+    detail: {
+      keyPoints: [
+        'META down 7.8% from 52-week high of $542 — your threshold is -8% (triggers at $498.64)',
+        'Current price: $499.72 — only $1.08 (0.2%) above trigger level',
+        'Volume has been 1.4x average on down days — institutional distribution pattern',
+      ],
+      analysis:
+        "META's decline coincides with broader concerns about Reality Labs spending ($4.5B/quarter) and ad revenue growth deceleration. The stock has broken below its 50-day moving average ($518) and is testing the 100-day MA ($497). Volume patterns suggest institutional selling, which typically persists for 2-3 weeks. Technical support exists at $485 (200-day MA) and $460 (prior consolidation zone). The risk/reward at current levels is unfavorable with a 2:1 downside-to-upside ratio based on technical levels.",
+      recommendation:
+        'If $498.64 is breached, execute the planned stop: sell 50% of position (approximately $7,500). Hold remaining 50% with a tightened stop at $485 (200-day MA). If the 200-day holds, the risk/reward improves significantly. Consider redeploying proceeds into a high-quality name with better technical setup.',
+      relatedTickers: ['META'],
+      confidence: 91,
+    },
+  },
+
+  /* ── Alerts ──────────────────────────────────────────────────── */
+  {
     category: 'Alert',
+    eventType: 'Fundamentals',
     source: 'Research Analyst',
     time: '15m',
     title: 'Earnings This Week',
@@ -241,54 +263,11 @@ const feedItems: FeedItem[] = [
     },
   },
   {
-    category: 'Action',
-    source: 'Risk Manager',
-    time: '30m',
-    title: 'Stop Loss Approaching',
-    description: 'META approaching -8% drawdown threshold. Review exit strategy.',
-    urgency: 'high',
-    preview:
-      'META has declined 7.8% from recent peak, approaching your -8% drawdown threshold. Current unrealized P&L: -$2,340. Only $1.08 (0.2%) above trigger level.',
-    detail: {
-      keyPoints: [
-        'META down 7.8% from 52-week high of $542 — your threshold is -8% (triggers at $498.64)',
-        'Current price: $499.72 — only $1.08 (0.2%) above trigger level',
-        'Volume has been 1.4x average on down days — institutional distribution pattern',
-      ],
-      analysis:
-        "META's decline coincides with broader concerns about Reality Labs spending ($4.5B/quarter) and ad revenue growth deceleration. The stock has broken below its 50-day moving average ($518) and is testing the 100-day MA ($497). Volume patterns suggest institutional selling, which typically persists for 2-3 weeks. Technical support exists at $485 (200-day MA) and $460 (prior consolidation zone). The risk/reward at current levels is unfavorable with a 2:1 downside-to-upside ratio based on technical levels.",
-      recommendation:
-        'If $498.64 is breached, execute the planned stop: sell 50% of position (approximately $7,500). Hold remaining 50% with a tightened stop at $485 (200-day MA). If the 200-day holds, the risk/reward improves significantly. Consider redeploying proceeds into a high-quality name with better technical setup.',
-      relatedTickers: ['META'],
-      confidence: 91,
-    },
-  },
-  /* ─ News ─ */
-  {
-    category: 'Macro',
-    source: 'Reuters',
-    time: '2h',
-    title: 'Fed signals potential rate adjustment in upcoming meeting',
-    preview:
-      'Federal Reserve officials indicated growing openness to adjusting interest rates, citing evolving inflation data and labor market conditions that may warrant policy recalibration.',
-    detail: {
-      keyPoints: [
-        'FOMC minutes suggest growing consensus for a pause in rate hikes, with two members favoring a 25bp cut',
-        'Core PCE inflation trending toward 2.4% — closer to target but still above the 2% goal',
-        'Labor market showing signs of gradual cooling with unemployment ticking up to 3.9%',
-      ],
-      analysis:
-        "The Federal Reserve's latest signals mark a notable shift in tone from recent hawkish positioning. While a rate cut isn't imminent, the language suggests the bar for maintaining current rates is rising. Bond markets have responded with a rally in longer-duration Treasuries, pushing the 10-year yield down 12bps. For equity portfolios, this creates a mixed signal: lower rates support valuations, but the underlying reason — economic softening — may pressure earnings growth in cyclical sectors. The market is currently pricing in a 62% probability of a rate cut by June.",
-      relatedTickers: ['SPY', 'TLT', 'GLD', 'DXY'],
-      sentiment: 'bearish',
-      impact: 'high',
-    },
-  },
-  {
-    category: 'Fundamentals',
+    category: 'Alert',
+    eventType: 'Fundamentals',
     source: 'Bloomberg',
     time: '3h',
-    title: 'NVDA reports record quarterly revenue, beats estimates',
+    title: 'NVDA Reports Record Revenue',
     preview:
       'NVIDIA posted $22.1B in quarterly revenue, surpassing analyst estimates by 12%. Data center segment drove 76% of total revenue on unprecedented AI infrastructure demand.',
     detail: {
@@ -305,7 +284,52 @@ const feedItems: FeedItem[] = [
     },
   },
   {
+    category: 'Alert',
+    eventType: 'Filings',
+    source: 'SEC EDGAR',
+    time: '5h',
+    title: 'MSFT 10-K: Cloud Margin Expansion',
+    preview:
+      "Microsoft's annual filing reveals Azure operating margins reached 42%, up from 35% a year ago. Capital expenditure guidance raised to $52B for AI infrastructure build-out.",
+    detail: {
+      keyPoints: [
+        'Azure operating margin reached 42%, expanding 700bps YoY — cloud profitability inflection point',
+        'Capital expenditure guided to $52B for FY2025, up 38% YoY — primarily AI datacenter expansion',
+        'Segment reporting shows AI revenue run rate exceeded $10B annualized for the first time',
+      ],
+      analysis:
+        "Microsoft's 10-K filing reveals the structural economics of their AI strategy are improving faster than expected. The Azure margin expansion from 35% to 42% demonstrates that AI workloads carry higher margins than traditional cloud compute, likely due to premium pricing and GPU utilization rates above 90%. The $52B capex commitment signals confidence in sustained demand but also raises the stakes — if AI revenue growth decelerates, the return on invested capital could deteriorate. The new segment disclosure around AI revenue ($10B run rate) provides investors with better visibility into the AI contribution.",
+      relatedTickers: ['MSFT', 'GOOGL', 'AMZN', 'ORCL'],
+      sentiment: 'bullish',
+      impact: 'medium',
+    },
+  },
+  {
+    category: 'Alert',
+    eventType: 'Socials',
+    source: 'StockTwits',
+    time: '7h',
+    title: 'TSLA Sentiment Surge',
+    preview:
+      'Social media mentions of TSLA jumped 340% this week with 78% bullish sentiment. Retail options activity shows heavy call buying at $280-$300 strikes.',
+    detail: {
+      keyPoints: [
+        'TSLA social mentions jumped 340% week-over-week — highest volume since last earnings',
+        'Bullish sentiment ratio at 78%, well above the 60% 90-day average',
+        'Retail options activity shows concentrated call buying at $280-$300 strikes for next Friday expiry',
+      ],
+      analysis:
+        'The social sentiment surge around TSLA reflects retail investor anticipation of the upcoming robotaxi event. Historical analysis shows that when TSLA social sentiment exceeds 75% bullish and mention volume spikes above 300%, the stock has moved ±8% in the following week (with a 60% probability of upward movement). However, elevated retail enthusiasm can also indicate crowded positioning — if the robotaxi reveal disappoints, the unwind could be swift. The heavy call buying at $280-$300 creates gamma exposure for dealers that may amplify moves in either direction.',
+      relatedTickers: ['TSLA', 'UBER', 'LYFT'],
+      sentiment: 'bullish',
+      impact: 'medium',
+    },
+  },
+
+  /* ── Insights ────────────────────────────────────────────────── */
+  {
     category: 'Insight',
+    eventType: 'Trading Logic Trigger',
     source: 'Strategist',
     time: '1h',
     title: 'Correlation Detected',
@@ -328,10 +352,32 @@ const feedItems: FeedItem[] = [
     },
   },
   {
-    category: 'Sentiment',
+    category: 'Insight',
+    eventType: 'Macro',
+    source: 'Reuters',
+    time: '2h',
+    title: 'Fed Signals Rate Adjustment',
+    preview:
+      'Federal Reserve officials indicated growing openness to adjusting interest rates, citing evolving inflation data and labor market conditions that may warrant policy recalibration.',
+    detail: {
+      keyPoints: [
+        'FOMC minutes suggest growing consensus for a pause in rate hikes, with two members favoring a 25bp cut',
+        'Core PCE inflation trending toward 2.4% — closer to target but still above the 2% goal',
+        'Labor market showing signs of gradual cooling with unemployment ticking up to 3.9%',
+      ],
+      analysis:
+        "The Federal Reserve's latest signals mark a notable shift in tone from recent hawkish positioning. While a rate cut isn't imminent, the language suggests the bar for maintaining current rates is rising. Bond markets have responded with a rally in longer-duration Treasuries, pushing the 10-year yield down 12bps. For equity portfolios, this creates a mixed signal: lower rates support valuations, but the underlying reason — economic softening — may pressure earnings growth in cyclical sectors. The market is currently pricing in a 62% probability of a rate cut by June.",
+      relatedTickers: ['SPY', 'TLT', 'GLD', 'DXY'],
+      sentiment: 'bearish',
+      impact: 'high',
+    },
+  },
+  {
+    category: 'Insight',
+    eventType: 'Socials',
     source: 'WSJ',
     time: '4h',
-    title: 'Tech sector rotation accelerates amid valuation concerns',
+    title: 'Tech Sector Rotation Accelerates',
     preview:
       'Institutional investors are reducing technology exposure amid stretched valuations, rotating into energy and healthcare sectors. Large-cap tech funds saw $4.2B in net outflows over two weeks.',
     detail: {
@@ -348,30 +394,11 @@ const feedItems: FeedItem[] = [
     },
   },
   {
-    category: 'Filings',
-    source: 'SEC EDGAR',
-    time: '5h',
-    title: 'MSFT files 10-K revealing cloud margin expansion',
-    preview:
-      "Microsoft's annual filing reveals Azure operating margins reached 42%, up from 35% a year ago. Capital expenditure guidance raised to $52B for AI infrastructure build-out.",
-    detail: {
-      keyPoints: [
-        'Azure operating margin reached 42%, expanding 700bps YoY — cloud profitability inflection point',
-        'Capital expenditure guided to $52B for FY2025, up 38% YoY — primarily AI datacenter expansion',
-        'Segment reporting shows AI revenue run rate exceeded $10B annualized for the first time',
-      ],
-      analysis:
-        "Microsoft's 10-K filing reveals the structural economics of their AI strategy are improving faster than expected. The Azure margin expansion from 35% to 42% demonstrates that AI workloads carry higher margins than traditional cloud compute, likely due to premium pricing and GPU utilization rates above 90%. The $52B capex commitment signals confidence in sustained demand but also raises the stakes — if AI revenue growth decelerates, the return on invested capital could deteriorate. The new segment disclosure around AI revenue ($10B run rate) provides investors with better visibility into the AI contribution.",
-      relatedTickers: ['MSFT', 'GOOGL', 'AMZN', 'ORCL'],
-      sentiment: 'bullish',
-      impact: 'medium',
-    },
-  },
-  {
-    category: 'News',
+    category: 'Insight',
+    eventType: 'News',
     source: 'CNBC',
     time: '6h',
-    title: 'Apple unveils new AI features for enterprise customers',
+    title: 'Apple Unveils Enterprise AI Features',
     preview:
       'Apple announced enterprise-focused AI capabilities including on-device document analysis and automated workflow tools, partnering with SAP and Salesforce for integration.',
     detail: {
@@ -388,30 +415,11 @@ const feedItems: FeedItem[] = [
     },
   },
   {
-    category: 'Socials',
-    source: 'StockTwits',
-    time: '7h',
-    title: 'TSLA social sentiment surges to 6-month high ahead of robotaxi reveal',
-    preview:
-      'Social media mentions of TSLA jumped 340% this week with 78% bullish sentiment. Retail options activity shows heavy call buying at $280-$300 strikes.',
-    detail: {
-      keyPoints: [
-        'TSLA social mentions jumped 340% week-over-week — highest volume since last earnings',
-        'Bullish sentiment ratio at 78%, well above the 60% 90-day average',
-        'Retail options activity shows concentrated call buying at $280-$300 strikes for next Friday expiry',
-      ],
-      analysis:
-        'The social sentiment surge around TSLA reflects retail investor anticipation of the upcoming robotaxi event. Historical analysis shows that when TSLA social sentiment exceeds 75% bullish and mention volume spikes above 300%, the stock has moved ±8% in the following week (with a 60% probability of upward movement). However, elevated retail enthusiasm can also indicate crowded positioning — if the robotaxi reveal disappoints, the unwind could be swift. The heavy call buying at $280-$300 creates gamma exposure for dealers that may amplify moves in either direction.',
-      relatedTickers: ['TSLA', 'UBER', 'LYFT'],
-      sentiment: 'bullish',
-      impact: 'medium',
-    },
-  },
-  {
-    category: 'Macro',
+    category: 'Insight',
+    eventType: 'Macro',
     source: 'FT',
     time: '8h',
-    title: 'European markets rally on improved economic outlook',
+    title: 'European Markets Rally on Outlook',
     preview:
       'European equity markets posted broad gains as ECB signaled potential easing and manufacturing PMI data showed unexpected improvement, with Euro Stoxx 50 gaining 2.1%.',
     detail: {
@@ -432,9 +440,19 @@ const feedItems: FeedItem[] = [
 /* ── Component ───────────────────────────────────────────────────── */
 
 export default function NewsFeed() {
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [modalData, setModalData] = useState<FeedDetailData | null>(null);
   const navigate = useNavigate();
+
+  const filteredItems = activeFilter === 'All' ? feedItems : feedItems.filter((item) => item.category === activeFilter);
+
+  const grouped = SECTION_ORDER.map((cat) => ({
+    category: cat,
+    items: filteredItems.filter((item) => item.category === cat),
+  })).filter((group) => group.items.length > 0);
+
+  const showSectionHeaders = activeFilter === 'All';
 
   const toggleExpand = (key: string) => {
     setExpandedKey(expandedKey === key ? null : key);
@@ -461,84 +479,141 @@ export default function NewsFeed() {
 
   return (
     <>
-      <div className="space-y-3.5 p-3">
-        {feedItems.map((item) => {
-          const config = categoryConfig[item.category];
-          const Icon = categoryIcon[item.category];
-          const itemKey = `${item.category}-${item.source}-${item.time}`;
-          const expanded = expandedKey === itemKey;
-          return (
-            <div
-              key={itemKey}
-              className={cn(
-                'cursor-pointer rounded-xl border border-border-light bg-bg-tertiary transition-all',
-                expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-tertiary',
-              )}
-              onClick={() => toggleExpand(itemKey)}
-              role="button"
-              tabIndex={0}
-              aria-expanded={expanded}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  toggleExpand(itemKey);
-                }
-              }}
-            >
-              {/* Card header */}
-              <div className="flex items-center gap-3 px-2.5 py-2">
-                <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg', config.iconBg)}>
-                  <Icon className={cn('h-4.5 w-4.5', config.color)} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className={cn('text-2xs font-semibold uppercase tracking-[0.1em]', config.color)}>
-                    {item.category}
-                  </span>
-                  <p className="truncate text-sm font-medium leading-snug text-text-primary">{item.title}</p>
-                </div>
-                <span className="flex-shrink-0 text-2xs text-text-muted">{item.time}</span>
-              </div>
+      {/* ── Sticky header ──────────────────────────────────────── */}
+      <div className="sticky top-0 z-10 bg-bg-secondary">
+        {/* Title + count badge */}
+        <div className="flex items-center gap-2.5 px-4 pt-4 pb-1.5">
+          <h2 className="font-headline text-base text-text-primary">Recommendations</h2>
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-primary px-1.5 text-[10px] font-bold text-white">
+            {feedItems.length}
+          </span>
+        </div>
 
-              {/* Expandable preview */}
-              <div
-                className={cn(
-                  'grid transition-[grid-template-rows] duration-200 ease-out',
-                  expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                )}
-              >
-                <div className="overflow-hidden">
-                  <div className="border-t border-border/30 px-3 pb-3">
-                    <p className="mt-2 text-2xs leading-relaxed text-text-secondary">{item.preview}</p>
-                    <div className="mt-4 flex items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openDetail(item);
-                        }}
+        {/* Filter tabs */}
+        <div className="flex gap-5 border-b border-border px-4">
+          {FILTER_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => {
+                setActiveFilter(tab.value);
+                setExpandedKey(null);
+              }}
+              className={cn(
+                'relative cursor-pointer pb-2.5 pt-1.5 text-xs font-medium transition-colors',
+                activeFilter === tab.value ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary',
+              )}
+            >
+              {tab.label}
+              {activeFilter === tab.value && (
+                <span className="absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-accent-primary" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Grouped feed items ─────────────────────────────────── */}
+      <div className="space-y-5 p-3">
+        {grouped.map(({ category, items }) => {
+          const catConfig = categoryConfig[category];
+          return (
+            <div key={category}>
+              {/* Section header */}
+              {showSectionHeaders && (
+                <h3 className={cn('mb-2.5 px-1 text-2xs font-semibold uppercase tracking-widest', catConfig.color)}>
+                  {category}s
+                </h3>
+              )}
+
+              {/* Cards */}
+              <div className="space-y-2.5">
+                {items.map((item) => {
+                  const config = categoryConfig[item.category];
+                  const Icon = eventTypeIcon[item.eventType] ?? categoryFallbackIcon[item.category];
+                  const itemKey = `${item.category}-${item.eventType}-${item.title}`;
+                  const expanded = expandedKey === itemKey;
+
+                  return (
+                    <div
+                      key={itemKey}
+                      className={cn(
+                        'cursor-pointer rounded-xl border border-border-light bg-bg-tertiary transition-all',
+                        expanded ? 'ring-1 ring-border-light' : 'hover:bg-bg-hover',
+                      )}
+                      onClick={() => toggleExpand(itemKey)}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={expanded}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleExpand(itemKey);
+                        }
+                      }}
+                    >
+                      {/* Card header */}
+                      <div className="flex items-center gap-3 px-2.5 py-2">
+                        <div
+                          className={cn(
+                            'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg',
+                            config.iconBg,
+                          )}
+                        >
+                          <Icon className={cn('h-4.5 w-4.5', config.color)} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className={cn('text-2xs font-semibold uppercase tracking-[0.1em]', config.color)}>
+                            {item.category}
+                          </span>
+                          <p className="truncate text-sm font-medium leading-snug text-text-primary">{item.title}</p>
+                        </div>
+                        <span className="flex-shrink-0 text-2xs text-text-muted">{item.time}</span>
+                      </div>
+
+                      {/* Expandable preview */}
+                      <div
+                        className={cn(
+                          'grid transition-[grid-template-rows] duration-200 ease-out',
+                          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                        )}
                       >
-                        <ZapIcon />
-                        View full analysis
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate('/chat', {
-                            state: {
-                              preset: `Analyze this ${item.category.toLowerCase()}: "${item.title}" — ${item.description ?? item.preview}`,
-                            },
-                          });
-                        }}
-                      >
-                        <AgentIcon />
-                        Add to Chat
-                      </Button>
+                        <div className="overflow-hidden">
+                          <div className="border-t border-border/30 px-3 pb-3">
+                            <p className="mt-2 text-2xs leading-relaxed text-text-secondary">{item.preview}</p>
+                            <div className="mt-3 flex items-center gap-2">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openDetail(item);
+                                }}
+                              >
+                                <ZapIcon />
+                                View full analysis
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/chat', {
+                                    state: {
+                                      preset: `Analyze this ${item.category.toLowerCase()}: "${item.title}" — ${item.description ?? item.preview}`,
+                                    },
+                                  });
+                                }}
+                              >
+                                <AgentIcon />
+                                Add to Chat
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
           );
