@@ -8,7 +8,15 @@ import { createSchema, createYoga } from 'graphql-yoga';
 import type { Hono } from 'hono';
 
 import { alertsQuery, createAlertMutation, dismissAlertMutation } from './resolvers/alerts.js';
-import { onChatMessageSubscription, sendMessageMutation } from './resolvers/chat.js';
+import {
+  activeSessionQuery,
+  createSessionMutation,
+  deleteSessionMutation,
+  onChatMessageSubscription,
+  sendMessageMutation,
+  sessionQuery,
+  sessionsQuery,
+} from './resolvers/chat.js';
 import {
   connectPlatformResolver,
   detectAvailableTiersResolver,
@@ -50,6 +58,7 @@ import {
   enrichedSnapshotQuery,
   portfolioHistoryQuery,
   portfolioQuery,
+  positionFieldResolvers,
   positionsQuery,
   refreshPositionsMutation,
 } from './resolvers/portfolio.js';
@@ -93,13 +102,19 @@ const schema = createSchema({
       detectAiCredential: detectAiCredentialQuery,
       detectKeychainToken: detectKeychainTokenQuery,
       onboardingStatus: onboardingStatusQuery,
+      sessions: sessionsQuery,
+      session: sessionQuery,
+      activeSession: activeSessionQuery,
     },
+    Position: positionFieldResolvers,
     Mutation: {
       refreshPositions: refreshPositionsMutation,
       addManualPosition: addManualPositionMutation,
       createAlert: createAlertMutation,
       dismissAlert: dismissAlertMutation,
       sendMessage: sendMessageMutation,
+      createSession: createSessionMutation,
+      deleteSession: deleteSessionMutation,
       fetchDataSource: fetchDataSourceResolver,
       addDataSource: addDataSourceResolver,
       removeDataSource: removeDataSourceResolver,

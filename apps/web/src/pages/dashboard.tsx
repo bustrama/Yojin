@@ -1,22 +1,32 @@
-import PortfolioValueStrip from '../components/overview/portfolio-value-strip';
+import PortfolioValueCard from '../components/overview/portfolio-value-card';
+import ConnectedAccountsCard from '../components/overview/connected-accounts-card';
 import TotalValueChart from '../components/overview/total-value-chart';
 import PositionsPreview from '../components/overview/positions-preview';
-import AllocationChart from '../components/charts/allocation-chart';
+import YojinSnapCard from '../components/overview/yojin-snap-card';
+import YojinActionsCard from '../components/overview/yojin-actions-card';
 import RightPanel from '../components/layout/right-panel';
 import NewsFeed from '../components/overview/news-feed';
-import { SetupBanner } from '../components/layout/setup-banner';
-
 export default function Dashboard() {
   return (
     <div className="flex flex-1 overflow-hidden">
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden p-6 gap-5">
-        <SetupBanner />
-        <PortfolioValueStrip />
-        <TotalValueChart />
-        <div className="flex min-h-0 flex-1 gap-5">
+      <div className="flex flex-1 flex-col overflow-auto p-6 gap-5">
+        {/* Row 1: Portfolio value + Connected accounts */}
+        <div className="grid flex-shrink-0 grid-cols-2 gap-5">
+          <PortfolioValueCard />
+          <ConnectedAccountsCard />
+        </div>
+
+        {/* Row 2: Total Value chart + Top Positions */}
+        <div className="grid min-h-[280px] flex-1 grid-cols-2 gap-5">
+          <TotalValueChart />
           <PositionsPreview />
-          <AllocationChart />
+        </div>
+
+        {/* Row 3: Yojin Snap + Actions */}
+        <div className="grid min-h-[320px] flex-shrink-0 grid-cols-2 gap-5">
+          <YojinSnapCard />
+          <YojinActionsCard />
         </div>
       </div>
 

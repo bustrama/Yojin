@@ -54,6 +54,9 @@ export const typeDefs = /* GraphQL */ `
     marketValue: Float!
     unrealizedPnl: Float!
     unrealizedPnlPercent: Float!
+    dayChange: Float!
+    dayChangePercent: Float!
+    sparkline: [Float!]!
     sector: String
     assetClass: AssetClass!
     platform: String!
@@ -241,6 +244,24 @@ export const typeDefs = /* GraphQL */ `
   type SendMessagePayload {
     threadId: String!
     messageId: String!
+  }
+
+  type SessionSummary {
+    id: ID!
+    threadId: String!
+    title: String!
+    createdAt: String!
+    lastMessageAt: String
+    messageCount: Int!
+  }
+
+  type SessionDetail {
+    id: ID!
+    threadId: String!
+    title: String!
+    createdAt: String!
+    lastMessageAt: String
+    messages: [ChatMessage!]!
   }
 
   # ---------------------------------------------------------------------------
@@ -611,6 +632,9 @@ export const typeDefs = /* GraphQL */ `
     detectAiCredential: DetectedCredential
     detectKeychainToken: KeychainTokenResult!
     onboardingStatus: OnboardingStatusResult!
+    sessions: [SessionSummary!]!
+    session(id: ID!): SessionDetail
+    activeSession: SessionSummary
   }
 
   type Mutation {
@@ -619,6 +643,8 @@ export const typeDefs = /* GraphQL */ `
     createAlert(rule: AlertRuleInput!): Alert!
     dismissAlert(id: ID!): Alert!
     sendMessage(threadId: String!, message: String!, imageBase64: String, imageMediaType: String): SendMessagePayload!
+    createSession: SessionSummary!
+    deleteSession(id: ID!): Boolean!
     connectPlatform(input: ConnectPlatformInput!): ConnectionResult!
     disconnectPlatform(platform: String!, removeCredentials: Boolean = false): ConnectionResult!
     fetchDataSource(id: String!, url: String): FetchResult!

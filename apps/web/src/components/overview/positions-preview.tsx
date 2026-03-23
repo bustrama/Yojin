@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { cn } from '../../lib/utils';
 import { SymbolLogo } from '../common/symbol-logo';
 import { usePositions } from '../../api';
 import Spinner from '../common/spinner';
+import { DashboardCard } from '../common/dashboard-card';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -19,78 +20,77 @@ function formatPercent(n: number): string {
   return `${Math.abs(n).toFixed(2)}%`;
 }
 
-/** Seeded pseudo-random for stable sparkline data across re-renders. */
-function seededRandom(seed: number): number {
-  const x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-}
-
-/** Generate a small sparkline dataset from the position's price + P&L direction. */
-function generateSparkline(symbol: string, currentPrice: number, pnlPercent: number): { v: number }[] {
-  const points = 20;
-  let hash = 0;
-  for (const c of symbol) hash = c.charCodeAt(0) + ((hash << 5) - hash);
-
-  const isFlat = pnlPercent === 0;
-  const trend = pnlPercent > 0 ? 1 : pnlPercent < 0 ? -1 : 0;
-  const data: { v: number }[] = [];
-
-  // When P&L is 0, generate a neutral oscillating line (not flat/boring)
-  const noiseScale = isFlat ? 0.015 : 0.008;
-  let price = isFlat ? currentPrice * (1 - 0.01) : currentPrice * (1 - trend * Math.abs(pnlPercent) * 0.005);
-
-  for (let i = 0; i < points; i++) {
-    const noise = (seededRandom(hash + i * 7) - 0.5) * currentPrice * noiseScale;
-    const drift = isFlat ? 0 : (trend * currentPrice * 0.002 * i) / points;
-    price += noise + drift;
-    data.push({ v: price });
-  }
-  data[data.length - 1] = { v: currentPrice };
-  return data;
-}
-
-/** Tiny inline sparkline chart — green when up, red when down, muted when flat. */
-function Sparkline({ symbol, currentPrice, pnlPercent }: { symbol: string; currentPrice: number; pnlPercent: number }) {
-  const data = useMemo(() => generateSparkline(symbol, currentPrice, pnlPercent), [symbol, currentPrice, pnlPercent]);
+/** Inline sparkline area chart — green when up, red when down, muted when flat. */
+function Sparkline({ symbol, data, dayChangePercent }: { symbol: string; data: number[]; dayChangePercent: number }) {
+  const chartData = useMemo(() => data.map((v) => ({ v })), [data]);
   const color =
-    pnlPercent > 0 ? 'var(--color-success)' : pnlPercent < 0 ? 'var(--color-error)' : 'var(--color-text-muted)';
+    dayChangePercent > 0
+      ? 'var(--color-success)'
+      : dayChangePercent < 0
+        ? 'var(--color-error)'
+        : 'var(--color-text-muted)';
 
   return (
-    <div className="h-6 w-14 flex-shrink-0">
+    <div className="pointer-events-none h-8 w-[100px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} dot={false} isAnimationActive={false} />
-        </LineChart>
+        <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
+          <defs>
+            <linearGradient id={`positions-preview-spark-${symbol}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area
+            type="monotone"
+            dataKey="v"
+            stroke={color}
+            strokeWidth={1.5}
+            fill={`url(#positions-preview-spark-${symbol})`}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
+const TH = 'px-3 py-2 text-2xs font-medium uppercase tracking-wider text-text-muted';
+
 export default function PositionsPreview() {
   const [{ data, fetching, error }] = usePositions();
 
+  const viewAllLink = (
+    <Link to="/portfolio" className="text-2xs text-accent-primary transition-colors hover:text-accent-primary/80">
+      View All
+    </Link>
+  );
+
   if (fetching) {
     return (
-      <div className="flex min-h-0 min-w-0 flex-[1.2] items-center justify-center rounded-lg border border-border bg-bg-card">
-        <Spinner size="sm" />
-      </div>
+      <DashboardCard title="Top Positions" headerAction={viewAllLink}>
+        <div className="flex flex-1 items-center justify-center">
+          <Spinner size="sm" />
+        </div>
+      </DashboardCard>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="flex min-h-0 min-w-0 flex-[1.2] flex-col overflow-hidden rounded-lg border border-border bg-bg-card">
-        <div className="flex flex-shrink-0 items-center justify-between px-3 py-2">
-          <h3 className="text-2xs font-medium text-text-primary uppercase tracking-wider">Top Positions</h3>
-        </div>
+      <DashboardCard title="Top Positions">
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-          <div className="grid grid-cols-[1fr_56px_auto_auto_auto] gap-x-2 border-b border-border px-3 pb-1.5 text-2xs uppercase tracking-wider text-text-muted">
-            <span className="font-medium">Asset</span>
-            <span />
-            <span className="text-right font-medium">Price</span>
-            <span className="text-right font-medium">Change</span>
-            <span className="text-right font-medium">%</span>
-          </div>
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-border">
+                <th className={TH}>Asset</th>
+                <th className={TH} />
+                <th className={cn(TH, 'text-right')}>Price Today</th>
+                <th className={cn(TH, 'text-right')}>Change $</th>
+                <th className={cn(TH, 'text-right')}>Change %</th>
+              </tr>
+            </thead>
+          </table>
           <div className="flex flex-1 flex-col items-center justify-center text-text-muted">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -110,7 +110,7 @@ export default function PositionsPreview() {
             <p className="mt-0.5 text-2xs text-text-muted/60">Connect a portfolio to see your holdings</p>
           </div>
         </div>
-      </div>
+      </DashboardCard>
     );
   }
 
@@ -118,67 +118,65 @@ export default function PositionsPreview() {
   const top = [...data.positions].sort((a, b) => b.marketValue - a.marketValue).slice(0, 5);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-[1.2] flex-col overflow-hidden rounded-lg border border-border bg-bg-card">
-      <div className="flex flex-shrink-0 items-center justify-between px-3 py-2">
-        <h3 className="text-2xs font-medium text-text-primary uppercase tracking-wider">Top Positions</h3>
-        <Link to="/portfolio" className="text-2xs text-accent-primary hover:text-accent-primary/80 transition-colors">
-          View All
-        </Link>
-      </div>
+    <DashboardCard title="Top Positions" headerAction={viewAllLink}>
       <div className="min-h-0 flex-1 overflow-auto">
-        {/* Header */}
-        <div className="sticky top-0 z-10 grid grid-cols-[1fr_56px_auto_auto_auto] items-center gap-x-2 border-b border-border bg-bg-card px-3 pb-1.5 text-2xs uppercase tracking-wider text-text-muted">
-          <span className="font-medium">Asset</span>
-          <span />
-          <span className="text-right font-medium">Price</span>
-          <span className="text-right font-medium">Change</span>
-          <span className="text-right font-medium">%</span>
-        </div>
+        <table className="w-full text-left">
+          <thead className="sticky top-0 z-10 bg-bg-card">
+            <tr className="border-b border-border">
+              <th className={TH}>Asset</th>
+              <th className={cn(TH, 'w-[100px]')} />
+              <th className={cn(TH, 'text-right')}>Price Today</th>
+              <th className={cn(TH, 'text-right')}>Change $</th>
+              <th className={cn(TH, 'text-right')}>Change %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top.map((pos) => {
+              const isUp = pos.dayChangePercent > 0;
+              const isDown = pos.dayChangePercent < 0;
+              const colorClass = isUp ? 'text-success' : isDown ? 'text-error' : 'text-text-muted';
+              const arrow = isUp ? '\u25B2' : isDown ? '\u25BC' : '';
 
-        {/* Rows */}
-        {top.map((pos) => {
-          const isUp = pos.unrealizedPnlPercent > 0;
-          const isDown = pos.unrealizedPnlPercent < 0;
-          const colorClass = isUp ? 'text-success' : isDown ? 'text-error' : 'text-text-muted';
-          const arrow = isUp ? '\u25B2' : isDown ? '\u25BC' : '';
+              return (
+                <tr key={pos.symbol} className="border-b border-border last:border-b-0">
+                  {/* Asset: logo + symbol + name */}
+                  <td className="px-3 py-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <SymbolLogo symbol={pos.symbol} size="sm" />
+                      <div className="flex min-w-0 flex-col">
+                        <span className="text-xs font-semibold leading-tight text-text-primary">{pos.symbol}</span>
+                        <span className="truncate text-2xs leading-tight text-text-muted">{pos.name}</span>
+                      </div>
+                    </div>
+                  </td>
 
-          return (
-            <div
-              key={pos.symbol}
-              className="grid grid-cols-[1fr_56px_auto_auto_auto] items-center gap-x-2 border-b border-border px-3 py-1.5 last:border-b-0"
-            >
-              {/* Asset: logo + symbol + name */}
-              <div className="flex items-center gap-2 min-w-0">
-                <SymbolLogo symbol={pos.symbol} size="sm" />
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold text-text-primary leading-tight">{pos.symbol}</span>
-                  <span className="text-2xs text-text-muted leading-tight truncate">{pos.name}</span>
-                </div>
-              </div>
+                  {/* Sparkline */}
+                  <td className="px-3 py-2">
+                    <Sparkline symbol={pos.symbol} data={pos.sparkline} dayChangePercent={pos.dayChangePercent} />
+                  </td>
 
-              {/* Sparkline */}
-              <Sparkline symbol={pos.symbol} currentPrice={pos.currentPrice} pnlPercent={pos.unrealizedPnlPercent} />
+                  {/* Price Today */}
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-xs font-medium tabular-nums text-text-primary">
+                    {formatCurrency(pos.currentPrice)}
+                  </td>
 
-              {/* Price */}
-              <span className="text-right text-xs font-medium text-text-primary whitespace-nowrap">
-                {formatCurrency(pos.currentPrice)}
-              </span>
+                  {/* Change $ */}
+                  <td className={cn('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', colorClass)}>
+                    {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
+                    {formatChange(pos.dayChange)}
+                  </td>
 
-              {/* Change $ */}
-              <span className={cn('text-right text-xs whitespace-nowrap', colorClass)}>
-                {arrow && <span className="text-2xs mr-0.5">{arrow}</span>}
-                {formatChange(pos.unrealizedPnl)}
-              </span>
-
-              {/* Change % */}
-              <span className={cn('text-right text-xs whitespace-nowrap', colorClass)}>
-                {arrow && <span className="text-2xs mr-0.5">{arrow}</span>}
-                {formatPercent(pos.unrealizedPnlPercent)}
-              </span>
-            </div>
-          );
-        })}
+                  {/* Change % */}
+                  <td className={cn('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', colorClass)}>
+                    {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
+                    {formatPercent(pos.dayChangePercent)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-    </div>
+    </DashboardCard>
   );
 }
