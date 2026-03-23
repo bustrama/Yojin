@@ -1,6 +1,7 @@
 import PositionsListCard from './positions-list-card';
 import PortfolioOverviewCard from './portfolio-overview-card';
 import AllocationCard from './allocation-card';
+import MorningBriefingCard from './morning-briefing-card';
 
 interface ToolRendererProps {
   tool: string;
@@ -23,6 +24,9 @@ export default function ToolRenderer({ tool, params }: ToolRendererProps) {
 
     case 'allocation':
       return <AllocationCard />;
+
+    case 'morning-briefing':
+      return <MorningBriefingCard />;
 
     default:
       return (

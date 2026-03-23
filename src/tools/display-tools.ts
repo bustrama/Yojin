@@ -57,5 +57,18 @@ export function createDisplayTools(): ToolDefinition[] {
     },
   };
 
-  return [displayPortfolioOverview, displayPositionsList, displayAllocation];
+  const displayMorningBriefing: ToolDefinition = {
+    name: 'display_morning_briefing',
+    description:
+      'Display a visual morning briefing card to the user. Shows a daily summary with portfolio stats, active alerts, recent news headlines, and suggested actions. ALWAYS call this when the user asks for their morning briefing, daily summary, or daily digest.',
+    parameters: z.object({}),
+    async execute(): Promise<{ content: string }> {
+      return {
+        content:
+          'Displaying morning briefing card. The user will see a visual card with their daily portfolio summary, alerts, and news headlines. Keep any additional commentary brief — the card contains the key data.',
+      };
+    },
+  };
+
+  return [displayPortfolioOverview, displayPositionsList, displayAllocation, displayMorningBriefing];
 }

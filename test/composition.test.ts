@@ -28,8 +28,8 @@ describe('buildContext', () => {
     // + 2 portfolio tools (save_portfolio_positions, get_portfolio)
     // + 2 data source query tools (query_data_source, list_data_sources)
     // + 2 memory tools (store_signal_memory, recall_signal_memories)
-    // + 3 display tools (display_portfolio_overview, display_positions_list, display_allocation) = 27
-    expect(schemas.length).toBe(27);
+    // + 4 display tools (display_portfolio_overview, display_positions_list, display_allocation, display_morning_briefing) = 28
+    expect(schemas.length).toBe(28);
 
     const names = schemas.map((s) => s.name).sort();
     expect(names).toContain('get_current_time');
@@ -55,6 +55,7 @@ describe('buildContext', () => {
     expect(names).toContain('display_portfolio_overview');
     expect(names).toContain('display_positions_list');
     expect(names).toContain('display_allocation');
+    expect(names).toContain('display_morning_briefing');
   });
 
   it('registers 4 agent profiles', async () => {

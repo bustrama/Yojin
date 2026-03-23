@@ -200,8 +200,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         piiDetectedRef.current = true;
         piiTypesRef.current = event.piiTypesFound ?? [];
       } else if (event.type === 'TOOL_CARD' && event.toolCard) {
-        // Accumulate tool cards — they'll be attached to the message on MESSAGE_COMPLETE
-        toolCardsRef.current.push(event.toolCard);
+        // Accumulate tool cards — deduplicate by tool+params so repeated calls
+        // across agent loop iterations don't produce duplicate cards.
+        const card = event.toolCard;
+        const isDuplicate = toolCardsRef.current.some((c) => c.tool === card.tool && c.params === card.params);
+        if (!isDuplicate) {
+          toolCardsRef.current.push(card);
+        }
       } else if (event.type === 'TOOL_USE' && event.toolName) {
         setIsThinking(false);
         setActiveTools((prev) => [...prev, event.toolName ?? '']);
@@ -213,15 +218,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const msgId = event.messageId ?? crypto.randomUUID();
         if (completedMessagesRef.current.has(msgId)) return data;
         completedMessagesRef.current.add(msgId);
+        // Capture ref values BEFORE scheduling state update — resetStreamingState()
+        // clears the refs synchronously, but setMessages updater runs deferred during render.
+        const piiProtected = piiDetectedRef.current;
+        const piiTypes = [...piiTypesRef.current];
+        const toolCards = toolCardsRef.current.length > 0 ? [...toolCardsRef.current] : undefined;
         setMessages((prev) => [
           ...prev,
           {
             id: msgId,
             role: 'assistant',
             content: event.content ?? '',
-            piiProtected: piiDetectedRef.current,
-            piiTypes: piiTypesRef.current,
-            toolCards: toolCardsRef.current.length > 0 ? [...toolCardsRef.current] : undefined,
+            piiProtected,
+            piiTypes,
+            toolCards,
           },
         ]);
         // Notify sidebar that the session list may have changed (new session created, message count updated)
