@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/YojinHQ/Yojin/actions/workflows/ci.yml/badge.svg)](https://github.com/YojinHQ/Yojin/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22.12-brightgreen)](https://nodejs.org)
 
 A free, open-source AI agent that runs on your machine, connects to every platform and delivers personalized portfolio intelligence.
 
@@ -514,7 +514,7 @@ Delete an event        ──▶ prevHash gap  ──▶ verifyChain() detects i
 
 ## Tech Stack
 
-- **TypeScript** — strict mode, ESM, Node.js 20+
+- **TypeScript** — strict mode, ESM, Node.js 22.12+
 - **Anthropic SDK** — Claude as the default AI provider
 - **Hono + graphql-yoga** — Web server and GraphQL API with subscriptions
 - **Playwright** — browser automation for scraping investment platforms
