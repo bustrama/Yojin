@@ -20,6 +20,7 @@ import { setFetchDeps } from './api/graphql/resolvers/fetch-data-source.js';
 import {
   setOnboardingConnectionManager,
   setOnboardingDataRoot,
+  setOnboardingJintelCallback,
   setOnboardingPersonaManager,
   setOnboardingSnapshotStore,
   setOnboardingVault,
@@ -44,6 +45,7 @@ import type { OutputDlpGuard } from './guards/security/output-dlp.js';
 import type { PostureName } from './guards/types.js';
 import { JintelClient } from './jintel/client.js';
 import { createJintelTools } from './jintel/tools.js';
+import type { JintelToolOptions } from './jintel/tools.js';
 import { getLogger } from './logging/index.js';
 import { wireMemory } from './memory/adapter.js';
 import type { SignalMemoryStore } from './memory/memory-store.js';
@@ -285,11 +287,11 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   runHealthChecks().catch((err) => log.warn('Data source health check failed', { error: String(err) }));
 
   // 6d. Jintel client (primary intelligence source)
+  const jintelBaseUrl = process.env.JINTEL_API_URL ?? 'https://api.jintel.ai/api';
   let jintelClient: JintelClient | undefined;
   if (vault?.isUnlocked) {
     try {
       const jintelApiKey = await vault.get('jintel-api-key');
-      const jintelBaseUrl = process.env.JINTEL_API_URL ?? 'https://api.jintel.ai/api';
       if (jintelApiKey) {
         jintelClient = new JintelClient({
           baseUrl: jintelBaseUrl,
@@ -338,9 +340,23 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   }
 
   // Jintel tools (6 tools — always registered; return config error if client unavailable)
-  for (const tool of createJintelTools({ client: jintelClient, ingestor: signalIngestor })) {
+  const jintelToolOptions: JintelToolOptions = { client: jintelClient, ingestor: signalIngestor };
+  for (const tool of createJintelTools(jintelToolOptions)) {
     toolRegistry.register(tool);
   }
+
+  // Hot-wire callback: when the user validates a Jintel key during onboarding,
+  // create a new client and swap it into the live tool options.
+  setOnboardingJintelCallback((apiKey: string) => {
+    const newClient = new JintelClient({
+      baseUrl: jintelBaseUrl,
+      apiKey,
+      debug: process.env.JINTEL_DEBUG === '1',
+    });
+    jintelToolOptions.client = newClient;
+    jintelClient = newClient;
+    log.info('Jintel client hot-swapped after key validation');
+  });
 
   // Signal tools (3 tools: glob_signals, grep_signals, read_signal)
   for (const tool of createSignalTools({ archive: signalArchive })) {

@@ -226,8 +226,6 @@ function formatNumber(n: number): string {
 // ── Tool Factory ─────────────────────────────────────────────────────────
 
 export function createJintelTools(options: JintelToolOptions): ToolDefinition[] {
-  const { client, ingestor } = options;
-
   const searchEntities: ToolDefinition = {
     name: 'search_entities',
     description:
@@ -239,8 +237,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       limit: z.number().int().min(1).max(50).optional().describe('Max results (default 10)'),
     }),
     async execute(params: { query: string; type?: string; limit?: number }): Promise<ToolResult> {
-      if (!client) return notConfigured();
-      const result = await client.searchEntities(params.query, {
+      if (!options.client) return notConfigured();
+      const result = await options.client.searchEntities(params.query, {
         type: params.type,
         limit: params.limit,
       });
@@ -260,8 +258,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       fields: z.array(ENRICHMENT_FIELDS).optional().describe('Specific enrichment fields to fetch (default: all)'),
     }),
     async execute(params: { ticker: string; fields?: EnrichmentField[] }): Promise<ToolResult> {
-      if (!client) return notConfigured();
-      const result = await client.enrichEntity(params.ticker, params.fields);
+      if (!options.client) return notConfigured();
+      const result = await options.client.enrichEntity(params.ticker, params.fields);
       const handled = handleResult(result);
       if (!handled.ok) return handled.toolResult;
 
@@ -277,7 +275,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
         const tickers = entity.tickers ?? [params.ticker];
         signals.push(...riskSignalsToRaw(entity.risk.signals, tickers));
       }
-      await bestEffortIngest(ingestor, signals);
+      await bestEffortIngest(options.ingestor, signals);
 
       return { content };
     },
@@ -290,8 +288,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       tickers: z.array(z.string()).min(1).describe('List of ticker symbols'),
     }),
     async execute(params: { tickers: string[] }): Promise<ToolResult> {
-      if (!client) return notConfigured();
-      const result = await client.quotes(params.tickers);
+      if (!options.client) return notConfigured();
+      const result = await options.client.quotes(params.tickers);
       const handled = handleResult(result);
       if (!handled.ok) return handled.toolResult;
       return { content: formatQuotes(handled.data) };
@@ -306,8 +304,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       limit: z.number().int().min(1).max(50).optional().describe('Max articles (default 10)'),
     }),
     async execute(params: { query: string; limit?: number }): Promise<ToolResult> {
-      if (!client) return notConfigured();
-      const result = await client.newsSearch(params.query, params.limit);
+      if (!options.client) return notConfigured();
+      const result = await options.client.newsSearch(params.query, params.limit);
       const handled = handleResult(result);
       if (!handled.ok) return handled.toolResult;
 
@@ -315,7 +313,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       const content = formatNews(articles);
 
       // Best-effort signal ingestion
-      await bestEffortIngest(ingestor, newsToSignals(articles));
+      await bestEffortIngest(options.ingestor, newsToSignals(articles));
 
       return { content };
     },
@@ -330,8 +328,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       country: z.string().optional().describe('Country filter (ISO code)'),
     }),
     async execute(params: { name: string; country?: string }): Promise<ToolResult> {
-      if (!client) return notConfigured();
-      const result = await client.sanctionsScreen(params.name, params.country);
+      if (!options.client) return notConfigured();
+      const result = await options.client.sanctionsScreen(params.name, params.country);
       const handled = handleResult(result);
       if (!handled.ok) return handled.toolResult;
       return { content: formatSanctions(handled.data) };
@@ -348,8 +346,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       limit: z.number().int().min(1).max(50).optional().describe('Max results (default 10)'),
     }),
     async execute(params: { query: string; limit?: number }): Promise<ToolResult> {
-      if (!client) return notConfigured();
-      const result = await client.webSearch(params.query, params.limit);
+      if (!options.client) return notConfigured();
+      const result = await options.client.webSearch(params.query, params.limit);
       const handled = handleResult(result);
       if (!handled.ok) return handled.toolResult;
       return { content: formatWebResults(handled.data) };

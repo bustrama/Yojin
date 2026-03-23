@@ -21,7 +21,6 @@ import { Gateway } from '../gateway/server.js';
 import { createJintelPriceProvider } from '../jintel/price-provider.js';
 import { getLogger } from '../logging/index.js';
 import { createReflectionEngine } from '../memory/adapter.js';
-import type { LlmProvider } from '../memory/types.js';
 import { resolveDataRoot } from '../paths.js';
 import { JsonlSessionStore } from '../sessions/jsonl-store.js';
 import { runSecretCommand } from '../trust/vault/cli.js';
@@ -96,7 +95,7 @@ async function buildFullRuntime(): Promise<{
     const priceProvider = createJintelPriceProvider(services.jintelClient);
     services.reflectionEngine = createReflectionEngine({
       stores: services.memoryStores,
-      providerRouter: providerRouter as unknown as LlmProvider,
+      providerRouter,
       priceProvider,
       piiRedactor: services.piiRedactor,
     });

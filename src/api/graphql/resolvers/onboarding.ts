@@ -37,6 +37,7 @@ let connectionManager: ConnectionManager | undefined;
 let snapshotStore: PortfolioSnapshotStore | undefined;
 let claudeCodeProvider: ClaudeCodeProvider | undefined;
 let dataRoot = '.';
+let onJintelKeyValidated: ((apiKey: string) => void) | undefined;
 
 export function setOnboardingVault(v: EncryptedVault): void {
   vault = v;
@@ -65,6 +66,10 @@ export function setOnboardingSnapshotStore(store: PortfolioSnapshotStore): void 
 
 export function setOnboardingDataRoot(root: string): void {
   dataRoot = root;
+}
+
+export function setOnboardingJintelCallback(cb: (apiKey: string) => void): void {
+  onJintelKeyValidated = cb;
 }
 
 // ---------------------------------------------------------------------------
@@ -341,28 +346,31 @@ export async function validateJintelKeyMutation(
   _parent: unknown,
   args: { apiKey: string },
 ): Promise<{ success: boolean; error?: string }> {
-  // Validate the key is non-empty
-  if (!args.apiKey.trim()) {
+  const apiKey = args.apiKey.trim();
+
+  if (!apiKey) {
     return { success: false, error: 'API key cannot be empty.' };
+  }
+
+  // Fail fast if vault can't store the key — before making any network call
+  if (!vault?.isUnlocked) {
+    return { success: false, error: 'Vault is locked. Unlock it first.' };
   }
 
   // Create a temporary client to test the key
   const { JintelClient } = await import('../../../jintel/client.js');
   const baseUrl = process.env.JINTEL_API_URL ?? 'https://api.jintel.ai/api';
-  const testClient = new JintelClient({ baseUrl, apiKey: args.apiKey });
+  const testClient = new JintelClient({ baseUrl, apiKey });
   const health = await testClient.healthCheck();
 
   if (!health.healthy) {
     return { success: false, error: health.error ?? 'Failed to connect to Jintel API.' };
   }
 
-  // Store in vault
-  if (!vault?.isUnlocked) {
-    return { success: false, error: 'Vault is locked. Unlock it first.' };
-  }
-
   try {
-    await vault.set('jintel-api-key', args.apiKey);
+    await vault.set('jintel-api-key', apiKey);
+    // Hot-wire the new client so tools work immediately without restart
+    onJintelKeyValidated?.(apiKey);
     return { success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -794,7 +802,7 @@ export async function resetOnboardingMutation(): Promise<boolean> {
     await personaManager.resetPersona();
   }
 
-  // Remove AI credentials from vault
+  // Remove AI + Jintel credentials from vault
   if (vault?.isUnlocked) {
     for (const key of [
       'anthropic_api_key',
@@ -803,6 +811,7 @@ export async function resetOnboardingMutation(): Promise<boolean> {
       'anthropic_verified_email',
       'anthropic_oauth_token',
       'anthropic_oauth_refresh_token',
+      'jintel-api-key',
     ]) {
       if (await vault.has(key)) {
         await vault.delete(key);
