@@ -248,8 +248,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setPendingMessages([]);
 
       if (newSessionId === null) {
-        // New session
-        const fresh = `web-${crypto.randomUUID()}`;
+        // New session — use provided threadId if available (e.g. from createSession mutation)
+        const fresh = newThreadId ?? `web-${crypto.randomUUID()}`;
         setThreadId(fresh);
         setSessionId(null);
         setIsReadOnly(false);

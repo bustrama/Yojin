@@ -10,7 +10,7 @@ import ChatInput from '../components/chat/chat-input';
 import type { ImageAttachment } from '../components/chat/chat-input';
 import ChatMessage from '../components/chat/chat-message';
 import ChatAvatar from '../components/chat/chat-avatar';
-import SessionSidebar from '../components/chat/session-sidebar';
+import { SessionSidebar } from '../components/chat/session-sidebar';
 import { useChatContext } from '../lib/chat-context';
 
 /* ─── Message types for local-only UI messages (briefings, tool cards) ─── */

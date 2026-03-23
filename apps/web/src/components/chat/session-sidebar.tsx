@@ -47,7 +47,7 @@ interface SessionSidebarProps {
   onToggle?: () => void;
 }
 
-export default function SessionSidebar({ collapsed = false, onToggle }: SessionSidebarProps) {
+export function SessionSidebar({ collapsed = false, onToggle }: SessionSidebarProps) {
   const { activeSession, switchSession } = useChatContext();
   const [{ data, fetching }] = useQuery<{ sessions: SessionSummary[] }>({
     query: SESSIONS_QUERY,
@@ -60,8 +60,13 @@ export default function SessionSidebar({ collapsed = false, onToggle }: SessionS
   const groups = groupByDate(sessions);
 
   const handleNewSession = useCallback(async () => {
-    switchSession(null);
-    await createSession({});
+    const result = await createSession({});
+    if (result.data?.createSession) {
+      switchSession(null, result.data.createSession.threadId);
+    } else {
+      // Fallback: start a new local session even if backend fails
+      switchSession(null);
+    }
   }, [switchSession, createSession]);
 
   const handleSelectSession = useCallback(
@@ -77,7 +82,12 @@ export default function SessionSidebar({ collapsed = false, onToggle }: SessionS
     async (e: React.MouseEvent, sessionId: string) => {
       e.stopPropagation();
       setDeletingId(sessionId);
-      await deleteSession({ id: sessionId });
+      const result = await deleteSession({ id: sessionId });
+      if (result.error) {
+        setDeletingId(null);
+        console.error('Failed to delete session:', result.error);
+        return;
+      }
       // If we deleted the currently viewed session, start fresh
       if (activeSession.sessionId === sessionId) {
         switchSession(null);
