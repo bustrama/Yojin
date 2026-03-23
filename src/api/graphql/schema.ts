@@ -220,6 +220,12 @@ export const typeDefs = /* GraphQL */ `
     MESSAGE_COMPLETE
     PII_REDACTED
     ERROR
+    TOOL_CARD
+  }
+
+  type ToolCardRef {
+    tool: String!
+    params: String!
   }
 
   type ChatMessage {
@@ -228,6 +234,7 @@ export const typeDefs = /* GraphQL */ `
     role: ChatRole!
     content: String!
     timestamp: String!
+    toolCards: [ToolCardRef!]
   }
 
   type ChatEvent {
@@ -239,6 +246,7 @@ export const typeDefs = /* GraphQL */ `
     error: String
     toolName: String
     piiTypesFound: [String!]
+    toolCard: ToolCardRef
   }
 
   type SendMessagePayload {

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import { cn } from '../../lib/utils';
+import type { ToolCardRef } from '../../lib/chat-context';
 import ChatAvatar from './chat-avatar';
+import ToolRenderer from './tool-cards/tool-renderer';
 
 export interface ChatMessageProps {
   id?: string;
@@ -11,6 +13,7 @@ export interface ChatMessageProps {
   className?: string;
   piiProtected?: boolean;
   piiTypes?: string[];
+  toolCards?: ToolCardRef[];
 }
 
 const PII_LABELS: Record<string, string> = {
@@ -26,7 +29,15 @@ function formatPiiTypes(types: string[]): string {
   return types.map((t) => PII_LABELS[t] ?? t.toLowerCase()).join(', ');
 }
 
-export default function ChatMessage({ role, content, children, className, piiProtected, piiTypes }: ChatMessageProps) {
+export default function ChatMessage({
+  role,
+  content,
+  children,
+  className,
+  piiProtected,
+  piiTypes,
+  toolCards,
+}: ChatMessageProps) {
   if (role === 'user') {
     return (
       <div className={cn('flex justify-end', className)}>
@@ -42,12 +53,17 @@ export default function ChatMessage({ role, content, children, className, piiPro
       <ChatAvatar />
       <div className="min-w-0 max-w-[85%]">
         {children ?? (
-          <div className="flex flex-col gap-1">
-            <div className="rounded-xl rounded-tl-sm border border-border bg-bg-card px-4 py-3">
-              <div className="prose prose-invert prose-sm max-w-none text-sm leading-relaxed text-text-primary">
-                <Markdown>{content ?? ''}</Markdown>
+          <div className="flex flex-col gap-3">
+            {content && (
+              <div className="rounded-xl rounded-tl-sm border border-border bg-bg-card px-4 py-3">
+                <div className="prose prose-invert prose-sm max-w-none text-sm leading-relaxed text-text-primary">
+                  <Markdown>{content}</Markdown>
+                </div>
               </div>
-            </div>
+            )}
+            {toolCards?.map((card, i) => (
+              <ToolRenderer key={`${card.tool}-${i}`} tool={card.tool} params={JSON.parse(card.params)} />
+            ))}
             {piiProtected && piiTypes && piiTypes.length > 0 && (
               <div className="inline-flex items-center gap-1.5 self-start px-1">
                 <svg className="h-3 w-3 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">

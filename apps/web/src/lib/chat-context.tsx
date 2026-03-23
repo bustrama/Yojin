@@ -2,16 +2,22 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useClient, useMutation, useSubscription } from 'urql';
 import { SESSION_DETAIL_QUERY } from './session-queries';
 
+export interface ToolCardRef {
+  tool: string;
+  params: string; // JSON-encoded
+}
+
 export interface ChatMessage {
   id: string;
   role: 'assistant' | 'user';
   content: string;
   piiProtected?: boolean;
   piiTypes?: string[];
+  toolCards?: ToolCardRef[];
 }
 
 interface ChatEvent {
-  type: 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR';
+  type: 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR' | 'TOOL_CARD';
   threadId: string;
   delta?: string;
   messageId?: string;
@@ -19,6 +25,7 @@ interface ChatEvent {
   error?: string;
   toolName?: string;
   piiTypesFound?: string[];
+  toolCard?: ToolCardRef;
 }
 
 const SEND_MESSAGE_MUTATION = `
@@ -41,6 +48,10 @@ const CHAT_SUBSCRIPTION = `
       error
       toolName
       piiTypesFound
+      toolCard {
+        tool
+        params
+      }
     }
   }
 `;
@@ -109,6 +120,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const isProcessingRef = useRef(false);
   const piiDetectedRef = useRef(false);
   const piiTypesRef = useRef<string[]>([]);
+  // Accumulate tool cards during streaming — attached to the message on MESSAGE_COMPLETE
+  const toolCardsRef = useRef<ToolCardRef[]>([]);
 
   const [, sendMessageMutation] = useMutation(SEND_MESSAGE_MUTATION);
   const processQueueRef = useRef<() => void>(() => {});
@@ -124,6 +137,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setActiveTools([]);
     setIsLoading(false);
     isProcessingRef.current = false;
+    toolCardsRef.current = [];
   }, []);
 
   const processMessage = useCallback(
@@ -131,6 +145,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       isProcessingRef.current = true;
       piiDetectedRef.current = false;
       piiTypesRef.current = [];
+      toolCardsRef.current = [];
       setIsLoading(true);
       setStreamingContent('');
       setIsThinking(false);
@@ -184,6 +199,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       } else if (event.type === 'PII_REDACTED') {
         piiDetectedRef.current = true;
         piiTypesRef.current = event.piiTypesFound ?? [];
+      } else if (event.type === 'TOOL_CARD' && event.toolCard) {
+        // Accumulate tool cards — they'll be attached to the message on MESSAGE_COMPLETE
+        toolCardsRef.current.push(event.toolCard);
       } else if (event.type === 'TOOL_USE' && event.toolName) {
         setIsThinking(false);
         setActiveTools((prev) => [...prev, event.toolName ?? '']);
@@ -203,6 +221,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             content: event.content ?? '',
             piiProtected: piiDetectedRef.current,
             piiTypes: piiTypesRef.current,
+            toolCards: toolCardsRef.current.length > 0 ? [...toolCardsRef.current] : undefined,
           },
         ]);
         // Notify sidebar that the session list may have changed (new session created, message count updated)
@@ -278,7 +297,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         if (result.data?.session) {
           const session = result.data.session as {
             threadId: string;
-            messages: { id: string; role: string; content: string }[];
+            messages: { id: string; role: string; content: string; toolCards?: ToolCardRef[] }[];
           };
           setThreadId(newThreadId ?? session.threadId);
           setMessages(
@@ -286,6 +305,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               id: m.id,
               role: m.role === 'USER' ? ('user' as const) : ('assistant' as const),
               content: m.content,
+              toolCards: m.toolCards?.length ? m.toolCards : undefined,
             })),
           );
         }

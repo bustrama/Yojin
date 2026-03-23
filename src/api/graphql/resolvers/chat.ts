@@ -7,10 +7,29 @@
  */
 
 import type { AgentRuntime } from '../../../core/agent-runtime.js';
-import type { AgentLoopEvent, AgentMessage, ImageMediaType } from '../../../core/types.js';
+import type { AgentLoopEvent, AgentMessage, ContentBlock, ImageMediaType, ToolUseBlock } from '../../../core/types.js';
 import type { SessionStore } from '../../../sessions/types.js';
 import { pubsub } from '../pubsub.js';
-import type { ChatEvent } from '../types.js';
+import type { ChatEvent, ToolCardRef } from '../types.js';
+
+/** Display tool prefix — tools named `display_*` trigger TOOL_CARD events. */
+const DISPLAY_TOOL_PREFIX = 'display_';
+
+/** Convert a display tool name to a frontend card name (snake_case → kebab-case, strip prefix). */
+function toCardName(toolName: string): string {
+  return toolName.slice(DISPLAY_TOOL_PREFIX.length).replace(/_/g, '-');
+}
+
+/** Extract tool card refs from ContentBlock[] for display_* tool calls. */
+function extractToolCards(content: string | ContentBlock[]): ToolCardRef[] {
+  if (typeof content === 'string') return [];
+  return content
+    .filter((b): b is ToolUseBlock => b.type === 'tool_use' && b.name.startsWith(DISPLAY_TOOL_PREFIX))
+    .map((b) => ({
+      tool: toCardName(b.name),
+      params: JSON.stringify(b.input ?? {}),
+    }));
+}
 
 let runtime: AgentRuntime | undefined;
 let sessionStore: SessionStore | undefined;
@@ -90,6 +109,17 @@ export function sendMessageMutation(
             } satisfies ChatEvent);
           } else if (event.type === 'action') {
             for (const call of event.toolCalls) {
+              // Display tools emit a TOOL_CARD event for frontend rendering
+              if (call.name.startsWith(DISPLAY_TOOL_PREFIX)) {
+                pubsub.publish(`chat:${threadId}`, {
+                  type: 'TOOL_CARD',
+                  threadId,
+                  toolCard: {
+                    tool: toCardName(call.name),
+                    params: JSON.stringify(call.input ?? {}),
+                  },
+                } satisfies ChatEvent);
+              }
               pubsub.publish(`chat:${threadId}`, {
                 type: 'TOOL_USE',
                 threadId,
@@ -215,7 +245,14 @@ export async function sessionQuery(
   title: string;
   createdAt: string;
   lastMessageAt: string | null;
-  messages: { id: string; threadId: string; role: string; content: string; timestamp: string }[];
+  messages: {
+    id: string;
+    threadId: string;
+    role: string;
+    content: string;
+    timestamp: string;
+    toolCards: ToolCardRef[];
+  }[];
 } | null> {
   if (!sessionStore) return null;
 
@@ -238,6 +275,8 @@ export async function sessionQuery(
             .map((b) => b.text)
             .join('\n'),
     timestamp: entry.timestamp,
+    // Reconstruct tool card refs from persisted ToolUseBlock entries
+    toolCards: extractToolCards(entry.message.content),
   }));
 
   return {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router';
 import { Provider, useQuery } from 'urql';
 import { ChatProvider } from './lib/chat-context';
@@ -22,6 +22,16 @@ import Positions from './pages/positions';
 import OnboardingPage from './pages/onboarding';
 import { ONBOARDING_STATUS_QUERY } from './api/documents';
 import type { OnboardingStatusQueryResult } from './api/types';
+
+const AgentationComponent = lazy(() => import('agentation').then((m) => ({ default: m.Agentation })));
+
+function DevFeedbackTool() {
+  return (
+    <Suspense fallback={null}>
+      <AgentationComponent />
+    </Suspense>
+  );
+}
 
 function RedirectPositionSymbol() {
   const { symbol } = useParams<{ symbol: string }>();
@@ -135,6 +145,7 @@ export default function App() {
                 <Route path="alerts" element={<Navigate to="/skills" replace />} />
               </Route>
             </Routes>
+            {import.meta.env.VITE_AGENTATION_ENABLED === 'true' && <DevFeedbackTool />}
           </ChatPanelProvider>
         </ChatProvider>
       </Provider>

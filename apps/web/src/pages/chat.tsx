@@ -1,59 +1,15 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import MorningBriefing from '../components/chat/morning-briefing';
-import FullBriefingCard from '../components/chat/full-briefing-card';
 import QueryBuilder from '../components/chat/query-builder';
 import WaterfallFlow from '../components/chat/waterfall-flow';
 import ManualPositionFlow from '../components/chat/manual-position-flow';
-import ToolRenderer from '../components/chat/tool-cards/tool-renderer';
 import ChatInput from '../components/chat/chat-input';
 import type { ImageAttachment } from '../components/chat/chat-input';
 import ChatMessage from '../components/chat/chat-message';
 import ChatAvatar from '../components/chat/chat-avatar';
 import { SessionSidebar } from '../components/chat/session-sidebar';
 import { useChatContext } from '../lib/chat-context';
-
-/* ─── Message types for local-only UI messages (briefings, tool cards) ─── */
-
-interface BriefingMessage {
-  id: string;
-  role: 'assistant';
-  type: 'briefing';
-}
-
-interface UserQueryMessage {
-  id: string;
-  role: 'user';
-  type: 'user-query';
-  content: string;
-}
-
-interface ToolResultMessage {
-  id: string;
-  role: 'assistant';
-  type: 'tool-result';
-  tool: string;
-  params: Record<string, string>;
-}
-
-type LocalMessage = BriefingMessage | UserQueryMessage | ToolResultMessage;
-
-/* ─── Tool action parser ─── */
-
-function parseToolAction(action: string): { tool: string; params: Record<string, string> } | null {
-  if (!action.startsWith('tool:')) return null;
-  const parts = action.slice(5).split(':');
-  const tool = parts[0];
-  // Second part (if present) becomes a generic "variant" / "period" param
-  const param = parts[1];
-  const params: Record<string, string> = {};
-  if (param) {
-    // Determine param key based on tool
-    if (tool === 'portfolio-overview') params.period = param;
-    else if (tool === 'positions-list') params.variant = param;
-  }
-  return { tool, params };
-}
 
 /* ─── Page ─── */
 
@@ -68,7 +24,6 @@ export default function Chat() {
     sendMessage,
     activeSession,
   } = useChatContext();
-  const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -90,22 +45,17 @@ export default function Chat() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, localMessages, isLoading, streamingContent, isThinking, activeTools]);
+  }, [messages, isLoading, streamingContent, isThinking, activeTools]);
 
-  // Reset local messages when session changes.
-  // Uses a stable ref-based approach to avoid re-triggering on the initial render.
+  // Reset UI state when session changes (state-during-render pattern, not an effect).
+  // See: https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
   const sessionThreadId = activeSession.threadId;
-  const prevSessionRef = useRef(sessionThreadId);
-  useEffect(() => {
-    if (prevSessionRef.current === sessionThreadId) return;
-    prevSessionRef.current = sessionThreadId;
-    const id = requestAnimationFrame(() => {
-      setLocalMessages([]);
-      setActiveCategory(null);
-      setActiveAction(null);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [sessionThreadId]);
+  const [prevSessionId, setPrevSessionId] = useState(sessionThreadId);
+  if (prevSessionId !== sessionThreadId) {
+    setPrevSessionId(sessionThreadId);
+    setActiveCategory(null);
+    setActiveAction(null);
+  }
 
   const handleSend = useCallback(
     (content: string, image?: ImageAttachment) => {
@@ -116,15 +66,7 @@ export default function Chat() {
   );
 
   const handleViewFullBriefing = useCallback(() => {
-    // Send user message through the real chat context
     sendMessage('Show me my full morning briefing');
-    // Add a local briefing card
-    const briefingMsg: BriefingMessage = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      type: 'briefing',
-    };
-    setLocalMessages((prev) => [...prev, briefingMsg]);
   }, [sendMessage]);
 
   const handleQuerySelect = useCallback((categoryId: string) => {
@@ -139,32 +81,21 @@ export default function Chat() {
     [sendMessage],
   );
 
-  const handleWaterfallAction = useCallback((action: string, displayLabel: string) => {
-    setActiveCategory(null);
+  const handleWaterfallAction = useCallback(
+    (action: string, displayLabel: string) => {
+      setActiveCategory(null);
 
-    // Tool actions render rich components in the chat
-    const parsed = parseToolAction(action);
-    if (parsed) {
-      const userMsg: UserQueryMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        type: 'user-query',
-        content: displayLabel,
-      };
-      const toolMsg: ToolResultMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        type: 'tool-result',
-        tool: parsed.tool,
-        params: parsed.params,
-      };
-      setLocalMessages((prev) => [...prev, userMsg, toolMsg]);
-      return;
-    }
+      // Non-tool actions (e.g. add-asset) use the manual entry flow
+      if (action === 'add-asset') {
+        setActiveAction(action);
+        return;
+      }
 
-    // Non-tool actions (e.g. add-asset) use the action flow
-    setActiveAction(action);
-  }, []);
+      // All tool actions go through the backend as real messages
+      sendMessage(displayLabel);
+    },
+    [sendMessage],
+  );
 
   const handleActionComplete = useCallback(() => {
     setActiveAction(null);
@@ -208,28 +139,9 @@ export default function Chat() {
                 content={msg.content}
                 piiProtected={msg.piiProtected}
                 piiTypes={msg.piiTypes}
+                toolCards={msg.toolCards}
               />
             ))}
-
-            {/* Local-only messages (briefings, tool cards, user queries) */}
-            {localMessages.map((msg) => {
-              if (msg.type === 'user-query') {
-                return <ChatMessage key={msg.id} role="user" content={msg.content} />;
-              }
-              if (msg.type === 'tool-result') {
-                return (
-                  <ChatMessage key={msg.id} role="assistant">
-                    <ToolRenderer tool={msg.tool} params={msg.params} />
-                  </ChatMessage>
-                );
-              }
-              // briefing
-              return (
-                <ChatMessage key={msg.id} role="assistant">
-                  <FullBriefingCard />
-                </ChatMessage>
-              );
-            })}
 
             {/* Streaming response */}
             {streamingContent && <ChatMessage id="streaming" role="assistant" content={streamingContent} />}
@@ -288,7 +200,7 @@ export default function Chat() {
         </div>
 
         {/* Query builder / waterfall / manual entry — shown when no messages */}
-        {messages.length === 0 && !localMessages.some((m) => m.type === 'tool-result') && (
+        {messages.length === 0 && (
           <div className="px-6 pb-4 pt-2">
             <div className="mx-auto max-w-3xl">
               {activeAction === 'add-asset' ? (

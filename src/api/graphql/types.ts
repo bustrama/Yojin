@@ -228,7 +228,19 @@ export interface ManualPositionInput {
 // ---------------------------------------------------------------------------
 
 export type ChatRole = 'USER' | 'ASSISTANT';
-export type ChatEventType = 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR';
+export type ChatEventType =
+  | 'THINKING'
+  | 'TOOL_USE'
+  | 'TEXT_DELTA'
+  | 'MESSAGE_COMPLETE'
+  | 'PII_REDACTED'
+  | 'ERROR'
+  | 'TOOL_CARD';
+
+export interface ToolCardRef {
+  tool: string;
+  params: string; // JSON-encoded params
+}
 
 export interface ChatMessage {
   id: string;
@@ -236,6 +248,7 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   timestamp: string;
+  toolCards?: ToolCardRef[];
 }
 
 export interface ChatEvent {
@@ -247,4 +260,5 @@ export interface ChatEvent {
   error?: string;
   toolName?: string;
   piiTypesFound?: string[];
+  toolCard?: ToolCardRef;
 }
