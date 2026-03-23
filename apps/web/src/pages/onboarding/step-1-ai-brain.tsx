@@ -21,13 +21,13 @@ const PROVIDERS: ProviderConfig[] = [
   { id: 'openrouter', name: 'OpenRouter', subtitle: 'Multi-model gateway', logo: '/ai-providers/openrouter.png' },
 ];
 
-type AuthMode = 'keychain' | 'api-key';
+type AuthMode = 'api-key' | 'oauth';
 
 export function Step1AiBrain() {
   const { state, updateState, nextStep, prevStep, isReset } = useOnboarding();
 
   const [provider, setProvider] = useState<Provider>('claude');
-  const [authMode, setAuthMode] = useState<AuthMode>('api-key');
+  const [authMode, setAuthMode] = useState<AuthMode>('oauth');
   const [apiKey, setApiKey] = useState('');
   const [validating, setValidating] = useState(false);
   const [validated, setValidated] = useState(state.aiProvider?.validated ?? false);
@@ -35,13 +35,12 @@ export function Step1AiBrain() {
   const [error, setError] = useState('');
   const [autoDetected, setAutoDetected] = useState(false);
 
-  // Keychain detection — found but NOT auto-accepted (requires user consent)
-  const [keychainAvailable, setKeychainAvailable] = useState(false);
-  const [keychainModel, setKeychainModel] = useState('');
-  const [keychainError, setKeychainError] = useState('');
+  // OAuth flow state
+  const [oauthMode, setOauthMode] = useState<'choose' | 'browser' | 'magic_link'>('choose');
+  const [authCode, setAuthCode] = useState('');
+  const [oauthEmail, setOauthEmail] = useState('');
 
-  // Check for env-detected credential and keychain availability on mount.
-  // Env var auto-accepts (explicit user config); keychain requires consent.
+  // Auto-detect credentials from env vars, vault, and macOS Keychain on mount.
   useEffect(() => {
     let cancelled = false;
 
@@ -74,26 +73,20 @@ export function Step1AiBrain() {
         });
         const json = await res.json();
         const keychain = json?.data?.detectKeychainToken;
-        if (!cancelled && keychain?.found) {
-          setKeychainAvailable(true);
-          setKeychainModel(keychain.model || 'Claude (Keychain)');
-          setAuthMode('keychain');
-          if (keychain.error) {
-            setKeychainError(keychain.error);
-          }
+        if (!cancelled && keychain?.found && !keychain.error) {
+          const model = keychain.model || 'Claude (Keychain)';
+          setAutoDetected(true);
+          setValidated(true);
+          setValidatedModel(model);
+          updateState({ aiProvider: { method: 'keychain', model, validated: true } });
         }
       } catch {
         // No keychain token
       }
     }
 
-    // Env auto-accept only runs when not reset and not already validated
     if (!isReset && !validated) {
       detectEnv();
-    }
-
-    // Keychain detection always runs (it's non-accepting — just sets availability)
-    if (!validated) {
       detectKeychain();
     }
 
@@ -105,46 +98,17 @@ export function Step1AiBrain() {
   const handleSelectProvider = (p: Provider) => {
     if (p === provider) return;
     setProvider(p);
-    setAuthMode(p === 'claude' && keychainAvailable ? 'keychain' : 'api-key');
+    setAuthMode(p === 'claude' ? 'oauth' : 'api-key');
     setApiKey('');
     setError('');
+    setOauthMode('choose');
+    setAuthCode('');
+    setOauthEmail('');
     if (!autoDetected) {
       setValidated(false);
       setValidatedModel('');
     }
   };
-
-  const handleUseKeychain = useCallback(() => {
-    setValidated(true);
-    setValidatedModel(keychainModel);
-    updateState({ aiProvider: { method: 'keychain', model: keychainModel, validated: true } });
-  }, [keychainModel, updateState]);
-
-  const handleRetryKeychain = useCallback(async () => {
-    setValidating(true);
-    setKeychainError('');
-    try {
-      const res = await fetch('/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: '{ detectKeychainToken { found model error } }' }),
-      });
-      const json = await res.json();
-      const keychain = json?.data?.detectKeychainToken;
-      if (keychain?.found && !keychain.error) {
-        setKeychainModel(keychain.model || 'Claude (Keychain)');
-        setKeychainError('');
-      } else if (keychain?.found) {
-        setKeychainError(keychain.error);
-      } else {
-        setKeychainError('No Claude Code token found in Keychain.');
-      }
-    } catch {
-      setKeychainError('Connection failed. Make sure the backend is running.');
-    } finally {
-      setValidating(false);
-    }
-  }, []);
 
   const handleValidateApiKey = useCallback(async () => {
     if (!apiKey.trim()) {
@@ -184,7 +148,111 @@ export function Step1AiBrain() {
     }
   }, [apiKey, provider, updateState]);
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
+  // ── Browser OAuth PKCE handlers ────────────────────────────────────────────
+
+  const handleOpenBrowserOAuth = useCallback(async () => {
+    setError('');
+    setValidating(true);
+    try {
+      const res = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `mutation { startOAuthFlow { authUrl state } }`,
+        }),
+      });
+      const json = await res.json();
+      const result = json?.data?.startOAuthFlow;
+      if (result?.authUrl) {
+        window.open(result.authUrl, '_blank', 'noopener,noreferrer');
+        setOauthMode('browser');
+        setAuthCode('');
+      } else {
+        setError('Failed to generate authorization URL.');
+      }
+    } catch {
+      setError('Connection failed. Make sure the backend is running.');
+    } finally {
+      setValidating(false);
+    }
+  }, []);
+
+  const handleSubmitAuthCode = useCallback(async () => {
+    const code = authCode.trim();
+    if (!code) {
+      setError('Please paste the authorization code.');
+      return;
+    }
+    setError('');
+    setValidating(true);
+    try {
+      const res = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `mutation ($code: String!) { completeOAuthFlow(code: $code) { success model error } }`,
+          variables: { code },
+        }),
+      });
+      const json = await res.json();
+      const result = json?.data?.completeOAuthFlow;
+      if (result?.success) {
+        setValidated(true);
+        setValidatedModel(result.model || 'Claude (OAuth)');
+        updateState({ aiProvider: { method: 'oauth', model: result.model || 'Claude (OAuth)', validated: true } });
+        setOauthMode('choose');
+        setAuthCode('');
+      } else {
+        setError(result?.error || 'Failed to exchange authorization code.');
+      }
+    } catch {
+      setError('Connection failed. Make sure the backend is running.');
+    } finally {
+      setValidating(false);
+    }
+  }, [authCode, updateState]);
+
+  const handleCancelOAuth = useCallback(() => {
+    setOauthMode('choose');
+    setAuthCode('');
+    setOauthEmail('');
+    setError('');
+  }, []);
+
+  /** Magic link: open Claude login in user's browser with PKCE URL, then wait for code paste. */
+  const handleMagicLinkStart = useCallback(async () => {
+    const email = oauthEmail.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    setError('');
+    setValidating(true);
+    try {
+      const res = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `mutation { startOAuthFlow { authUrl state } }`,
+        }),
+      });
+      const json = await res.json();
+      const result = json?.data?.startOAuthFlow;
+      if (result?.authUrl) {
+        window.open(result.authUrl, '_blank', 'noopener,noreferrer');
+        setOauthMode('browser');
+        setAuthCode('');
+      } else {
+        setError('Failed to generate authorization URL.');
+      }
+    } catch {
+      setError('Connection failed. Make sure the backend is running.');
+    } finally {
+      setValidating(false);
+    }
+  }, [oauthEmail]);
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
 
   const handleContinue = () => {
     if (validated) nextStep();
@@ -280,7 +348,6 @@ export function Step1AiBrain() {
                     </p>
                     <p className="text-xs text-text-muted">{p.subtitle}</p>
                   </div>
-                  {/* Checkmark */}
                   {isSelected && (
                     <div className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent-primary">
                       <svg
@@ -294,7 +361,6 @@ export function Step1AiBrain() {
                       </svg>
                     </div>
                   )}
-                  {/* Unselected radio */}
                   {!isSelected && (
                     <div className="absolute top-3 right-3 h-4 w-4 rounded-full border-2 border-border-light" />
                   )}
@@ -315,107 +381,203 @@ export function Step1AiBrain() {
               </div>
             )}
 
-            {/* Claude: Keychain or API key */}
+            {/* Claude: OAuth or API key */}
             {!validated && provider === 'claude' && (
               <div className="space-y-4">
-                {/* Auth mode toggle — only show if keychain is available */}
-                {keychainAvailable && (
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode('keychain');
-                        setError('');
-                      }}
-                      className={cn(
-                        'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                        authMode === 'keychain'
-                          ? 'bg-bg-tertiary text-text-primary'
-                          : 'text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
-                      )}
-                    >
-                      Use Claude Code
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode('api-key');
-                        setError('');
-                      }}
-                      className={cn(
-                        'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                        authMode === 'api-key'
-                          ? 'bg-bg-tertiary text-text-primary'
-                          : 'text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
-                      )}
-                    >
-                      API key
-                    </button>
-                  </div>
-                )}
+                {/* Auth mode toggle */}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('oauth');
+                      setError('');
+                    }}
+                    className={cn(
+                      'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                      authMode === 'oauth'
+                        ? 'bg-bg-tertiary text-text-primary'
+                        : 'text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
+                    )}
+                  >
+                    OAuth
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('api-key');
+                      setError('');
+                    }}
+                    className={cn(
+                      'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                      authMode === 'api-key'
+                        ? 'bg-bg-tertiary text-text-primary'
+                        : 'text-text-muted hover:bg-bg-hover/50 hover:text-text-secondary',
+                    )}
+                  >
+                    API key
+                  </button>
+                </div>
 
-                {/* Keychain consent card */}
-                {authMode === 'keychain' && keychainAvailable && (
+                {/* OAuth flow */}
+                {authMode === 'oauth' && (
                   <div className="space-y-3">
-                    <div className="rounded-lg bg-bg-tertiary/50 p-3">
-                      <div className="mb-2 flex items-center gap-2">
-                        <svg
-                          className="h-4 w-4 text-text-secondary"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={1.5}
-                          stroke="currentColor"
+                    {/* Choose: browser sign-in or magic link */}
+                    {oauthMode === 'choose' && (
+                      <>
+                        <div className="rounded-lg bg-bg-tertiary/50 p-3">
+                          <div className="mb-2 flex items-center gap-2">
+                            <svg
+                              className="h-4 w-4 text-text-secondary"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth={1.5}
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                              />
+                            </svg>
+                            <p className="text-xs font-medium text-text-primary">Sign in with Claude</p>
+                          </div>
+                          <p className="text-[11px] leading-relaxed text-text-muted">
+                            Authorize Yojin to use your Claude account. No API key needed.
+                          </p>
+                        </div>
+                        <Button
+                          variant="primary"
+                          size="md"
+                          loading={validating}
+                          onClick={handleOpenBrowserOAuth}
+                          className="w-full"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z"
-                          />
-                        </svg>
-                        <p className="text-xs font-medium text-text-primary">Claude Code token found</p>
-                      </div>
-                      <p className="text-[11px] leading-relaxed text-text-muted">
-                        {keychainError
-                          ? 'A Claude Code token was found in your macOS Keychain but it has expired. Run "claude auth login" in your terminal to re-authenticate, then try again.'
-                          : 'We detected a Claude Code OAuth token in your macOS Keychain. Yojin can use this token to connect to Claude without needing a separate API key.'}
-                      </p>
-                    </div>
-                    {keychainError ? (
-                      <Button
-                        variant="secondary"
-                        size="md"
-                        loading={validating}
-                        onClick={handleRetryKeychain}
-                        className="w-full"
-                      >
-                        <svg
-                          className="mr-1.5 h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={1.5}
-                          stroke="currentColor"
+                          <svg
+                            className="mr-1.5 h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.5}
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                            />
+                          </svg>
+                          Open in browser
+                        </Button>
+                        <div className="relative flex items-center gap-3">
+                          <div className="h-px flex-1 bg-border" />
+                          <span className="text-[10px] uppercase tracking-wider text-text-muted">or</span>
+                          <div className="h-px flex-1 bg-border" />
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="md"
+                          onClick={() => {
+                            setOauthMode('magic_link');
+                            setError('');
+                          }}
+                          className="w-full"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"
-                          />
-                        </svg>
-                        Try again
-                      </Button>
-                    ) : (
-                      <Button variant="primary" size="md" onClick={handleUseKeychain} className="w-full">
-                        <svg
-                          className="mr-1.5 h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={1.5}
-                          stroke="currentColor"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                        </svg>
-                        Use Claude Code token
-                      </Button>
+                          <svg
+                            className="mr-1.5 h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.5}
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"
+                            />
+                          </svg>
+                          Use magic link instead
+                        </Button>
+                        {error && <p className="text-xs text-error">{error}</p>}
+                      </>
+                    )}
+
+                    {/* Magic link: enter email then open browser */}
+                    {oauthMode === 'magic_link' && (
+                      <>
+                        <div className="rounded-lg bg-bg-tertiary/50 p-3">
+                          <p className="text-[11px] leading-relaxed text-text-muted">
+                            Enter your Anthropic email. We'll open Claude's login page — sign in with your email and
+                            you'll receive a magic link. After authorizing, paste the code back here.
+                          </p>
+                        </div>
+                        <Input
+                          label="Anthropic email"
+                          type="email"
+                          placeholder="you@example.com"
+                          hint="The email you use to log in to claude.ai"
+                          value={oauthEmail}
+                          onChange={(e) => setOauthEmail(e.target.value)}
+                          error={error || undefined}
+                          size="md"
+                          onKeyDown={(e) => e.key === 'Enter' && handleMagicLinkStart()}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="primary"
+                            size="md"
+                            loading={validating}
+                            disabled={!oauthEmail.trim()}
+                            onClick={handleMagicLinkStart}
+                            className="flex-1"
+                          >
+                            Open in browser
+                          </Button>
+                          <Button variant="secondary" size="md" onClick={handleCancelOAuth}>
+                            Back
+                          </Button>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Paste authorization code (shared by both flows) */}
+                    {oauthMode === 'browser' && (
+                      <>
+                        <div className="rounded-lg border border-accent-primary/20 bg-accent-primary/[0.04] p-3">
+                          <p className="mb-2 text-xs font-medium text-text-primary">Authorize in your browser</p>
+                          <div className="space-y-1 text-[11px] leading-relaxed text-text-muted">
+                            <p>1. A new tab opened with the Claude authorization page</p>
+                            <p>
+                              2. Sign in if needed, then click{' '}
+                              <strong className="text-text-secondary">Authorize</strong>
+                            </p>
+                            <p>3. Copy the code from the redirect page and paste it below</p>
+                          </div>
+                        </div>
+                        <Input
+                          label="Authorization code"
+                          type="text"
+                          placeholder="Paste the code from the redirect page"
+                          value={authCode}
+                          onChange={(e) => setAuthCode(e.target.value)}
+                          error={error || undefined}
+                          size="md"
+                          onKeyDown={(e) => e.key === 'Enter' && handleSubmitAuthCode()}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="primary"
+                            size="md"
+                            loading={validating}
+                            disabled={!authCode.trim()}
+                            onClick={handleSubmitAuthCode}
+                            className="flex-1"
+                          >
+                            Verify code
+                          </Button>
+                          <Button variant="secondary" size="md" onClick={handleCancelOAuth}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </>
                     )}
                   </div>
                 )}

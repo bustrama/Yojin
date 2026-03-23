@@ -251,16 +251,11 @@ export async function completeOAuthFlowMutation(
     // Clear the pending PKCE state
     pendingPkce = null;
 
-    // Store the token in vault
-    if (vault?.isUnlocked) {
-      await vault.set('anthropic_oauth_token', result.accessToken);
-      if (result.refreshToken) {
-        await vault.set('anthropic_oauth_refresh_token', result.refreshToken);
-      }
+    // Store, set env, and reconfigure provider so the token is usable immediately
+    await activateOAuthToken(result.accessToken);
+    if (vault?.isUnlocked && result.refreshToken) {
+      await vault.set('anthropic_oauth_refresh_token', result.refreshToken);
     }
-
-    // Also set in process.env so the provider can pick it up immediately
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = result.accessToken;
     if (result.refreshToken) {
       process.env.CLAUDE_CODE_OAUTH_REFRESH_TOKEN = result.refreshToken;
     }
@@ -496,10 +491,8 @@ export async function completeMagicLinkMutation(
   const result = await completeMagicLinkFlow(url);
 
   if (result.success && result.token) {
-    // Store the OAuth token in the vault
-    if (vault?.isUnlocked) {
-      await vault.set('anthropic_oauth_token', result.token);
-    }
+    // Store, set env, and reconfigure provider so the token is usable immediately
+    await activateOAuthToken(result.token);
     return { success: true, model: result.model || 'Claude (OAuth)' };
   }
 
