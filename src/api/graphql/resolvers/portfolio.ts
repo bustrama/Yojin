@@ -21,6 +21,56 @@ import type {
 let snapshotStore: PortfolioSnapshotStore | undefined;
 let connectionManager: ConnectionManager | undefined;
 
+// ---------------------------------------------------------------------------
+// Mock sparkline / day-change generation (until real market data is wired)
+// ---------------------------------------------------------------------------
+
+/** Deterministic hash for a symbol string. */
+function symbolHash(symbol: string): number {
+  let h = 0;
+  for (const c of symbol) h = c.charCodeAt(0) + ((h << 5) - h);
+  return h;
+}
+
+/** Seeded pseudo-random — stable across calls for the same seed. */
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+/** Generate mock daily change based on the symbol (deterministic). */
+function mockDayChange(symbol: string, currentPrice: number): { dayChange: number; dayChangePercent: number } {
+  const h = symbolHash(symbol);
+  // Range: roughly -5% to +5%, biased by symbol hash
+  const pct = (seededRandom(h + 42) - 0.4) * 10;
+  const roundedPct = Math.round(pct * 100) / 100;
+  const change = Math.round(currentPrice * (roundedPct / 100) * 100) / 100;
+  return { dayChange: change, dayChangePercent: roundedPct };
+}
+
+/** Generate a 24-point sparkline array for the day (deterministic per symbol). */
+function mockSparkline(symbol: string, currentPrice: number, dayChangePercent: number): number[] {
+  const points = 24;
+  const h = symbolHash(symbol);
+  const trend = dayChangePercent > 0 ? 1 : dayChangePercent < 0 ? -1 : 0;
+  const startOffset = Math.max(0.02, Math.abs(dayChangePercent) * 0.008);
+  let price = currentPrice * (1 - trend * startOffset);
+  let momentum = 0;
+  const volatility = 0.01 + seededRandom(h + 99) * 0.008;
+  const data: number[] = [Math.round(price * 100) / 100];
+
+  for (let i = 1; i < points; i++) {
+    const noise = (seededRandom(h + i * 13) - 0.5) * currentPrice * volatility;
+    momentum = momentum * 0.6 + noise * 0.4;
+    const drift = (trend * currentPrice * startOffset * 1.2) / points;
+    const pull = ((currentPrice - price) / (points - i)) * 0.15;
+    price += momentum + drift + pull;
+    data.push(Math.round(price * 100) / 100);
+  }
+  data[data.length - 1] = currentPrice;
+  return data;
+}
+
 /** Called once during server startup to inject the store. */
 export function setSnapshotStore(store: PortfolioSnapshotStore): void {
   snapshotStore = store;
@@ -173,3 +223,23 @@ export async function refreshPositionsMutation(
   pubsub.publish('portfolioUpdate', snapshot);
   return snapshot;
 }
+
+// ---------------------------------------------------------------------------
+// Position field resolvers — computed fields (mock until real market data)
+// ---------------------------------------------------------------------------
+
+export const positionFieldResolvers = {
+  dayChange: (pos: Position) => {
+    if (pos.dayChange != null) return pos.dayChange;
+    return mockDayChange(pos.symbol, pos.currentPrice).dayChange;
+  },
+  dayChangePercent: (pos: Position) => {
+    if (pos.dayChangePercent != null) return pos.dayChangePercent;
+    return mockDayChange(pos.symbol, pos.currentPrice).dayChangePercent;
+  },
+  sparkline: (pos: Position) => {
+    if (pos.sparkline) return pos.sparkline;
+    const { dayChangePercent } = mockDayChange(pos.symbol, pos.currentPrice);
+    return mockSparkline(pos.symbol, pos.currentPrice, dayChangePercent);
+  },
+};

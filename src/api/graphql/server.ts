@@ -49,6 +49,7 @@ import {
   enrichedSnapshotQuery,
   portfolioHistoryQuery,
   portfolioQuery,
+  positionFieldResolvers,
   positionsQuery,
   refreshPositionsMutation,
 } from './resolvers/portfolio.js';
@@ -93,6 +94,7 @@ const schema = createSchema({
       detectKeychainToken: detectKeychainTokenQuery,
       onboardingStatus: onboardingStatusQuery,
     },
+    Position: positionFieldResolvers,
     Mutation: {
       refreshPositions: refreshPositionsMutation,
       addManualPosition: addManualPositionMutation,

@@ -64,7 +64,7 @@ export default function TotalValueChart() {
 
   if (fetching) {
     return (
-      <div className="flex min-h-[120px] flex-[1.5] items-center justify-center rounded-lg border border-border bg-bg-card">
+      <div className="flex min-h-[120px] flex-1 items-center justify-center rounded-lg border border-border bg-bg-card">
         <Spinner size="sm" />
       </div>
     );
@@ -72,7 +72,7 @@ export default function TotalValueChart() {
 
   if (error || chartData.length === 0) {
     return (
-      <div className="flex min-h-[120px] flex-[1.5] flex-col items-center justify-center rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
+      <div className="flex min-h-[120px] flex-1 flex-col items-center justify-center rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
         <h3 className="text-2xs font-medium text-text-primary uppercase tracking-wider mb-2">Total Value</h3>
         <p className="text-xs text-text-muted">No history available</p>
         <p className="mt-0.5 text-2xs text-text-muted/60">Import portfolio snapshots to see value over time</p>
@@ -87,7 +87,7 @@ export default function TotalValueChart() {
   const pad = Math.max(5, (maxVal - minVal) * 0.1 || maxVal * 0.1);
 
   return (
-    <div className="flex min-h-[120px] flex-[1.5] flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
+    <div className="flex min-h-[120px] flex-1 flex-col rounded-lg border border-border bg-bg-card px-3 pt-2 pb-1">
       <div className="mb-1 flex flex-shrink-0 items-center justify-between">
         <h3 className="text-2xs font-medium text-text-primary uppercase tracking-wider">Total Value</h3>
         <div className="flex gap-0.5">
