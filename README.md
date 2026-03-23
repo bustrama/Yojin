@@ -4,73 +4,156 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
 
-A free, open-source AI agent that runs on your machine, connects to every platform and delivers personalized portfolio intelligence.
+A local-first AI agent that connects to your investment accounts, delivers personalized intelligence, monitors your portfolio 24/7, and executes trades — across every platform you use.
 
-## What It Does
-
-- **Scrapes your portfolios** — Playwright automation logs into Robinhood, Coinbase, IBKR, and more to extract your live positions
-- **Enriches with intelligence** — Dual-source enrichment via Keelson API (social sentiment, news signals) and OpenBB SDK (fundamentals, price data, technicals)
-- **Analyzes risk** — Sector exposure, concentration scoring, correlated position detection, earnings calendar overlay
-- **Delivers alerts** — Morning digests, intraday alerts for price moves, sentiment shifts, earnings proximity, and concentration drift
-- **Talks to you** — Multi-channel delivery via Slack, Telegram, Web UI, or Claude Desktop (MCP)
+| | |
+|---|---|
+| **Unified portfolio view** | All of your accounts in one place. Positions, P&L, and intelligence updated in real time. |
+| **Chat** | Tell Yojin what you want — analyze a stock, check your portfolio, place a trade. |
+| **Personalized intelligence** | News, sentiment, technical analysis, and macro events based on your actual positions. |
+| **Explainable finance** | Before every action, Yojin thinks, explores, reasons, tests, calculates, and asks for your approval. |
 
 ## Architecture
 
-Four specialized AI agents collaborate through shared state:
+Yojin is a multi-agent system built around a central **Orchestrator** that coordinates four specialized agents. Each agent has its own system prompt, tool set, and allowed actions — but they share state through a common data layer rather than calling each other directly.
 
-| Agent                | Role                                                                     |
-|----------------------|--------------------------------------------------------------------------|
-| **Research Analyst** | Gathers market data via OpenBB SDK, enriches positions, searches news    |
-| **Strategist**       | Reads persona + data + risk reports, produces recommendations and alerts |
-| **Risk Manager**     | Analyzes portfolio exposure, concentration, correlation, drawdown        |
-| **Trader**           | Scrapes platforms, tracks positions, executes trades (Phase 2)           |
+The **Orchestrator** is the entry point for every workflow — whether triggered by a user message, a scheduled digest, or a market event. It decides which agents to invoke, in what order or in parallel, and assembles their outputs into a coherent response or action. Agents produce structured outputs (PortfolioSnapshot, RiskReport, Signals) that flow through a shared pipeline; no agent has awareness of another's internals.
 
-All state is file-driven — JSONL sessions, JSON configs, Markdown personas. No database, no containers.
+Underneath the agents, a **plugin system** decouples LLM providers and delivery channels from the runtime. Providers and channels are loaded as plugins at startup, making it straightforward to swap models or add new messaging surfaces without touching agent logic. A **deterministic trust layer** — vault, guard pipeline, PII redactor, and audit log — wraps every action before execution, independent of any agent or provider.
+
+All state is file-driven — JSONL sessions, JSON configs, Markdown personas. No database, no ORM, no containers.
+
+### Agents
+
+| Agent | Role |
+|---|---|
+| **Analyst** | Ingests signals from Jintel, runs technical analysis (SMA, RSI, BBANDS), extracts tickers from news — the same data a human analyst would use: fundamentals, price data, technicals, 8-K activity, real-time news |
+| **Strategist** | Owns the Brain (persona, working memory, emotions). Runs bull/bear debate analysis. Defines strategy — asset allocation, rebalancing rules, entry/exit logic tailored to your goals. |
+| **Risk Manager** | Analyzes exposure, concentration, correlation, drawdown. Monitors markets 24/7. Delivers alerts via Telegram and daily portfolio digests. |
+| **Trader** | Executes trades on target platforms (Robinhood, Coinbase, IBKR, Schwab, Binance, and more). |
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Your Machine                            │
 │                                                                 │
-│  ┌──────────┐    ┌──────────────┐    ┌───────────────────────┐  │
-│  │ Robinhood │    │   AgentRuntime  │    │     Channels        │  │
-│  │ Coinbase  │───▶│   Orchestrator  │───▶│  Slack / Telegram   │  │
-│  │ IBKR      │    │                 │    │  Web UI / MCP       │  │
-│  └──────────┘    └───────┬─────────┘    └───────────────────────┘  │
-│                          │                                       │
-│            ┌─────────────┼─────────────┐                        │
-│            ▼             ▼             ▼                         │
-│     ┌────────────┐ ┌──────────┐ ┌───────────┐                  │
-│     │   Trader   │ │ Research │ │   Risk    │                   │
-│     │  (scrape)  │ │ Analyst  │ │  Manager  │                   │
-│     └─────┬──────┘ └────┬─────┘ └─────┬─────┘                  │
-│           │              │             │                         │
-│           ▼              ▼             ▼                         │
-│    PortfolioSnapshot  EnrichedSnapshot  RiskReport               │
-│           │              ▲             │                         │
-│           │     ┌────────┴────────┐    │                         │
-│           │     │   Enrichment    │    │                         │
-│           └────▶│  Pipeline       │◀───┘                        │
-│                 └───┬─────────┬───┘                              │
-│                     │         │                                   │
-│              ┌──────▼──┐ ┌───▼──────┐                           │
-│              │ Keelson  │ │  OpenBB  │                           │
-│              │   API    │ │   SDK    │                           │
-│              │(sentiment│ │(in-proc) │                           │
-│              └──────────┘ └──────────┘                           │
-│                     │                                            │
-│              ┌──────▼──────────┐                                │
-│              │  Strategist     │                                 │
-│              │  (persona.md)   │──▶ Alerts + Recommendations    │
-│              │  Brain + Memory │                                 │
-│              └─────────────────┘                                │
+│  ┌──────────────┐    ┌─────────────────┐    ┌───────────────┐  │
+│  │  Robinhood   │    │  AgentRuntime   │    │   Channels    │  │
+│  │  Coinbase    │───▶│  Orchestrator   │───▶│  Web / MCP    │  │
+│  │  IBKR/Schwab │    │                 │    │  ACP / Tg     │  │
+│  │  Binance/... │    └────────┬────────┘    └───────────────┘  │
+│  └──────────────┘             │                                 │
+│                   ┌───────────┼───────────┐                    │
+│                   ▼           ▼           ▼                    │
+│            ┌──────────┐ ┌──────────┐ ┌──────────┐             │
+│            │  Trader  │ │ Analyst  │ │   Risk   │             │
+│            │(execute) │ │          │ │ Manager  │             │
+│            └────┬─────┘ └────┬─────┘ └────┬─────┘             │
+│                 │            │            │                    │
+│                 ▼            ▼            ▼                    │
+│        PortfolioSnapshot  Signals     RiskReport               │
+│                 │            ▲            │                    │
+│                 └──────▶  Jintel  ◀───────┘                    │
+│                          (signals,                             │
+│                          news, sentiment)                      │
+│                               │                                │
+│                          Strategist                            │
+│                         (Brain + Memory)──▶ Insights + Alerts  │
 │                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ Trust Layer: Vault │ Guard Pipeline │ PII │ Audit Log    │  │
-│  └──────────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Trust Layer: Vault │ Guard Pipeline │ PII │ Audit Log   │  │
+│  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### The Brain (Strategist)
+
+The Strategist is the only stateful agent. Its brain persists across sessions, stored as versioned Markdown and JSON files in `data/brain/`. Each decision checkpoint creates a git-like commit with a diff of working memory state; emotion state is updated after each enriched snapshot.
+
+- **Frontal lobe** — working memory: hypotheses, observations, active reasoning
+- **Emotion** — confidence level and risk appetite with rationale
+- **Signal memory** — reflects on past signals over time, building a view of what matters for your positions
+- **Commit history** — git-like versioned snapshots at decision points
+
+Other agents are stateless — they produce outputs on demand.
+
+### Jintel
+
+Jintel is the intelligence layer that powers Yojin's market awareness. It is accessed via the `DataSourceRegistry` in `src/data-sources/`; signal ingestion runs as a background pipeline in `src/signals/`, writing to a local JSONL archive that agents query via `globSignals`, `grepSignals`, and `readSignals` tools.
+
+- **News signals** — real-time and archived news ingested and indexed by ticker, sector, and macro theme
+- **Sentiment** — aggregated market sentiment per asset, updated continuously
+- **Entity schema** — a standardized representation of each asset (equity, crypto, commodity) that unifies data from disparate sources into a single queryable model
+- **Portfolio-aware processing** — signals are filtered and ranked against your actual positions, so you only see intelligence that's relevant to what you hold
+- **Signal memory** — the Strategist builds a running reflection of past signals, tracking which types of events have historically moved your positions
+
+Jintel runs as a separate service. PII redaction runs before every Jintel call — Jintel receives sanitized, anonymized data only.
+
+### AI Providers
+
+| Provider | Notes |
+|---|---|
+| Anthropic SDK | Default. OAuth or API key. |
+| Claude Code | Subprocess mode for extended agentic tasks |
+| OpenRouter | Access to 200+ models via a single API |
+| OpenAI Codex | OpenAI models via the Codex API |
+
+### Core Components
+
+**AgentRuntime** — the execution engine that drives the agent loop: sends messages to the LLM, dispatches tool calls, streams responses, and enforces token budgets. Each agent profile runs inside the same runtime instance with isolated tool scope and session history.
+
+**ToolRegistry** — central registry where every agent tool is registered and scoped per agent profile. Agents can only invoke tools explicitly granted to their profile; the registry enforces this at dispatch time, before any guard check.
+
+**ProviderRouter** — routes LLM requests to the correct backend (Anthropic, Claude Code, OpenRouter, Codex) based on per-agent configuration. Provider selection is resolved at the profile level, with a global fallback.
+
+**Persistent Memory** — file-backed session store using append-only JSONL. Conversation histories, the Strategist's brain state, and the signal archive all survive process restarts without a database. The event log is a separate append-only JSONL that records every system event for observability.
+
+**Signal Ingestion** — background pipeline in `src/signals/` that pulls from Jintel, deduplicates entries by content hash, extracts ticker mentions via `TickerExtractor`, and writes to the local archive. Agents query the archive at reasoning time rather than hitting the API inline.
+
+**GraphQL API** — graphql-yoga on Hono; exposes typed queries, mutations, and real-time subscriptions for the Web UI. The schema is the single contract between the backend and frontend — the React app reads portfolio state, risk data, agent activity, and signal feeds exclusively through this API.
+
+## Security & Privacy
+
+Your data never leaves your machine.
+
+Your credentials, positions, and account details are stored and processed on your computer — not on our servers, not in the cloud. The architecture below enforces this at four independent layers, so no single point of failure can expose your data.
+
+### Layer 1 — Credential Vault
+
+**Your secrets stay encrypted, on-disk, on your machine.**
+
+API keys and credentials are stored in a local encrypted vault using AES-256-GCM with per-entry IVs; the key is derived via PBKDF2 (600k iterations, SHA-512). A canary entry verifies the passphrase on unlock without decrypting real secrets.
+
+The vault never makes network requests. When an AI agent needs a credential at runtime, it reads from the vault locally — the key is never hardcoded, logged, or transmitted.
+
+### Layer 2 — Deterministic Guard Pipeline
+
+**Rules that can't be reasoned with.**
+
+Guards are pure functions — `check(action) → { pass } | { pass: false, reason }`. The pipeline is locked after initialization; no runtime modification is possible. Three operational postures (Local / Standard / Unbounded) control rate limits and enforcement strictness.
+
+Before any agent action executes, it passes through a pipeline of security guards — code-based rules with binary outcomes. A regex either matches or it doesn't. The AI cannot persuade, interpret, or work around them.
+
+12 guards run in sequence: kill switch, self-defense, tool policy, filesystem, command, egress, output-DLP, rate budget, repetition, read-only, cooldown, and symbol whitelist. Every decision — pass or block — is written to the tamper-evident audit log.
+
+### Layer 3 — PII Redaction
+
+**Sensitive data is scrubbed before it reaches any AI model.**
+
+Chat messages run through Rehydra (regex + optional NER) with a reversible AES-256-GCM encrypted PII map, so responses are rehydrated before the user sees them. Structured snapshots use SHA-256 hashing for account IDs and range-bucketing for balances before any external API call.
+
+Every piece of data flowing into the LLM or any external API is filtered and stripped before being processed. Account IDs are hashed. Names and emails are stripped. The AI reasons over sanitized data — it never sees the raw values.
+
+### Layer 4 — Approval Gate
+
+**The agent can think. It cannot act without you.**
+
+Approval requests are routed to the user's active channel (Web, Telegram, MCP) and carry a configurable timeout — unanswered requests auto-deny.
+
+Agents have read access to observe and analyze. They have no write access until you explicitly approve an action. Irreversible operations — executing a trade, adding a new connection — require a confirmation step through your active channel.
+
 ## Quick Start
+
+Yojin runs locally on your computer. Interactive install walks you through the initial steps. One command, no account needed.
 
 ### Prerequisites
 
@@ -83,483 +166,68 @@ All state is file-driven — JSONL sessions, JSON configs, Markdown personas. No
 git clone https://github.com/YojinHQ/Yojin.git
 cd Yojin
 pnpm install
-```
-
-### First Run
-
-```bash
 pnpm chat
 ```
 
-On first launch, Yojin will:
+On first launch, Yojin bootstraps itself: connects an LLM provider (paste an Anthropic API key or run the OAuth flow) and generates a personalized Strategist persona based on your investment style. No manual config files needed.
 
-1. **Bootstrap** — prompt you to connect an LLM provider (paste an Anthropic API key or run the OAuth flow)
-2. **Onboard** — ask a few questions about your investment style and generate a personalized persona
-
-No manual config files needed — credentials are stored in the encrypted vault automatically.
-
-### Run
+### Commands
 
 ```bash
-# Interactive chat (recommended starting point)
-pnpm chat
-
-# Start backend + web dashboard (development)
-pnpm dev
-
-# Backend server only
-pnpm dev:be
-
-# Production
-pnpm build && pnpm start
+pnpm chat          # Interactive chat REPL (start here)
+pnpm dev           # Backend + web dashboard
+pnpm dev:be        # Backend only
+pnpm dev:fe        # Web app only (Vite dev server)
+pnpm build         # Compile TypeScript
+pnpm start         # Run compiled output
+pnpm test          # Run tests (vitest)
+pnpm setup         # OAuth setup flow (Claude)
 ```
-
-## CLI Usage
-
-Yojin ships a CLI entry point (`yojin`) with the following commands:
-
-```
-yojin                Start the backend server (API + GraphQL)
-yojin chat           Chat with Yojin in your terminal
-yojin setup          Connect your Claude account (OAuth flow)
-yojin web            Start the web dashboard only
-yojin secret <cmd>   Manage encrypted credentials
-yojin acp            Start ACP (Agent Client Protocol) server
-yojin version        Print version
-yojin help           Show help
-```
-
-### `yojin chat`
-
-Full agent loop in your terminal — streaming responses, tool execution, color-coded output.
-
-```bash
-pnpm chat
-
-# Options:
-pnpm chat -- --model claude-opus-4-6   # Choose model
-pnpm chat -- --provider anthropic      # Choose provider
-pnpm chat -- --system "Be concise"     # Custom system prompt
-```
-
-### `yojin secret`
-
-Manage credentials in the encrypted vault (AES-256-GCM). The vault auto-unlocks without a passphrase by default. You can also manage secrets via the Web UI under Profile.
-
-```bash
-pnpm dev:be -- secret set ANTHROPIC_API_KEY   # Store a secret (hidden input)
-pnpm dev:be -- secret list                    # List stored secret names
-pnpm dev:be -- secret show ANTHROPIC_API_KEY  # Reveal a secret (TTY only)
-pnpm dev:be -- secret delete ANTHROPIC_API_KEY # Remove a secret
-```
-
-### `yojin setup`
-
-Run the OAuth PKCE flow to authenticate with Claude — opens your browser, stores the token in the vault.
-
-```bash
-pnpm setup
-```
-
-### Environment Variables
-
-| Variable                  | Purpose                                      | Required |
-|---------------------------|----------------------------------------------|----------|
-| `ANTHROPIC_API_KEY`       | Anthropic API key (alternative to OAuth)     | One of these |
-| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `yojin setup`               | One of these |
-| `YOJIN_VAULT_PASSPHRASE`  | Passphrase for the encrypted credential vault | No (auto-unlocks without one) |
-| `YOJIN_PII_NER`           | Set to `1` to enable NER-based PII detection | No |
 
 ## Project Structure
 
 ```text
 yojin/
 ├── src/
-│   ├── core/           # Agent runtime
+│   ├── core/           # AgentRuntime, ToolRegistry, ProviderRouter, event log
 │   ├── agents/         # Multi-agent profiles and orchestrator
-│   ├── brain/          # Strategist's persistent memory and persona
-│   ├── openbb/         # TypeScript-native market data SDK
-│   ├── research/       # Equity research tools, technicals
-│   ├── news/           # RSS collector + real-time news API
-│   ├── scraper/        # Playwright automation
-│   ├── enrichment/     # Dual-source enrichment (Keelson + OpenBB)
-│   ├── risk/           # Portfolio risk analysis
-│   ├── guards/         # Agent safety — guard pipeline
-│   ├── trust/          # Credentials, PII redaction, action boundaries
-│   ├── alerts/         # Alert engine and morning digest builder
-│   ├── api/            # GraphQL API (graphql-yoga on Hono) — queries, mutations, subscriptions
-│   ├── tools/          # Agent tools registered with ToolRegistry
-│   └── plugins/        # Plugin system (ProviderPlugin, ChannelPlugin)
+│   ├── brain/          # Strategist's persistent memory, persona, emotion
+│   ├── signals/        # Signal ingestion, archive, ticker extraction
+│   ├── data-sources/   # Data source registry and interfaces (Jintel)
+│   ├── scraper/        # Playwright automation (platforms/)
+│   ├── portfolio/      # Snapshot store
+│   ├── guards/         # 12-guard safety pipeline (security/ + finance/)
+│   ├── trust/          # Vault, PII redaction, approval gate, audit log
+│   ├── acp/            # Agent Client Protocol server
+│   ├── api/            # GraphQL API (graphql-yoga on Hono)
+│   ├── ai-providers/   # Provider router (Anthropic, Claude Code, OpenRouter, Codex)
+│   ├── auth/           # Claude OAuth PKCE flow, token manager
+│   └── plugins/        # ProviderPlugin + ChannelPlugin interfaces, registry
 ├── apps/
-│   └── web/            # React web app (Vite + React 19 + Tailwind 4)
-├── providers/          # LLM providers (anthropic/)
-├── channels/           # Messaging channels (slack/, telegram/, web/)
-├── packages/           # Shared packages (keelson-client/)
+│   └── web/            # React 19 + Vite 6 + Tailwind CSS 4 dashboard
+├── providers/          # LLM provider plugins (anthropic/)
+├── channels/           # Messaging channels (web/, telegram/)
+├── packages/           # Shared packages
 ├── data/               # Runtime state — JSONL, configs, snapshots (gitignored)
-└── test/               # Test suites
+└── test/               # Test suites (vitest)
 ```
-
-## Commands
-
-| Command          | Description                           |
-|------------------|---------------------------------------|
-| `pnpm dev`       | Start backend + web app (development) |
-| `pnpm dev:be`    | Start backend only (tsx)              |
-| `pnpm dev:web`   | Start React web app (Vite dev server) |
-| `pnpm chat`      | Interactive chat REPL                 |
-| `pnpm setup`     | OAuth setup flow                      |
-| `pnpm build`     | Compile TypeScript                    |
-| `pnpm start`     | Run compiled output                   |
-| `pnpm test`      | Run tests (vitest)                    |
-| `pnpm lint`      | Lint with ESLint                      |
-| `pnpm clean`     | Remove dist/                          |
-| `pnpm build:web` | Build React web app                   |
-| `pnpm build:all` | Build all packages                    |
-| `pnpm test:all`  | Run tests across all packages         |
-| `pnpm ci:all`    | Full CI check across all packages     |
 
 ## Channels
 
-| Channel  | Status                            |
-|----------|-----------------------------------|
-| Slack    | Working (@slack/bolt)             |
-| Telegram | Phase 1 (grammy)                  |
-| Web UI   | Working (Hono + GraphQL + SSE)    |
-| MCP      | Phase 1 (Claude Desktop / Cursor) |
-| Discord  | Future                            |
-
-## Trust & Security Stack
-
-Yojin is built with security as a first-class concern. Every agent action passes through a deterministic, non-bypassable guard pipeline before execution. No LLM is ever in the security decision loop.
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Guard Pipeline                               │
-│                                                                     │
-│  Agent Action                                                       │
-│       │                                                             │
-│       ▼                                                             │
-│  ┌─────────────┐   TRIPPED?                                        │
-│  │ Kill Switch  │──── YES ──▶ DENY ALL (emergency halt)             │
-│  └──────┬──────┘                                                    │
-│         │ NO                                                        │
-│         ▼                                                           │
-│  ┌─────────────┐   WRITE TO PROTECTED FILE?                        │
-│  │Self-Defense  │──── YES ──▶ BLOCK + trip kill switch              │
-│  └──────┬──────┘                                                    │
-│         │ NO                                                        │
-│         ▼                                                           │
-│  ┌─────────────┐   TOOL DENIED / BAD INPUT?                        │
-│  │ Tool Policy  │──── YES ──▶ BLOCK                                 │
-│  └──────┬──────┘                                                    │
-│         │ OK                                                        │
-│         ▼                                                           │
-│  ┌─────────────────────────────────────────┐                        │
-│  │         Infrastructure Guards            │                       │
-│  │  ┌────────┐ ┌─────────┐ ┌────────────┐  │                       │
-│  │  │fs-guard│ │cmd-guard│ │egress-guard│  │  ◀── blocklist-based   │
-│  │  └────────┘ └─────────┘ └────────────┘  │                       │
-│  │  ┌──────────┐ ┌───────────┐ ┌────────┐  │                       │
-│  │  │output-dlp│ │rate-budget│ │repet.  │  │  ◀── pattern + rate    │
-│  │  └──────────┘ └───────────┘ └────────┘  │                       │
-│  └──────────────────┬──────────────────────┘                        │
-│                     │                                               │
-│                     ▼                                               │
-│  ┌─────────────────────────────────────────┐                        │
-│  │          Finance Guards                  │                       │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ │                       │
-│  │  │read-only │ │ cooldown │ │whitelist │ │  ◀── trading rules     │
-│  │  └──────────┘ └──────────┘ └──────────┘ │                       │
-│  └──────────────────┬──────────────────────┘                        │
-│                     │                                               │
-│                     ▼                                               │
-│               ┌───────────┐                                         │
-│               │ APPROVED? │──── needs approval ──▶ Approval Gate    │
-│               └─────┬─────┘                       (human-in-loop)   │
-│                     │                                               │
-│                     ▼                                               │
-│              ┌────────────┐                                         │
-│              │  EXECUTE   │                                         │
-│              └──────┬─────┘                                         │
-│                     │                                               │
-│                     ▼                                               │
-│              ┌────────────┐                                         │
-│              │ Output DLP │──── leaked secret? ──▶ SUPPRESS OUTPUT  │
-│              └──────┬─────┘                                         │
-│                     │                                               │
-│                     ▼                                               │
-│               Return Result                                         │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ Audit Log: HMAC-chained JSONL — every decision logged        │   │
-│  └──────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Three Operational Postures
-
-```text
-┌──────────────┬──────────────┬──────────────┐
-│    LOCAL     │   STANDARD   │  UNBOUNDED   │
-│  (default)   │    (dev)     │  (research)  │
-├──────────────┼──────────────┼──────────────┤
-│ 30 calls/min │ 60 calls/min │120 calls/min │
-│   enforce    │   enforce    │   observe    │
-│  read-only   │  read/write  │  read/write  │
-│  max safety  │  balanced    │  log only    │
-└──────────────┴──────────────┴──────────────┘
-```
-
-### Credential Vault
-
-The vault auto-unlocks without a passphrase by default — no setup required on first run. Users can optionally set a passphrase via the Web UI (Profile page) or the `YOJIN_VAULT_PASSPHRASE` env var for additional security.
-
-```text
-┌──────────────────────────────────────────────┐
-│               Encrypted Vault                 │
-│                                               │
-│  Passphrase ──▶ PBKDF2 (600k, SHA-512)       │
-│  (optional)          │                        │
-│                 Derived Key                    │
-│                      │                        │
-│              ┌───────┴───────┐                │
-│              │  AES-256-GCM  │                │
-│              │  per-entry IV  │                │
-│              └───────┬───────┘                │
-│                      │                        │
-│  ┌───────────────────┼───────────────────┐    │
-│  │  KEY_A: ████████  │  KEY_B: ████████  │    │
-│  │  KEY_C: ████████  │  KEY_D: ████████  │    │
-│  └───────────────────┴───────────────────┘    │
-│                                               │
-│  Canary: verifies passphrase on unlock        │
-│  Key names: plaintext (enables list w/o key)  │
-│  MCP server: injects creds at transport layer │
-│  Raw values: NEVER in LLM prompts             │
-│  Web UI: manage secrets under Profile page    │
-└──────────────────────────────────────────────┘
-```
-
-### Secure Credential Input
-
-When connecting a platform (e.g. Binance), the LLM never sees your API key. The CLI switches to a secure side-channel for collection:
-
-```text
-  LLM Conversation                     Secure Side-Channel (TTY)
-  ────────────────                     ─────────────────────────
-  "Connect your Binance account"
-         │
-         ▼
-  tool_call: store_credential
-    key: "BINANCE_API_KEY"
-    desc: "Binance API key"
-         │
-         │                      ┌─────────────────────────────┐
-         │                      │  Prompt on stderr            │
-         │                      │  (LLM reads stdout only)     │
-         │                      │                              │
-         │                      │  > Enter BINANCE_API_KEY:    │
-         │                      │    ••••••••••••••••          │
-         │                      │    (raw mode, echo off)      │
-         │                      │                              │
-         │                      │  Value ──▶ Encrypted Vault   │
-         │                      │           (AES-256-GCM)      │
-         │                      └─────────────────────────────┘
-         │
-         ▼
-  tool_result: "Credential
-    'BINANCE_API_KEY' stored."
-         │
-         ▼                        Later, when a tool needs it:
-  Conversation continues            SecretProxy retrieves from vault
-  (secret never in context)         ──▶ injects into HTTP headers
-                                    ──▶ scrubs response body
-                                    ──▶ returns safe result to LLM
-```
-
-**Key protections:**
-
-- **stderr prompts** — LLM only reads stdout, never sees the input prompt
-- **TTY raw mode, echo disabled** — nothing printed while you type
-- **Non-TTY rejection** — refuses piped input, preventing LLM from feeding secrets programmatically
-- **Transport-layer injection** — credentials go from vault directly into HTTP headers, never into prompts
-
-### Platform Connections
-
-Connect investment platforms via the chat REPL or GraphQL API. The ConnectionManager handles tier detection, credential storage, validation, and first scrape.
-
-**Integration tiers** (best to worst): CLI > API > UI > Screenshot. Each platform supports a subset.
-
-**Chat flow:**
-
-```text
-You:   "Connect my Coinbase"
-Yojin: Calls connect_platform({ platform: 'COINBASE' })
-       → "Available tiers: API (needs API_KEY, API_SECRET), Screenshot (no creds)"
-Yojin: "API is the best option. I'll need your API key and secret."
-       Calls store_credential({ key: 'COINBASE_API_KEY' })
-       → Secure TTY prompt (hidden input) → stored in vault
-       Calls store_credential({ key: 'COINBASE_API_SECRET' })
-       → Same flow
-       Calls connect_platform({ platform: 'COINBASE', tier: 'API' })
-       → Validates connection, runs test scrape
-       → "Connected! Found 12 positions."
-```
-
-**Configuration files** (created automatically, not hand-edited):
-
-| File                               | Purpose                                                    | Created when                  |
-|------------------------------------|------------------------------------------------------------|-------------------------------|
-| `data/config/connections.json`     | Which platforms are connected, with what tier and settings | First `connect_platform` call |
-| `data/cache/connection-state.json` | Runtime state — status, last sync time, last error         | First `connect_platform` call |
-
-**Credential overrides** (optional, hand-edited):
-
-To customize which credentials a platform/tier requires, create `data/config/platform-credentials.json`:
-
-```json
-{
-  "COINBASE": {
-    "API": ["MY_CUSTOM_KEY", "MY_CUSTOM_SECRET"]
-  }
-}
-```
-
-Only specify entries you want to override — everything else falls back to the [hardcoded defaults](src/scraper/platform-credentials.ts).
-
-**GraphQL API:**
-
-```graphql
-# Query available tiers
-query { detectAvailableTiers(platform: COINBASE) { tier, available, requiresCredentials } }
-
-# Connect (async — subscribe to onConnectionStatus for progress)
-mutation { connectPlatform(input: { platform: COINBASE, tier: API }) { success, error } }
-
-# List active connections
-query { listConnections { platform, tier, status, lastSync } }
-
-# Disconnect
-mutation { disconnectPlatform(platform: COINBASE, removeCredentials: true) { success } }
-```
-
-### PII Protection (Two Layers)
-
-**Layer 1: Chat Pipeline** — Masks PII in user messages before they reach the LLM, powered by [Rehydra](https://github.com/rehydra-ai/rehydra-sdk). Responses are rehydrated so the user sees original values.
-
-```text
-User: "my email is dean@test.com"
-        │
-        ▼
-  ChatPiiScanner.scrub()          ◀── regex (email, phone, card, IP, URL, IBAN)
-        │                              + optional NER (names, orgs, locations)
-        ▼
-LLM sees: "my email is <PII type="EMAIL" id="1"/>"
-        │
-        ▼
-  ChatPiiScanner.restore()        ◀── AES-256-GCM encrypted PII map
-        │
-        ▼
-User sees: "Got it, I noted dean@test.com"
-```
-
-Enable NER for name/org detection: `YOJIN_PII_NER=1`
-
-**Layer 2: Structured Data** — Redacts PII in portfolio snapshots before external API calls (Keelson).
-
-```text
-Raw Snapshot                    Redacted Snapshot
-┌─────────────────┐            ┌─────────────────┐
-│ accountId: 1234 │  ────▶     │ accountId:      │
-│                 │  SHA-256   │  <ACCT-a1b2c3d4> │
-│ balance: 75000  │  ────▶     │ balance:        │
-│                 │  range     │  $50k-$100k      │
-│ email:          │  ────▶     │ email:          │
-│  john@test.com  │  strip     │  <EMAIL-REDACT> │
-│ ownerName:      │  ────▶     │ ownerName:      │
-│  John Doe       │  strip     │  <NAME-REDACT>  │
-│ symbol: AAPL    │  ────▶     │ symbol: AAPL    │
-│                 │  preserve  │                 │
-│ price: 150.25   │  ────▶     │ price: 150.25   │
-│                 │  preserve  │                 │
-└─────────────────┘            └─────────────────┘
-     Original NEVER mutated         Logged to audit
-```
-
-### HMAC-Chained Audit Log
-
-```text
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ Event 0  │───▶│ Event 1  │───▶│ Event 2  │───▶│ Event 3  │
-│          │    │          │    │          │    │          │
-│ prevHash:│    │ prevHash:│    │ prevHash:│    │ prevHash:│
-│  000...  │    │  hash(0) │    │  hash(1) │    │  hash(2) │
-│ hash:    │    │ hash:    │    │ hash:    │    │ hash:    │
-│  HMAC(0) │    │  HMAC(1) │    │  HMAC(2) │    │  HMAC(3) │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-
-Tamper with any event ──▶ chain breaks ──▶ verifyChain() detects it
-Delete an event        ──▶ prevHash gap  ──▶ verifyChain() detects it
-```
-
-### Security Highlights
-
-- **Encrypted credential vault** — AES-256-GCM with PBKDF2 key derivation. Auto-unlocks without passphrase by default; optional passphrase via Web UI or env var. Credentials injected at the transport layer, never exposed to the LLM.
-- **12 deterministic guards** — Kill switch, self-defense, tool policy, fs, command, egress, output-dlp, rate-budget, repetition, read-only, cooldown, symbol-whitelist.
-- **PII protection** — Chat messages scrubbed before LLM via Rehydra (email, phone, card, IP, URL + optional NER for names). Structured data redacted before external APIs (account IDs hashed, balances ranged).
-- **Human approval gate** — Irreversible actions (trades, new connections) require explicit approval via your active channel.
-- **HMAC-chained audit log** — Tamper-evident append-only JSONL. Every security event logged, chain integrity verifiable.
-- **Pipeline freeze** — Guard pipeline locked after initialization. No runtime modification possible.
-- **Local-first** — Your data stays on your machine. No cloud database, no containers, no third-party data storage. Manage everything via Web UI or CLI.
-
-## Tech Stack
-
-- **TypeScript** — strict mode, ESM, Node.js 20+
-- **Anthropic SDK** — Claude as the default AI provider
-- **Hono + graphql-yoga** — Web server and GraphQL API with subscriptions
-- **Playwright** — browser automation for scraping investment platforms
-- **Rehydra** — reversible PII masking in chat (regex + optional NER)
-- **Zod** — schema validation for all external data
-- **vitest** — testing
-- **tslog** — structured logging
-- **React 19** — Web UI with Vite 6, Tailwind CSS 4
-- **GraphQL** — graphql-yoga on Hono for API layer
-- **urql** — Lightweight GraphQL client
-- **pnpm** — package manager
-
-## Persona
-
-Yojin's behavior is driven by a Markdown persona file. Edit `data/brain/persona.md` to change how the agent thinks:
-
-```markdown
-# Persona: Conservative Portfolio Analyst
-
-I focus on risk-adjusted returns and concentration risk.
-When any single position exceeds 25% of portfolio, I flag it immediately.
-I never recommend more than 10% of portfolio in speculative positions.
-```
-
-No code changes needed — the agent adapts on the next request.
-
-## Phase 1 MVP
-
-Core portfolio intelligence:
-
-1. Platform position scraping (Robinhood, Coinbase, IBKR)
-2. Keelson + OpenBB enrichment
-3. Multi-channel alerts (Slack, Telegram, Web)
-4. MCP server for Claude Desktop
-5. Persona-driven reasoning
-6. Morning digest + intraday alerts
-7. Web UI dashboard (React + GraphQL)
+| Channel | Status |
+|---|---|
+| Web UI | Working (Hono + GraphQL + SSE) |
+| MCP / ACP | Working (Claude Desktop / Cursor) |
+| Telegram | Working (grammY) |
+| Discord | Planned |
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+Report vulnerabilities via [SECURITY.md](SECURITY.md).
 
 ## License
 
