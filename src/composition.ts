@@ -459,7 +459,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   }
 
   // Insight tools (1 tool: save_insight_report)
-  const { insightStore, tools: insightTools } = wireInsights({ dataRoot });
+  const { insightStore, tools: insightTools } = wireInsights({ dataRoot, signalArchive });
   for (const tool of insightTools) {
     toolRegistry.register(tool);
   }

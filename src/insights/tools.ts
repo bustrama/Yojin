@@ -19,13 +19,18 @@ import {
   SignalImpactSchema,
 } from './types.js';
 import type { ToolDefinition, ToolResult } from '../core/types.js';
+import { getLogger } from '../logging/index.js';
+import type { SignalArchive } from '../signals/archive.js';
+
+const log = getLogger().sub('insight-tools');
 
 export interface InsightToolsOptions {
   insightStore: InsightStore;
+  signalArchive?: SignalArchive;
 }
 
 export function createInsightTools(options: InsightToolsOptions): ToolDefinition[] {
-  const { insightStore } = options;
+  const { insightStore, signalArchive } = options;
 
   const saveInsightReport: ToolDefinition = {
     name: 'save_insight_report',
@@ -47,7 +52,12 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
             keySignals: z
               .array(
                 z.object({
-                  signalId: z.string().min(1).describe('Signal ID from the archive'),
+                  signalId: z
+                    .string()
+                    .min(1)
+                    .describe(
+                      'Exact signal ID from grep_signals output (e.g. sig-abc123). Must match an archived signal.',
+                    ),
                   type: z.string().min(1).describe('Signal type (NEWS, FUNDAMENTAL, etc.)'),
                   title: z.string().min(1).describe('Signal title'),
                   impact: SignalImpactSchema.describe('Impact: POSITIVE, NEGATIVE, or NEUTRAL'),
@@ -93,6 +103,29 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
       const positions = params.positions.map((p) => PositionInsightSchema.parse(p));
       const portfolio = PortfolioInsightSchema.parse(params.portfolio);
 
+      // Validate signal IDs against the archive and copy canonical titles/URLs
+      let validatedCount = 0;
+      let droppedCount = 0;
+      if (signalArchive) {
+        for (const position of positions) {
+          const validated = [];
+          for (const sig of position.keySignals) {
+            const archived = await signalArchive.getById(sig.signalId);
+            if (archived) {
+              // Use the canonical title and source URL from the archive
+              sig.title = archived.title;
+              sig.url = (typeof archived.metadata?.link === 'string' ? archived.metadata.link : null) ?? sig.url;
+              validated.push(sig);
+              validatedCount++;
+            } else {
+              log.warn(`Dropping signal with non-existent ID: ${sig.signalId} ("${sig.title}")`);
+              droppedCount++;
+            }
+          }
+          position.keySignals = validated;
+        }
+      }
+
       const report = {
         id: `insight-${randomUUID().slice(0, 8)}`,
         snapshotId: params.snapshotId,
@@ -110,13 +143,18 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
 
       await insightStore.save(report);
 
+      const validationNote =
+        signalArchive && droppedCount > 0
+          ? `\nSignal validation: ${validatedCount} verified, ${droppedCount} dropped (invalid IDs)`
+          : '';
+
       return {
         content:
           `Insight report saved.\n` +
           `Report ID: ${report.id}\n` +
           `Positions analyzed: ${positions.length}\n` +
           `Portfolio health: ${portfolio.overallHealth}\n` +
-          `Action items: ${portfolio.actionItems.length}`,
+          `Action items: ${portfolio.actionItems.length}${validationNote}`,
       };
     },
   };

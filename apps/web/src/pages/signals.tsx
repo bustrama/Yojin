@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery } from 'urql';
 import { Link, useSearchParams } from 'react-router';
 import { cn } from '../lib/utils';
@@ -294,131 +294,140 @@ function SignalRow({
   const date = new Date(signal.publishedAt);
   const timeAgo = formatTimeAgo(date);
   const confidencePct = Math.round(signal.confidence * 100);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (highlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlighted]);
 
   return (
-    <Card className={cn('p-4 transition-all', highlighted && 'ring-2 ring-accent-primary/50')}>
-      <button
-        type="button"
-        className="flex w-full items-start justify-between cursor-pointer text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <Badge variant={variant} size="sm">
-              {signal.type}
-            </Badge>
-            {signal.tickers.map((t) => (
-              <Link
-                key={t}
-                to={`/signals?ticker=${t}`}
-                onClick={(e) => e.stopPropagation()}
-                className="text-xs font-semibold text-accent-primary hover:underline"
-              >
-                {t}
-              </Link>
-            ))}
-            <span className="text-xs text-text-muted">{timeAgo}</span>
-            <span className="text-xs text-text-muted">· {signal.sourceName}</span>
-            {/* "Used in Insights" indicator */}
-            {usedInInsight && (
-              <Link
-                to="/insights"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
-              >
-                <Badge variant="accent" size="xs">
-                  {insightImpact === 'POSITIVE' && '↑ '}
-                  {insightImpact === 'NEGATIVE' && '↓ '}
-                  IN INSIGHTS
-                </Badge>
-              </Link>
-            )}
-          </div>
-          <p className="text-sm font-medium text-text-primary truncate">{signal.title}</p>
-        </div>
-
-        <div className="flex items-center gap-3 ml-3 flex-shrink-0">
-          {/* Confidence bar */}
-          <div className="flex items-center gap-2 w-24">
-            <div className="flex-1 h-1.5 rounded-full bg-bg-tertiary">
-              <div
-                className={cn(
-                  'h-1.5 rounded-full transition-all',
-                  confidencePct >= 80 ? 'bg-success' : confidencePct >= 50 ? 'bg-warning' : 'bg-error',
-                )}
-                style={{ width: `${confidencePct}%` }}
-              />
-            </div>
-            <span
-              className={cn(
-                'text-xs font-medium w-8 text-right',
-                confidencePct >= 80 ? 'text-success' : confidencePct >= 50 ? 'text-warning' : 'text-text-muted',
+    <div ref={rowRef}>
+      <Card className={cn('p-4 transition-all', highlighted && 'ring-2 ring-accent-primary/50')}>
+        <button
+          type="button"
+          className="flex w-full items-start justify-between cursor-pointer text-left"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <Badge variant={variant} size="sm">
+                {signal.type}
+              </Badge>
+              {signal.tickers.map((t) => (
+                <Link
+                  key={t}
+                  to={`/signals?ticker=${t}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs font-semibold text-accent-primary hover:underline"
+                >
+                  {t}
+                </Link>
+              ))}
+              <span className="text-xs text-text-muted">{timeAgo}</span>
+              <span className="text-xs text-text-muted">· {signal.sourceName}</span>
+              {/* "Used in Insights" indicator */}
+              {usedInInsight && (
+                <Link
+                  to="/insights"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                >
+                  <Badge variant="accent" size="xs">
+                    {insightImpact === 'POSITIVE' && '↑ '}
+                    {insightImpact === 'NEGATIVE' && '↓ '}
+                    IN INSIGHTS
+                  </Badge>
+                </Link>
               )}
+            </div>
+            <p className="text-sm font-medium text-text-primary truncate">{signal.title}</p>
+          </div>
+
+          <div className="flex items-center gap-3 ml-3 flex-shrink-0">
+            {/* Confidence bar */}
+            <div className="flex items-center gap-2 w-24">
+              <div className="flex-1 h-1.5 rounded-full bg-bg-tertiary">
+                <div
+                  className={cn(
+                    'h-1.5 rounded-full transition-all',
+                    confidencePct >= 80 ? 'bg-success' : confidencePct >= 50 ? 'bg-warning' : 'bg-error',
+                  )}
+                  style={{ width: `${confidencePct}%` }}
+                />
+              </div>
+              <span
+                className={cn(
+                  'text-xs font-medium w-8 text-right',
+                  confidencePct >= 80 ? 'text-success' : confidencePct >= 50 ? 'text-warning' : 'text-text-muted',
+                )}
+              >
+                {confidencePct}%
+              </span>
+            </div>
+            <svg
+              className={cn('h-4 w-4 text-text-muted transition-transform', expanded && 'rotate-180')}
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
             >
-              {confidencePct}%
-            </span>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+            </svg>
           </div>
-          <svg
-            className={cn('h-4 w-4 text-text-muted transition-transform', expanded && 'rotate-180')}
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-          </svg>
-        </div>
-      </button>
+        </button>
 
-      {expanded && (
-        <div className="mt-3 border-t border-border pt-3 space-y-3">
-          {signal.content && (
-            <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{signal.content}</p>
-          )}
-
-          <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
-            <span>Published: {date.toLocaleString()}</span>
-            <span>· Ingested: {new Date(signal.ingestedAt).toLocaleString()}</span>
-            <span>· Source: {signal.sourceName}</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {signal.link && (
-              <a
-                href={signal.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm text-accent-primary hover:underline"
-              >
-                View original source
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
-                  />
-                </svg>
-              </a>
+        {expanded && (
+          <div className="mt-3 border-t border-border pt-3 space-y-3">
+            {signal.content && (
+              <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{signal.content}</p>
             )}
-            {usedInInsight && (
-              <Link
-                to="/insights"
-                className="inline-flex items-center gap-1.5 text-sm text-accent-primary hover:underline"
-              >
-                View insight analysis
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605"
-                  />
-                </svg>
-              </Link>
-            )}
+
+            <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
+              <span>Published: {date.toLocaleString()}</span>
+              <span>· Ingested: {new Date(signal.ingestedAt).toLocaleString()}</span>
+              <span>· Source: {signal.sourceName}</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {signal.link && (
+                <a
+                  href={signal.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-accent-primary hover:underline"
+                >
+                  View original source
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                    />
+                  </svg>
+                </a>
+              )}
+              {usedInInsight && (
+                <Link
+                  to="/insights"
+                  className="inline-flex items-center gap-1.5 text-sm text-accent-primary hover:underline"
+                >
+                  View insight analysis
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605"
+                    />
+                  </svg>
+                </Link>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </Card>
+        )}
+      </Card>
+    </div>
   );
 }
 
