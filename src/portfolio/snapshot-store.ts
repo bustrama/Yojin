@@ -37,23 +37,37 @@ export class PortfolioSnapshotStore {
     await mkdir(join(this.filePath, '..'), { recursive: true });
 
     const { positions, platform } = params;
-    const totalValue = positions.reduce((sum, p) => sum + p.marketValue, 0);
-    const totalPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+
+    // Stamp all incoming positions with the declared platform
+    const stamped = positions.map((p) => ({ ...p, platform }));
+
+    // Platform-scoped merge: keep positions from other platforms, replace this platform's
+    const existing = await this.getLatest();
+    const otherPlatformPositions = (existing?.positions ?? []).filter((p) => p.platform !== platform);
+    const merged = [...otherPlatformPositions, ...stamped];
+
+    const totalValue = merged.reduce((sum, p) => sum + p.marketValue, 0);
+    const totalPnl = merged.reduce((sum, p) => sum + p.unrealizedPnl, 0);
     const totalCost = totalValue - totalPnl;
 
     const snapshot: PortfolioSnapshot = {
       id: `snap-${randomUUID().slice(0, 8)}`,
-      positions,
+      positions: merged,
       totalValue,
       totalCost,
       totalPnl,
       totalPnlPercent: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
       timestamp: new Date().toISOString(),
-      platform,
+      platform: null,
     };
 
     await appendFile(this.filePath, JSON.stringify(snapshot) + '\n');
-    logger.info('Snapshot saved', { id: snapshot.id, platform, positionCount: positions.length });
+    logger.info('Snapshot saved', {
+      id: snapshot.id,
+      platform,
+      positionCount: positions.length,
+      totalPositions: merged.length,
+    });
 
     return snapshot;
   }

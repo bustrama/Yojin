@@ -208,16 +208,22 @@ export async function addManualPositionMutation(
     platform: (platform as Position['platform']) ?? 'MANUAL',
   };
 
-  // Merge with existing positions, replacing any existing entry for the same symbol
-  const existing = await snapshotStore.getLatest();
-  const existingPositions = existing?.positions ?? [];
-  const existingIdx = existingPositions.findIndex((p) => p.symbol === newPosition.symbol);
-  const mergedPositions =
-    existingIdx !== -1
-      ? existingPositions.map((p, i) => (i === existingIdx ? newPosition : p))
-      : [...existingPositions, newPosition];
+  const effectivePlatform = newPosition.platform;
 
-  const snapshot = await snapshotStore.save({ positions: mergedPositions, platform: 'MANUAL' });
+  // Symbol-level dedup within this platform only
+  const existing = await snapshotStore.getLatest();
+  const samePlatformPositions = (existing?.positions ?? []).filter((p) => p.platform === effectivePlatform);
+  const existingIdx = samePlatformPositions.findIndex((p) => p.symbol === newPosition.symbol);
+  const updatedPlatformPositions =
+    existingIdx !== -1
+      ? samePlatformPositions.map((p, i) => (i === existingIdx ? newPosition : p))
+      : [...samePlatformPositions, newPosition];
+
+  // save() handles cross-platform merge — only pass this platform's positions
+  const snapshot = await snapshotStore.save({
+    positions: updatedPlatformPositions,
+    platform: effectivePlatform,
+  });
   pubsub.publish('portfolioUpdate', snapshot);
   return snapshot;
 }

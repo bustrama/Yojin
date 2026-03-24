@@ -97,7 +97,7 @@ describe('Portfolio tools', () => {
 
       const result = await getTool.execute({});
       expect(result.content).toContain('BTC');
-      expect(result.content).toContain('COINBASE');
+      expect(result.content).toContain('ALL');
       expect(result.content).toContain('Total Value');
     });
 
