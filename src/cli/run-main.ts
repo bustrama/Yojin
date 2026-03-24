@@ -141,9 +141,13 @@ async function startGateway(): Promise<void> {
     const { WorkflowLog } = await import('../insights/workflow-log.js');
     workflowLog = new WorkflowLog(dataRoot);
   }
+  let writeQueue = Promise.resolve();
   setWorkflowProgressCallback((event) => {
     pubsub.publish('workflowProgress', event);
-    workflowLog?.write(event);
+    if (workflowLog) {
+      const log = workflowLog;
+      writeQueue = writeQueue.then(() => log.write(event));
+    }
   });
 
   const gateway = new Gateway(services.config, agentRuntime, {

@@ -30,17 +30,14 @@ export class WorkflowLog {
     try {
       if (event.stage === 'start') {
         await this.ensureDir();
-        const ts = event.timestamp.replace(/:/g, '-').replace(/\.\d+Z$/, '');
+        const ts = event.timestamp.replace(/:/g, '-').replace(/Z$/, '');
         this.currentFile = join(this.dir, `${ts}.jsonl`);
       }
 
       if (!this.currentFile) {
         // No 'start' event seen yet — use a fallback filename
         await this.ensureDir();
-        const ts = new Date()
-          .toISOString()
-          .replace(/:/g, '-')
-          .replace(/\.\d+Z$/, '');
+        const ts = new Date().toISOString().replace(/:/g, '-').replace(/Z$/, '');
         this.currentFile = join(this.dir, `${ts}.jsonl`);
       }
 

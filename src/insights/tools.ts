@@ -99,6 +99,8 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
       portfolio: z.infer<typeof PortfolioInsightSchema>;
       emotionState: { confidence: number; riskAppetite: number; reason: string };
     }): Promise<ToolResult> {
+      const startMs = Date.now();
+
       // Validate nested schemas
       const positions = params.positions.map((p) => PositionInsightSchema.parse(p));
       const portfolio = PortfolioInsightSchema.parse(params.portfolio);
@@ -138,7 +140,7 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
         },
         emotionState: params.emotionState,
         createdAt: new Date().toISOString(),
-        durationMs: 0,
+        durationMs: Date.now() - startMs,
       };
 
       await insightStore.save(report);

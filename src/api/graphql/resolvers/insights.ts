@@ -117,17 +117,29 @@ export async function insightReportQuery(_parent: unknown, args: { id: string })
 // Mutation Resolver
 // ---------------------------------------------------------------------------
 
+let activeRun: Promise<InsightReportGql | null> | null = null;
+
 export async function processInsightsMutation(): Promise<InsightReportGql | null> {
-  if (!orchestrator) {
-    throw new Error('Orchestrator not available — cannot process insights');
+  if (activeRun) return activeRun;
+
+  activeRun = (async () => {
+    if (!orchestrator) {
+      throw new Error('Orchestrator not available — cannot process insights');
+    }
+
+    await orchestrator.execute('process-insights', {
+      message: 'Process portfolio insights',
+    });
+
+    // The workflow persists the report via save_insight_report tool — fetch the latest.
+    if (!store) return null;
+    const report = await store.getLatest();
+    return report ? toGql(report) : null;
+  })();
+
+  try {
+    return await activeRun;
+  } finally {
+    activeRun = null;
   }
-
-  await orchestrator.execute('process-insights', {
-    message: 'Process portfolio insights',
-  });
-
-  // The workflow persists the report via save_insight_report tool — fetch the latest.
-  if (!store) return null;
-  const report = await store.getLatest();
-  return report ? toGql(report) : null;
 }
