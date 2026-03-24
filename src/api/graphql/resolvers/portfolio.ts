@@ -205,10 +205,10 @@ export async function addManualPositionMutation(
     unrealizedPnl: 0,
     unrealizedPnlPercent: 0,
     assetClass: (assetClass as AssetClass) ?? 'EQUITY',
-    platform: (platform as Position['platform']) ?? 'MANUAL',
+    platform: ((platform as Position['platform']) ?? 'MANUAL').toUpperCase(),
   };
 
-  const effectivePlatform = newPosition.platform.toUpperCase();
+  const effectivePlatform = newPosition.platform;
 
   // Symbol-level dedup within this platform only
   const existing = await snapshotStore.getLatest();
