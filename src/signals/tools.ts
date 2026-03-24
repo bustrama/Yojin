@@ -38,26 +38,93 @@ export function createSignalTools(options: SignalToolsOptions): ToolDefinition[]
   const grepSignals: ToolDefinition = {
     name: 'grep_signals',
     description:
-      'Search signals by type, ticker, date range, source, or text. ' +
-      'Returns matching signal summaries (id, title, type, tickers, date).',
+      'Search signals by type, ticker(s), date range, source, or text. ' +
+      'Supports batch lookup: pass `tickers` array to search multiple symbols in ONE call ' +
+      '(results grouped by ticker). Returns signal summaries (id, title, type, tickers, date).',
     parameters: z.object({
       type: z.string().optional().describe('Signal type: NEWS, FUNDAMENTAL, SENTIMENT, TECHNICAL, MACRO'),
-      ticker: z.string().optional().describe('Filter by ticker symbol (e.g. AAPL)'),
+      ticker: z.string().optional().describe('Filter by single ticker symbol (e.g. AAPL)'),
+      tickers: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Filter by multiple tickers at once (e.g. ["AAPL","MSFT","GOOG"]). Takes precedence over ticker.'),
       sourceId: z.string().optional().describe('Filter by data source ID'),
       since: z.string().optional().describe('ISO date — signals on or after this date'),
       until: z.string().optional().describe('ISO date — signals on or before this date'),
       search: z.string().optional().describe('Text search in title and content'),
-      limit: z.number().int().min(1).max(100).default(20).describe('Max results'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .default(20)
+        .describe('Max results per ticker (when using tickers array) or total'),
     }),
     async execute(params: {
       type?: string;
       ticker?: string;
+      tickers?: string[];
       sourceId?: string;
       since?: string;
       until?: string;
       search?: string;
       limit: number;
     }): Promise<ToolResult> {
+      // Batch mode: query all tickers at once, group results
+      if (params.tickers && params.tickers.length > 0) {
+        const signals = await archive.query({
+          type: params.type,
+          tickers: params.tickers,
+          sourceId: params.sourceId,
+          since: params.since,
+          until: params.until,
+          search: params.search,
+          limit: params.limit * params.tickers.length, // allow limit per ticker
+        });
+
+        if (signals.length === 0) {
+          return { content: `No signals found for tickers: ${params.tickers.join(', ')}` };
+        }
+
+        // Group by ticker for readability
+        const byTicker = new Map<string, Signal[]>();
+        for (const s of signals) {
+          for (const asset of s.assets) {
+            if (params.tickers.includes(asset.ticker)) {
+              const group = byTicker.get(asset.ticker) ?? [];
+              group.push(s);
+              byTicker.set(asset.ticker, group);
+            }
+          }
+        }
+
+        const sections: string[] = [];
+        for (const ticker of params.tickers) {
+          const group = byTicker.get(ticker);
+          if (!group || group.length === 0) {
+            sections.push(`## ${ticker}\nNo signals found.`);
+            continue;
+          }
+          // Deduplicate (a signal can appear in multiple ticker groups)
+          const seen = new Set<string>();
+          const unique = group.filter((s) => {
+            if (seen.has(s.id)) return false;
+            seen.add(s.id);
+            return true;
+          });
+          const limited = unique.slice(0, params.limit);
+          const lines = limited.map((s) => formatSignalSummary(s));
+          sections.push(
+            `## ${ticker} (${limited.length} signal${limited.length !== 1 ? 's' : ''})\n${lines.join('\n\n')}`,
+          );
+        }
+
+        return { content: sections.join('\n\n') };
+      }
+
+      // Single-ticker mode (original behavior)
       const signals = await archive.query({
         type: params.type,
         ticker: params.ticker,

@@ -3,9 +3,9 @@
  * portfolio against recent signals and produces structured InsightReports.
  *
  * Stages:
- *   0. Research Analyst (serial)  — gathers data per position
- *   1. [Research Analyst, Risk Manager] (parallel) — deep analysis + risk
- *   2. Strategist (serial) — synthesis, saves InsightReport, updates brain
+ *   0. Research Analyst (serial)  — gathers data + deep analysis per position
+ *   1. Risk Manager (serial)     — portfolio risk from research brief
+ *   2. Strategist (serial)       — synthesis, saves InsightReport, updates brain
  */
 
 import type { InsightStore } from './insight-store.js';
@@ -23,48 +23,43 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, _opt
     id: 'process-insights',
     name: 'Process Insights',
     stages: [
-      // Stage 0: Research Analyst gathers data for all positions
+      // Stage 0: Research Analyst — data gathering + deep analysis (merged)
       {
         agentId: 'research-analyst',
         buildMessage: () =>
           `Analyze all positions in the current portfolio.\n\n` +
           `## API Budget — minimize external calls\n` +
+          `You MUST minimize tool calls. Use batch parameters wherever possible.\n\n` +
           `1. Call get_portfolio ONCE to see all current holdings\n` +
-          `2. Call market_quotes ONCE with ALL tickers in a single batch to get prices\n` +
-          `3. Call grep_signals for each ticker (last 7 days) — this is free (local files)\n` +
-          `4. Call recall_signal_memories for each ticker — this is free (local search)\n` +
+          `2. Call market_quotes ONCE with ALL tickers in a single batch\n` +
+          `3. Call grep_signals ONCE with tickers=[...all tickers...] and since=(7 days ago) — ` +
+          `   this accepts an array and returns results grouped by ticker\n` +
+          `4. Call recall_signal_memories ONCE with tickers=[...all tickers...] — ` +
+          `   this accepts an array and searches across all at once\n` +
           `5. Call batch_enrich ONCE with all tickers that have signal activity,\n` +
-          `   using fields: ['market', 'risk']. This is a SINGLE API call for all tickers.\n\n` +
-          `PREFER batch_enrich over enrich_entity — it enriches all tickers in one API call.\n` +
-          `If batch_enrich fails, it falls back to individual enrich_entity calls automatically.\n\n` +
-          `Produce a structured data brief per position with: symbol, key data points, ` +
-          `recent signals summary, sentiment direction, and any notable changes.\n\n` +
+          `   using fields: ['market', 'risk']. Max 20 tickers per call.\n\n` +
+          `CRITICAL: Do NOT loop over tickers calling grep_signals or recall_signal_memories individually.\n` +
+          `Both tools accept a tickers array — use it to get all data in ONE call each.\n\n` +
+          `## Output — structured research brief per position\n` +
+          `For each position produce:\n` +
+          `- Symbol, name, key data points (price, market cap, P/E, etc.)\n` +
+          `- Recent signals summary with sentiment direction\n` +
+          `- Deep analysis: conflicting signals, sentiment shifts, upcoming catalysts, technical pattern changes\n` +
+          `- Notable changes or anomalies\n\n` +
           `IMPORTANT: For each signal, preserve its exact ID (e.g. sig-xxx) and source link URL. ` +
           `These will be used for provenance tracking in the final report.`,
       },
 
-      // Stage 1: Parallel deep analysis
-      [
-        {
-          agentId: 'research-analyst',
-          buildMessage: (prev) =>
-            `Deepen your analysis on positions with significant signal activity.\n` +
-            `Focus on: conflicting signals, sentiment shifts, upcoming catalysts, ` +
-            `and technical pattern changes.\n\n` +
-            `DO NOT re-call enrich_entity or market_quotes — use the data from Stage 0.\n` +
-            `You may call grep_signals or recall_signal_memories if you need more signal context.\n\n` +
-            `Previous data brief:\n${prev.get('research-analyst')?.text ?? ''}`,
-        },
-        {
-          agentId: 'risk-manager',
-          buildMessage: (prev) =>
-            `Analyze full portfolio risk based on these positions.\n` +
-            `Compute: sector exposure breakdown, concentration scoring, ` +
-            `correlation detection, and drawdown analysis.\n\n` +
-            `DO NOT call enrich_entity or market_quotes — all data is in the brief below.\n\n` +
-            `Position data:\n${prev.get('research-analyst')?.text ?? ''}`,
-        },
-      ],
+      // Stage 1: Risk Manager — portfolio risk from research brief
+      {
+        agentId: 'risk-manager',
+        buildMessage: (prev) =>
+          `Analyze full portfolio risk based on these positions.\n` +
+          `Compute: sector exposure breakdown, concentration scoring, ` +
+          `correlation detection, and drawdown analysis.\n\n` +
+          `DO NOT call enrich_entity, batch_enrich, or market_quotes — all data is in the brief below.\n\n` +
+          `Position data:\n${prev.get('research-analyst')?.text ?? ''}`,
+      },
 
       // Stage 2: Strategist synthesizes and persists
       {
