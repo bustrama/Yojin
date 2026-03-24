@@ -331,7 +331,7 @@ function PositionInsightCard({ position }: { position: PositionInsight }) {
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Key Signals</h4>
                 <Link
-                  to={`/signals?ticker=${position.symbol}`}
+                  to={`/signals?search=${encodeURIComponent(position.name || position.symbol)}`}
                   className="text-xs font-medium text-accent-primary hover:underline flex items-center gap-1"
                 >
                   View all {position.symbol} signals
@@ -427,28 +427,13 @@ function SignalGroup({ signals, impact }: { signals: SignalSummary[]; impact: st
       </div>
       <div className="space-y-1.5">
         {signals.map((signal) => (
-          <Link
-            key={signal.signalId}
-            to={`/signals?search=${encodeURIComponent(signal.title)}`}
-            className="flex items-center gap-2 group"
-          >
+          <div key={signal.signalId} className="flex items-center gap-2">
             <Badge variant={signalTypeVariant[signal.type] ?? 'neutral'} size="xs">
               {signal.type}
             </Badge>
-            <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors flex-1 min-w-0 truncate">
-              {signal.title}
-            </span>
+            <span className="text-xs text-text-secondary flex-1 min-w-0 truncate">{signal.title}</span>
             <SignalConfidenceDot confidence={signal.confidence} />
-            <svg
-              className="h-3 w-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-            </svg>
-          </Link>
+          </div>
         ))}
       </div>
     </div>
