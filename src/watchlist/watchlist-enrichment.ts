@@ -136,6 +136,11 @@ export class WatchlistEnrichment {
 
   /** Enrich all symbols concurrently, flushing cache once at the end (avoids O(N²) writes). */
   async getEnrichedBatch(symbols: string[]): Promise<Map<string, EnrichmentCacheEntry | null>> {
+    // No client — return whatever is cached
+    if (!this.jintelClient) {
+      return new Map(symbols.map((s) => [s.toUpperCase(), this.cache.get(s.toUpperCase()) ?? null]));
+    }
+
     // Phase 1: resolve entities sequentially to avoid concurrent store.flush() races
     for (const s of symbols) {
       const key = s.toUpperCase();
