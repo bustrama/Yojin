@@ -69,6 +69,10 @@ export class WatchlistStore {
     return Array.from(this.entries.values());
   }
 
+  get(symbol: string): WatchlistEntry | undefined {
+    return this.entries.get(symbol.toUpperCase());
+  }
+
   has(symbol: string): boolean {
     return this.entries.has(symbol.toUpperCase());
   }

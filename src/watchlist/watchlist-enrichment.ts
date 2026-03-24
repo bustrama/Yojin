@@ -12,6 +12,7 @@ const log = getLogger().sub('watchlist-enrichment');
 
 const ENRICHMENT_FIELDS: EnrichmentField[] = ['market', 'news', 'risk'];
 const DEFAULT_TTL_SECONDS = 3600; // 1 hour
+const MIN_RESOLVE_RETRY_SECONDS = 60;
 
 export class WatchlistEnrichment {
   private readonly cache = new Map<string, EnrichmentCacheEntry>();
@@ -58,14 +59,15 @@ export class WatchlistEnrichment {
     if (!this.jintelClient) return undefined;
 
     const key = symbol.toUpperCase();
-    const entry = this.store.list().find((e) => e.symbol === key);
+    const entry = this.store.get(key);
     if (!entry) return undefined;
 
     if (entry.jintelEntityId) return entry.jintelEntityId;
 
     if (entry.resolveAttemptedAt) {
+      const retryWindow = Math.max(this.ttlSeconds, MIN_RESOLVE_RETRY_SECONDS) * 1000;
       const elapsed = Date.now() - new Date(entry.resolveAttemptedAt).getTime();
-      if (elapsed < this.ttlSeconds * 1000) return undefined;
+      if (elapsed < retryWindow) return undefined;
     }
 
     // Try symbol first
@@ -122,7 +124,7 @@ export class WatchlistEnrichment {
 
     if (!this.jintelClient) return cached ?? null;
 
-    const entry = this.store.list().find((e) => e.symbol === key);
+    const entry = this.store.get(key);
     if (entry && !entry.jintelEntityId) {
       await this.resolveEntity(key);
     }
@@ -144,7 +146,7 @@ export class WatchlistEnrichment {
     // Phase 1: resolve entities sequentially to avoid concurrent store.flush() races
     for (const s of symbols) {
       const key = s.toUpperCase();
-      const entry = this.store.list().find((e) => e.symbol === key);
+      const entry = this.store.get(key);
       if (entry && !entry.jintelEntityId) {
         await this.resolveEntity(key);
       }
