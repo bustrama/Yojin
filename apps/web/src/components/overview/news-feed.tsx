@@ -4,7 +4,7 @@ import { useQuery } from 'urql';
 
 import { LATEST_INSIGHT_REPORT_QUERY } from '../../api/documents';
 import type { LatestInsightReportQueryResult, PortfolioItem, PositionInsight } from '../../api/types';
-import { cn } from '../../lib/utils';
+import { cn, timeAgo } from '../../lib/utils';
 import Button from '../common/button';
 import FeedDetailModal from './feed-detail-modal';
 import type { FeedDetailData } from './feed-detail-modal';
@@ -42,10 +42,13 @@ export interface FeedItem {
 
 /* ── Category config ────────────────────────────────────────────────── */
 
-const categoryConfig: Record<EventCategory, { color: string; iconBg: string }> = {
-  Action: { color: 'text-accent-primary/60', iconBg: 'bg-accent-primary/5' },
-  Alert: { color: 'text-warning/60', iconBg: 'bg-warning/5' },
-  Insight: { color: 'text-success/60', iconBg: 'bg-success/5' },
+const categoryConfig: Record<
+  EventCategory,
+  { variant: 'accent' | 'warning' | 'success'; color: string; iconBg: string }
+> = {
+  Action: { variant: 'accent', color: 'text-accent-primary/60', iconBg: 'bg-accent-primary/5' },
+  Alert: { variant: 'warning', color: 'text-warning/60', iconBg: 'bg-warning/5' },
+  Insight: { variant: 'success', color: 'text-success/60', iconBg: 'bg-success/5' },
 };
 
 const SECTION_ORDER: EventCategory[] = ['Action', 'Alert', 'Insight'];
@@ -132,15 +135,6 @@ function priorityFromPrefix(item: string): 'high' | 'medium' | 'low' {
 
 function stripPrefix(s: string): string {
   return s.replace(/^(CRITICAL|HIGH|MEDIUM|LOW):\s*/i, '');
-}
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function buildFeedItems(report: {
@@ -286,7 +280,7 @@ export default function NewsFeed() {
       source: item.source,
       time: item.time,
       tag: item.category,
-      tagVariant: config.color.includes('accent') ? 'accent' : config.color.includes('warning') ? 'warning' : 'success',
+      tagVariant: config.variant,
       urgency: item.urgency,
       confidence: item.detail.confidence,
       sentiment: item.detail.sentiment,

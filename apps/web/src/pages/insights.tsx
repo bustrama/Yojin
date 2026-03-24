@@ -110,7 +110,6 @@ export default function Insights() {
   const backendRunning = statusResult.data?.insightsWorkflowStatus.running ?? false;
   useEffect(() => {
     if (backendRunning && !mutationResult.fetching && !reconnecting) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync local UI state with backend workflow status on mount
       setReconnecting(true);
       reconnectStartedAt.current = statusResult.data?.insightsWorkflowStatus.startedAt ?? null;
     }
@@ -132,18 +131,20 @@ export default function Insights() {
       variables: { workflowId: 'process-insights' },
       pause: !loading,
     },
-    (prev = [], data) => {
-      const event = data.onWorkflowProgress;
-      // When the workflow completes or errors, stop reconnecting and refresh the report
-      if (event.stage === 'complete' || event.stage === 'error') {
-        setReconnecting(false);
-        reexecuteQuery({ requestPolicy: 'network-only' });
-      }
-      return [...prev, event];
-    },
+    (prev = [], data) => [...prev, data.onWorkflowProgress],
   );
 
   const progressEvents = progressResult.data ?? [];
+  const lastEvent = progressEvents[progressEvents.length - 1];
+
+  // Handle workflow completion via effect (keep subscription reducer pure)
+  useEffect(() => {
+    if (lastEvent?.stage === 'complete' || lastEvent?.stage === 'error') {
+      setReconnecting(false);
+      reexecuteQuery({ requestPolicy: 'network-only' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reexecuteQuery is stable
+  }, [lastEvent?.stage]);
 
   const handleProcess = async () => {
     setReconnecting(false);

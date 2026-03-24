@@ -123,22 +123,25 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
 
           for (const sig of position.keySignals) {
             const archived = await signalArchive.getById(sig.signalId);
-            if (archived) {
-              const signalTickers = archived.assets.map((a) => a.ticker.split('-')[0].toUpperCase());
-              if (signalTickers.length > 0 && !signalTickers.includes(baseSymbol)) {
-                droppedCount++;
-                log.warn('Dropped misattributed signal', {
-                  signalId: sig.signalId,
-                  signalTickers,
-                  positionSymbol: position.symbol,
-                  signalTitle: archived.title,
-                });
-                continue;
-              }
-              sig.title = archived.title;
-              sig.url = (typeof archived.metadata?.link === 'string' ? archived.metadata.link : null) ?? sig.url;
-              enrichedCount++;
+            if (!archived) {
+              droppedCount++;
+              log.warn(`Dropping signal with non-existent ID: ${sig.signalId} ("${sig.title}")`);
+              continue;
             }
+            const signalTickers = archived.assets.map((a) => a.ticker.split('-')[0].toUpperCase());
+            if (signalTickers.length > 0 && !signalTickers.includes(baseSymbol)) {
+              droppedCount++;
+              log.warn('Dropped misattributed signal', {
+                signalId: sig.signalId,
+                signalTickers,
+                positionSymbol: position.symbol,
+                signalTitle: archived.title,
+              });
+              continue;
+            }
+            sig.title = archived.title;
+            sig.url = (typeof archived.metadata?.link === 'string' ? archived.metadata.link : null) ?? sig.url;
+            enrichedCount++;
             validSignals.push(sig);
           }
           position.keySignals = validSignals;
@@ -157,7 +160,11 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
 
       function assignSignalIds(text: string): string[] {
         const textUpper = text.toUpperCase();
-        const mentioned = allSymbols.filter((sym) => textUpper.includes(sym));
+        const mentioned = allSymbols.filter((sym) => {
+          // Match only when the symbol appears as a whole word (not a substring of another word)
+          const re = new RegExp(`(?<![A-Z0-9])${sym}(?![A-Z0-9])`);
+          return re.test(textUpper);
+        });
         if (mentioned.length === 0) return []; // no tickers mentioned = no signals
         return mentioned.flatMap((sym) => symbolToSignalIds.get(sym) ?? []);
       }
