@@ -29,6 +29,9 @@ importers:
       '@slack/web-api':
         specifier: 7.15.0
         version: 7.15.0
+      '@yojinhq/jintel-client':
+        specifier: link:../Jintel/packages/client
+        version: link:../Jintel/packages/client
       ai:
         specifier: 6.0.116
         version: 6.0.116(zod@3.25.76)
@@ -44,9 +47,6 @@ importers:
       hono:
         specifier: 4.12.8
         version: 4.12.8
-      jintel-client:
-        specifier: link:../Jintel/packages/client
-        version: link:../Jintel/packages/client
       rehydra:
         specifier: 0.6.2
         version: 0.6.2

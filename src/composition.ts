@@ -297,6 +297,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
       if (jintelApiKey) {
         jintelClient = new JintelClient({
           apiKey: jintelApiKey,
+          baseUrl: process.env.JINTEL_API_URL,
           debug: process.env.JINTEL_DEBUG === '1',
         });
         log.info('Jintel client ready');

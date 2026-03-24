@@ -30,8 +30,7 @@ import type { OnboardingStatusQueryResult } from './api/types';
 // `agentation` (a devDependency) isn't installed.
 const AgentationComponent =
   import.meta.env.VITE_AGENTATION_ENABLED === 'true'
-    ? // @ts-expect-error — agentation is an optional devDependency, not always installed
-      lazy(() => import('agentation').then((m) => ({ default: m.Agentation })))
+    ? lazy(() => import('agentation').then((m) => ({ default: m.Agentation })))
     : null;
 
 function DevFeedbackTool() {

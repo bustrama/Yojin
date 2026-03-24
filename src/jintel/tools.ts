@@ -6,16 +6,16 @@
  * tools return a helpful error guiding the user to set up their API key.
  */
 
-import { EntityTypeSchema } from '@yojinhq/jintel-client';
-import type {
-  EnrichmentField,
-  Entity,
-  EntityType,
-  JintelClient,
-  JintelResult,
-  MarketQuote,
-  RiskSignal,
-  SanctionsMatch,
+import {
+  type EnrichmentField,
+  type Entity,
+  type EntityType,
+  EntityTypeSchema,
+  type JintelClient,
+  type JintelResult,
+  type MarketQuote,
+  type RiskSignal,
+  type SanctionsMatch,
 } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
