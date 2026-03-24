@@ -208,11 +208,13 @@ export async function addManualPositionMutation(
     platform: (platform as Position['platform']) ?? 'MANUAL',
   };
 
-  const effectivePlatform = newPosition.platform;
+  const effectivePlatform = newPosition.platform.toUpperCase();
 
   // Symbol-level dedup within this platform only
   const existing = await snapshotStore.getLatest();
-  const samePlatformPositions = (existing?.positions ?? []).filter((p) => p.platform === effectivePlatform);
+  const samePlatformPositions = (existing?.positions ?? []).filter(
+    (p) => p.platform?.toUpperCase() === effectivePlatform,
+  );
   const existingIdx = samePlatformPositions.findIndex((p) => p.symbol === newPosition.symbol);
   const updatedPlatformPositions =
     existingIdx !== -1

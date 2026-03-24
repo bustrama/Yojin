@@ -564,8 +564,11 @@ export class ConnectionManager {
   // Position mapping
   // -------------------------------------------------------------------------
 
+  private static readonly CRYPTO_PLATFORMS = new Set(['BINANCE', 'COINBASE', 'METAMASK', 'PHANTOM', 'POLYMARKET']);
+
   /** Map ExtractedPositions to Position[] for snapshot storage. */
   private mapExtractedPositions(extracted: ExtractedPosition[], platform: Platform): Position[] {
+    const defaultAssetClass = ConnectionManager.CRYPTO_PLATFORMS.has(platform.toUpperCase()) ? 'CRYPTO' : 'EQUITY';
     return extracted.map((ep) => {
       const qty = ep.quantity ?? 0;
       const mv = ep.marketValue ?? 0;
@@ -579,7 +582,7 @@ export class ConnectionManager {
         marketValue: mv,
         unrealizedPnl: ep.unrealizedPnl ?? 0,
         unrealizedPnlPercent: ep.unrealizedPnlPercent ?? 0,
-        assetClass: ep.assetClass ?? 'OTHER',
+        assetClass: ep.assetClass ?? defaultAssetClass,
         platform,
       };
     });
