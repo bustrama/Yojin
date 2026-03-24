@@ -27,14 +27,19 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, _opt
       {
         agentId: 'research-analyst',
         buildMessage: () =>
-          `Analyze all positions in the current portfolio. For each position:\n` +
-          `1. Call get_portfolio to see current holdings\n` +
-          `2. Call grep_signals for each ticker (last 7 days) to find recent signals\n` +
-          `3. Call enrich_entity for each ticker to get fundamentals, news, and sentiment\n` +
-          `4. Call recall_signal_memories for each ticker to get past analysis context\n\n` +
+          `Analyze all positions in the current portfolio.\n\n` +
+          `## API Budget — minimize external calls\n` +
+          `1. Call get_portfolio ONCE to see all current holdings\n` +
+          `2. Call market_quotes ONCE with ALL tickers in a single batch to get prices\n` +
+          `3. Call grep_signals for each ticker (last 7 days) — this is free (local files)\n` +
+          `4. Call recall_signal_memories for each ticker — this is free (local search)\n` +
+          `5. Call enrich_entity ONLY for the 3-5 tickers with the most signal activity,\n` +
+          `   using fields: ['market', 'risk'] to reduce payload. Skip tickers with no signals.\n\n` +
+          `DO NOT call enrich_entity for every ticker — market_quotes already gives you prices.\n` +
+          `Only enrich tickers where you need fundamentals or risk data to explain signal activity.\n\n` +
           `Produce a structured data brief per position with: symbol, key data points, ` +
           `recent signals summary, sentiment direction, and any notable changes.\n\n` +
-          `IMPORTANT: For each signal, preserve its ID and source link URL. ` +
+          `IMPORTANT: For each signal, preserve its exact ID (e.g. sig-xxx) and source link URL. ` +
           `These will be used for provenance tracking in the final report.`,
       },
 
@@ -46,6 +51,8 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, _opt
             `Deepen your analysis on positions with significant signal activity.\n` +
             `Focus on: conflicting signals, sentiment shifts, upcoming catalysts, ` +
             `and technical pattern changes.\n\n` +
+            `DO NOT re-call enrich_entity or market_quotes — use the data from Stage 0.\n` +
+            `You may call grep_signals or recall_signal_memories if you need more signal context.\n\n` +
             `Previous data brief:\n${prev.get('research-analyst')?.text ?? ''}`,
         },
         {
@@ -54,6 +61,7 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, _opt
             `Analyze full portfolio risk based on these positions.\n` +
             `Compute: sector exposure breakdown, concentration scoring, ` +
             `correlation detection, and drawdown analysis.\n\n` +
+            `DO NOT call enrich_entity or market_quotes — all data is in the brief below.\n\n` +
             `Position data:\n${prev.get('research-analyst')?.text ?? ''}`,
         },
       ],
