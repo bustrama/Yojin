@@ -11,9 +11,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 
+import type { JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
-import type { JintelClient } from '../../../jintel/client.js';
 import { createSubsystemLogger } from '../../../logging/logger.js';
 
 const runExec = promisify(execFile);

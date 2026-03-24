@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 
+import { JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
 import { createDefaultProfiles } from './agents/defaults.js';
@@ -50,7 +51,6 @@ import type { OutputDlpGuard } from './guards/security/output-dlp.js';
 import type { PostureName } from './guards/types.js';
 import { wireInsights } from './insights/adapter.js';
 import type { InsightStore } from './insights/insight-store.js';
-import { JintelClient } from './jintel/client.js';
 import { createJintelTools } from './jintel/tools.js';
 import type { JintelToolOptions } from './jintel/tools.js';
 import { getLogger } from './logging/index.js';
@@ -316,16 +316,18 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   setDataSourceConfigPath(dsConfigPath);
   setFetchDeps({ configPath: dsConfigPath, ingestor: signalIngestor, vault });
 
-  // 6c. Jintel client (primary intelligence source)
-  const jintelBaseUrl = process.env.JINTEL_API_URL ?? 'https://api.jintel.ai/api';
+  // 6c. Run data source health checks (non-blocking)
+  runHealthChecks().catch((err) => log.warn('Data source health check failed', { error: String(err) }));
+
+  // 6d. Jintel client (primary intelligence source)
   let jintelClient: JintelClient | undefined;
   if (vault?.isUnlocked) {
     try {
       const jintelApiKey = await vault.get('jintel-api-key');
       if (jintelApiKey) {
         jintelClient = new JintelClient({
-          baseUrl: jintelBaseUrl,
           apiKey: jintelApiKey,
+          baseUrl: process.env.JINTEL_API_URL,
           debug: process.env.JINTEL_DEBUG === '1',
         });
         log.info('Jintel client ready');
@@ -398,7 +400,6 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   // Shared hot-swap: create a new JintelClient and update all references.
   const hotSwapJintelClient = (apiKey: string) => {
     const newClient = new JintelClient({
-      baseUrl: jintelBaseUrl,
       apiKey,
       debug: process.env.JINTEL_DEBUG === '1',
     });
