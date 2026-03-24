@@ -1,3 +1,4 @@
+import type { Entity, JintelClient, JintelResult } from '@yojinhq/jintel-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -5,8 +6,6 @@ import {
   setPortfolioJintelClient,
   setSnapshotStore,
 } from '../../../../src/api/graphql/resolvers/portfolio.js';
-import type { JintelClient, JintelResult } from '../../../../src/jintel/client.js';
-import type { Entity } from '../../../../src/jintel/types.js';
 import type { PortfolioSnapshotStore } from '../../../../src/portfolio/snapshot-store.js';
 
 // ---------------------------------------------------------------------------

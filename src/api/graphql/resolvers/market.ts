@@ -5,9 +5,8 @@
  * stubs on failure. Without a client, stubs are returned directly.
  */
 
-import { createHash } from 'node:crypto';
+import type { JintelClient } from '@yojinhq/jintel-client';
 
-import type { JintelClient } from '../../../jintel/client.js';
 import { createSubsystemLogger } from '../../../logging/logger.js';
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import type { Article, Quote, SectorWeight } from '../types.js';
@@ -146,34 +145,7 @@ export async function quoteQuery(_parent: unknown, args: { symbol: string }): Pr
   return stubQuotes[sym] ?? null;
 }
 
-export async function newsQuery(_parent: unknown, args: { symbol?: string; limit?: number }): Promise<Article[]> {
-  if (jintelClient) {
-    const result = await jintelClient.newsSearch(args.symbol ?? '', args.limit).catch(() => ({
-      success: false as const,
-      error: 'newsSearch threw',
-      data: [] as never[],
-    }));
-    if (result.success) {
-      return result.data.map((a) => ({
-        id: createHash('sha256').update(a.url).digest('hex').slice(0, 12),
-        title: a.title,
-        source: a.source,
-        url: a.url,
-        publishedAt: a.publishedAt,
-        summary: a.snippet ?? undefined,
-        symbols: [],
-        sentiment:
-          a.sentiment != null
-            ? Number.isNaN(parseFloat(a.sentiment))
-              ? undefined
-              : parseFloat(a.sentiment)
-            : undefined,
-      }));
-    }
-    log.warn('Jintel news failed, using stubs', { query: args.symbol, error: result.error });
-  }
-
-  // Stub fallback
+export function newsQuery(_parent: unknown, args: { symbol?: string; limit?: number }): Article[] {
   let articles = stubArticles;
   if (args.symbol) {
     const sym = args.symbol.toUpperCase();

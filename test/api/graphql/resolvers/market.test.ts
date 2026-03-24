@@ -1,3 +1,4 @@
+import type { JintelClient, JintelResult, MarketQuote } from '@yojinhq/jintel-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -7,8 +8,6 @@ import {
   setMarketJintelClient,
   setMarketSnapshotStore,
 } from '../../../../src/api/graphql/resolvers/market.js';
-import type { JintelClient, JintelResult } from '../../../../src/jintel/client.js';
-import type { MarketQuote, NewsArticle } from '../../../../src/jintel/types.js';
 import type { PortfolioSnapshotStore } from '../../../../src/portfolio/snapshot-store.js';
 
 // ---------------------------------------------------------------------------
@@ -36,23 +35,9 @@ function createMockJintelClient(overrides: Partial<JintelClient> = {}): JintelCl
         },
       ],
     }),
-    newsSearch: vi.fn<(query: string, limit?: number) => Promise<JintelResult<NewsArticle[]>>>().mockResolvedValue({
-      success: true,
-      data: [
-        {
-          title: 'Live headline',
-          url: 'https://example.com/live',
-          source: 'Reuters',
-          publishedAt: '2024-01-15T12:00:00Z',
-          snippet: 'Live snippet text',
-          sentiment: '0.72',
-        },
-      ],
-    }),
     searchEntities: vi.fn(),
     enrichEntity: vi.fn(),
     sanctionsScreen: vi.fn(),
-    webSearch: vi.fn(),
     healthCheck: vi.fn(),
     ...overrides,
   } as unknown as JintelClient;
@@ -77,7 +62,7 @@ function createMockSnapshotStore(
 describe('market resolvers', () => {
   beforeEach(() => {
     setMarketJintelClient(undefined);
-    setMarketSnapshotStore(undefined as unknown as PortfolioSnapshotStore);
+    setMarketSnapshotStore(undefined);
   });
 
   // ── quoteQuery ────────────────────────────────────────────────────────
@@ -144,28 +129,7 @@ describe('market resolvers', () => {
   // ── newsQuery ─────────────────────────────────────────────────────────
 
   describe('newsQuery', () => {
-    it('returns Jintel articles mapped correctly', async () => {
-      const client = createMockJintelClient();
-      setMarketJintelClient(client);
-
-      const result = await newsQuery(null, { symbol: 'AAPL' });
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({
-        title: 'Live headline',
-        source: 'Reuters',
-        url: 'https://example.com/live',
-        publishedAt: '2024-01-15T12:00:00Z',
-        summary: 'Live snippet text',
-        symbols: [],
-      });
-      // id should be a sha256-based hash prefix
-      expect(result[0].id).toHaveLength(12);
-      // sentiment string '0.72' parsed to number
-      expect(result[0].sentiment).toBeCloseTo(0.72);
-    });
-
-    it('falls back to stubs when no client is set', async () => {
+    it('returns stub articles', async () => {
       const result = await newsQuery(null, {});
 
       expect(result.length).toBeGreaterThan(0);
@@ -183,19 +147,6 @@ describe('market resolvers', () => {
       const result = await newsQuery(null, { limit: 1 });
 
       expect(result).toHaveLength(1);
-    });
-
-    it('falls back to stubs when Jintel news fails', async () => {
-      const client = createMockJintelClient({
-        newsSearch: vi.fn().mockResolvedValue({ success: false, error: 'timeout' }),
-      });
-      setMarketJintelClient(client);
-
-      const result = await newsQuery(null, {});
-
-      // Should get stub articles
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0].id).toBe('news-1');
     });
   });
 

@@ -5,7 +5,8 @@
  * empty state when no snapshots have been imported yet.
  */
 
-import type { JintelClient } from '../../../jintel/client.js';
+import type { JintelClient } from '@yojinhq/jintel-client';
+
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import type { ConnectionManager } from '../../../scraper/connection-manager.js';
 import { pubsub } from '../pubsub.js';
