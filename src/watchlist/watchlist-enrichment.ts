@@ -146,15 +146,17 @@ export class WatchlistEnrichment {
     }
 
     // Phase 2: enrich concurrently (enrichSymbol only writes to the in-memory cache with skipFlush)
+    let cacheUpdated = false;
     const results = await Promise.all(
       symbols.map(async (s) => {
         const key = s.toUpperCase();
         const cached = this.cache.get(key);
         if (cached && !this.isStale(cached)) return [key, cached] as const;
+        cacheUpdated = true;
         return [key, await this.enrichSymbol(key, { skipFlush: true })] as const;
       }),
     );
-    await this.flush();
+    if (cacheUpdated) await this.flush();
     return new Map(results);
   }
 
