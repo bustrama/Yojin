@@ -6,19 +6,20 @@
  * tools return a helpful error guiding the user to set up their API key.
  */
 
-import { z } from 'zod';
-
-import type { JintelClient, JintelResult } from './client.js';
-import { EntityTypeSchema } from './types.js';
+import { EntityTypeSchema } from 'jintel-client';
 import type {
   EnrichmentField,
   Entity,
+  JintelClient,
+  JintelResult,
   MarketQuote,
   NewsArticle,
   RiskSignal,
   SanctionsMatch,
   WebResult,
-} from './types.js';
+} from 'jintel-client';
+import { z } from 'zod';
+
 import type { ToolDefinition, ToolResult } from '../core/types.js';
 import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
 

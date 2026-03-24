@@ -44,6 +44,9 @@ importers:
       hono:
         specifier: 4.12.8
         version: 4.12.8
+      jintel-client:
+        specifier: link:../Jintel/packages/client
+        version: link:../Jintel/packages/client
       rehydra:
         specifier: 0.6.2
         version: 0.6.2

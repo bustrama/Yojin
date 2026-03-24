@@ -1,8 +1,15 @@
+import type {
+  Entity,
+  JintelClient,
+  JintelResult,
+  MarketQuote,
+  NewsArticle,
+  SanctionsMatch,
+  WebResult,
+} from 'jintel-client';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { JintelClient, JintelResult } from '../../src/jintel/client.js';
 import { createJintelTools } from '../../src/jintel/tools.js';
-import type { Entity, MarketQuote, NewsArticle, SanctionsMatch, WebResult } from '../../src/jintel/types.js';
 import type { RawSignalInput, SignalIngestor } from '../../src/signals/ingestor.js';
 
 // ── Mock Helpers ─────────────────────────────────────────────────────────

@@ -1,7 +1,5 @@
+import { EntitySchema, JintelClient, MarketQuoteSchema } from 'jintel-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { JintelClient } from '../../src/jintel/client.js';
-import { EntitySchema, MarketQuoteSchema } from '../../src/jintel/types.js';
 
 const mockFetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 beforeEach(() => {
