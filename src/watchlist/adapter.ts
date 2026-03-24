@@ -158,39 +158,44 @@ function createWatchlistTools(deps: {
     description: 'List all watchlist symbols with enrichment data (quote, news, risk score).',
     parameters: z.object({}),
     async execute(): Promise<ToolResult> {
-      const entries = store.list();
-      if (entries.length === 0) {
-        return { content: 'Watchlist is empty.' };
-      }
-
-      const enriched = await enrichment.getEnrichedBatch(entries.map((e) => e.symbol));
-
-      const lines: string[] = [];
-      for (const entry of entries) {
-        const cached = enriched.get(entry.symbol);
-        let line = `**${entry.symbol}** — ${entry.name} (${entry.assetClass})`;
-
-        if (cached?.quote) {
-          const q = cached.quote;
-          const direction = q.change >= 0 ? '+' : '';
-          line += `\n  Price: ~$${bucketPrice(q.price)} (${direction}${q.changePercent.toFixed(2)}%)`;
+      try {
+        const entries = store.list();
+        if (entries.length === 0) {
+          return { content: 'Watchlist is empty.' };
         }
 
-        if (cached?.riskScore != null) {
-          line += `\n  Risk: ${bucketRiskScore(cached.riskScore)}`;
-        }
+        const enriched = await enrichment.getEnrichedBatch(entries.map((e) => e.symbol));
 
-        if (cached?.news && cached.news.length > 0) {
-          line += '\n  Recent News:';
-          for (const article of cached.news) {
-            line += `\n    - ${article.title} (${article.source})`;
+        const lines: string[] = [];
+        for (const entry of entries) {
+          const cached = enriched.get(entry.symbol);
+          let line = `**${entry.symbol}** — ${entry.name} (${entry.assetClass})`;
+
+          if (cached?.quote) {
+            const q = cached.quote;
+            const direction = q.change >= 0 ? '+' : '';
+            line += `\n  Price: ~$${bucketPrice(q.price)} (${direction}${q.changePercent.toFixed(2)}%)`;
           }
+
+          if (cached?.riskScore != null) {
+            line += `\n  Risk: ${bucketRiskScore(cached.riskScore)}`;
+          }
+
+          if (cached?.news && cached.news.length > 0) {
+            line += '\n  Recent News:';
+            for (const article of cached.news) {
+              line += `\n    - ${article.title} (${article.source})`;
+            }
+          }
+
+          lines.push(line);
         }
 
-        lines.push(line);
+        return { content: lines.join('\n\n') };
+      } catch (err) {
+        log.warn('watchlist.list failed', { error: String(err) });
+        return { content: 'Failed to retrieve watchlist.', isError: true };
       }
-
-      return { content: lines.join('\n\n') };
     },
   };
 

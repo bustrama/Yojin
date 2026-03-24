@@ -136,8 +136,23 @@ export class WatchlistEnrichment {
 
   /** Enrich all symbols concurrently, flushing cache once at the end (avoids O(N²) writes). */
   async getEnrichedBatch(symbols: string[]): Promise<Map<string, EnrichmentCacheEntry | null>> {
+    // Phase 1: resolve entities sequentially to avoid concurrent store.flush() races
+    for (const s of symbols) {
+      const key = s.toUpperCase();
+      const entry = this.store.list().find((e) => e.symbol === key);
+      if (entry && !entry.jintelEntityId) {
+        await this.resolveEntity(key);
+      }
+    }
+
+    // Phase 2: enrich concurrently (enrichSymbol only writes to the in-memory cache with skipFlush)
     const results = await Promise.all(
-      symbols.map(async (s) => [s.toUpperCase(), await this.getEnriched(s, { skipFlush: true })] as const),
+      symbols.map(async (s) => {
+        const key = s.toUpperCase();
+        const cached = this.cache.get(key);
+        if (cached && !this.isStale(cached)) return [key, cached] as const;
+        return [key, await this.enrichSymbol(key, { skipFlush: true })] as const;
+      }),
     );
     await this.flush();
     return new Map(results);
