@@ -29,6 +29,10 @@ export const SESSION_DETAIL_QUERY = `
         role
         content
         timestamp
+        toolCards {
+          tool
+          params
+        }
       }
     }
   }

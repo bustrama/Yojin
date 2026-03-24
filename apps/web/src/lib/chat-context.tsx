@@ -2,16 +2,22 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useClient, useMutation, useSubscription } from 'urql';
 import { SESSION_DETAIL_QUERY } from './session-queries';
 
+export interface ToolCardRef {
+  tool: string;
+  params: string; // JSON-encoded
+}
+
 export interface ChatMessage {
   id: string;
   role: 'assistant' | 'user';
   content: string;
   piiProtected?: boolean;
   piiTypes?: string[];
+  toolCards?: ToolCardRef[];
 }
 
 interface ChatEvent {
-  type: 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR';
+  type: 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR' | 'TOOL_CARD';
   threadId: string;
   delta?: string;
   messageId?: string;
@@ -19,6 +25,7 @@ interface ChatEvent {
   error?: string;
   toolName?: string;
   piiTypesFound?: string[];
+  toolCard?: ToolCardRef;
 }
 
 const SEND_MESSAGE_MUTATION = `
@@ -41,6 +48,10 @@ const CHAT_SUBSCRIPTION = `
       error
       toolName
       piiTypesFound
+      toolCard {
+        tool
+        params
+      }
     }
   }
 `;
@@ -54,7 +65,6 @@ export interface ChatImageData {
 export interface ActiveSessionInfo {
   sessionId: string | null;
   threadId: string;
-  isReadOnly: boolean;
 }
 
 interface ChatContextValue {
@@ -64,13 +74,15 @@ interface ChatContextValue {
   isLoading: boolean;
   isThinking: boolean;
   activeTools: string[];
+  /** Tool cards detected during current agent turn (drives skeleton loading). */
+  pendingToolCards: ToolCardRef[];
   sendMessage: (content: string, image?: ChatImageData) => void;
   /** Current session info. */
   activeSession: ActiveSessionInfo;
-  /** Switch to a past session (read-only). Pass null to start a new session. */
+  /** Switch to an existing session or start a new one (pass null). */
   switchSession: (sessionId: string | null, threadId?: string) => void;
-  /** Continue a past session (makes it the active live session). */
-  continueSession: () => void;
+  /** Increments when session list may have changed (message sent, session created, etc.). */
+  sessionVersion: number;
 }
 
 const STORAGE_KEY = 'yojin-active-thread';
@@ -84,6 +96,61 @@ export function useChatContext(): ChatContextValue {
   return ctx;
 }
 
+/**
+ * Collapse raw session history into the user-facing message list.
+ *
+ * The session store keeps every API-level message (intermediate tool-call assistant
+ * messages, tool-result user messages, and the final text assistant message). This
+ * merges tool cards from intermediate assistant messages into the final assistant
+ * response and drops empty tool-result messages so the chat renders cleanly.
+ */
+function collapseSessionMessages(
+  raw: { id: string; role: string; content: string; toolCards?: ToolCardRef[] }[],
+): ChatMessage[] {
+  const result: ChatMessage[] = [];
+  let pendingToolCards: ToolCardRef[] = [];
+
+  for (const m of raw) {
+    const role = m.role === 'USER' ? ('user' as const) : ('assistant' as const);
+
+    if (role === 'assistant') {
+      // Accumulate tool cards from intermediate assistant messages (tool-call turns)
+      if (m.toolCards?.length) {
+        pendingToolCards.push(...m.toolCards);
+      }
+      // If this assistant message has no tool cards, it's the final text response —
+      // attach any accumulated tool cards and emit.
+      if (!m.toolCards?.length && m.content) {
+        result.push({
+          id: m.id,
+          role,
+          content: m.content,
+          toolCards: pendingToolCards.length > 0 ? [...pendingToolCards] : undefined,
+        });
+        pendingToolCards = [];
+      }
+      // Skip assistant messages that only have tool cards (merged into next) or are empty
+    } else {
+      // Keep real user messages (with content); drop empty tool-result messages
+      if (m.content) {
+        result.push({ id: m.id, role, content: m.content });
+      }
+    }
+  }
+
+  // If there are leftover tool cards with no final text, emit them standalone
+  if (pendingToolCards.length > 0) {
+    result.push({
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      toolCards: pendingToolCards,
+    });
+  }
+
+  return result;
+}
+
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const client = useClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -92,6 +159,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [activeTools, setActiveTools] = useState<string[]>([]);
+  // Reactive mirror of toolCardsRef — drives skeleton rendering in the UI
+  const [pendingToolCards, setPendingToolCards] = useState<ToolCardRef[]>([]);
 
   // Session state — restored from localStorage or new
   const [threadId, setThreadId] = useState(() => {
@@ -99,23 +168,27 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     return stored || `web-${crypto.randomUUID()}`;
   });
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isReadOnly, setIsReadOnly] = useState(false);
+
+  // Version counter — bumped whenever the backend session list may have changed
+  const [sessionVersion, setSessionVersion] = useState(0);
+  // Guard against stale async results in switchSession
+  const switchVersionRef = useRef(0);
 
   const completedMessagesRef = useRef(new Set<string>());
   const queueRef = useRef<string[]>([]);
   const isProcessingRef = useRef(false);
   const piiDetectedRef = useRef(false);
   const piiTypesRef = useRef<string[]>([]);
+  // Accumulate tool cards during streaming — attached to the message on MESSAGE_COMPLETE
+  const toolCardsRef = useRef<ToolCardRef[]>([]);
 
   const [, sendMessageMutation] = useMutation(SEND_MESSAGE_MUTATION);
   const processQueueRef = useRef<() => void>(() => {});
 
   // Persist active threadId to localStorage
   useEffect(() => {
-    if (!isReadOnly) {
-      localStorage.setItem(STORAGE_KEY, threadId);
-    }
-  }, [threadId, isReadOnly]);
+    localStorage.setItem(STORAGE_KEY, threadId);
+  }, [threadId]);
 
   const resetStreamingState = useCallback(() => {
     setStreamingContent('');
@@ -123,6 +196,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setActiveTools([]);
     setIsLoading(false);
     isProcessingRef.current = false;
+    toolCardsRef.current = [];
+    setPendingToolCards([]);
   }, []);
 
   const processMessage = useCallback(
@@ -130,6 +205,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       isProcessingRef.current = true;
       piiDetectedRef.current = false;
       piiTypesRef.current = [];
+      toolCardsRef.current = [];
       setIsLoading(true);
       setStreamingContent('');
       setIsThinking(false);
@@ -183,6 +259,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       } else if (event.type === 'PII_REDACTED') {
         piiDetectedRef.current = true;
         piiTypesRef.current = event.piiTypesFound ?? [];
+      } else if (event.type === 'TOOL_CARD' && event.toolCard) {
+        // Accumulate tool cards — deduplicate by tool+params so repeated calls
+        // across agent loop iterations don't produce duplicate cards.
+        const card = event.toolCard;
+        const isDuplicate = toolCardsRef.current.some((c) => c.tool === card.tool && c.params === card.params);
+        if (!isDuplicate) {
+          toolCardsRef.current.push(card);
+          // Update reactive state so the UI can show card skeletons immediately
+          setPendingToolCards((prev) => [...prev, card]);
+        }
       } else if (event.type === 'TOOL_USE' && event.toolName) {
         setIsThinking(false);
         setActiveTools((prev) => [...prev, event.toolName ?? '']);
@@ -194,23 +280,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const msgId = event.messageId ?? crypto.randomUUID();
         if (completedMessagesRef.current.has(msgId)) return data;
         completedMessagesRef.current.add(msgId);
+        // Capture ref values BEFORE scheduling state update — resetStreamingState()
+        // clears the refs synchronously, but setMessages updater runs deferred during render.
+        const piiProtected = piiDetectedRef.current;
+        const piiTypes = [...piiTypesRef.current];
+        const toolCards = toolCardsRef.current.length > 0 ? [...toolCardsRef.current] : undefined;
         setMessages((prev) => [
           ...prev,
           {
             id: msgId,
             role: 'assistant',
             content: event.content ?? '',
-            piiProtected: piiDetectedRef.current,
-            piiTypes: piiTypesRef.current,
+            piiProtected,
+            piiTypes,
+            toolCards,
           },
         ]);
+        // Notify sidebar that the session list may have changed (new session created, message count updated)
+        setSessionVersion((v) => v + 1);
         resetStreamingState();
         setTimeout(() => processQueue(), 0);
       } else if (event.type === 'ERROR') {
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: `Sorry, something went wrong. ${event.error ?? ''}` },
-        ]);
+        const isAuthError = event.error?.startsWith('[AUTH_EXPIRED]');
+        const errorContent = isAuthError ? '[AUTH_EXPIRED]' : `Sorry, something went wrong. ${event.error ?? ''}`;
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errorContent }]);
         resetStreamingState();
         setTimeout(() => processQueue(), 0);
       }
@@ -220,12 +313,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [processQueue, resetStreamingState],
   );
 
-  // Only subscribe when not in read-only mode
-  useSubscription({ query: CHAT_SUBSCRIPTION, variables: { threadId }, pause: isReadOnly }, handleSubscription);
+  // Always subscribe to the active thread
+  useSubscription({ query: CHAT_SUBSCRIPTION, variables: { threadId } }, handleSubscription);
 
   const sendMessage = useCallback(
     (content: string, image?: ChatImageData) => {
-      if (isReadOnly) return;
       if (isProcessingRef.current) {
         queueRef.current.push(content);
         // Show queued message separately so it renders after the current streaming response.
@@ -235,7 +327,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         processMessage(content, image);
       }
     },
-    [processMessage, isReadOnly],
+    [processMessage],
   );
 
   /** Switch to a session. Pass null to start a new session. */
@@ -247,55 +339,48 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       queueRef.current = [];
       setPendingMessages([]);
 
+      // Increment switch version — any in-flight fetch from a previous switch will be discarded
+      const version = ++switchVersionRef.current;
+
       if (newSessionId === null) {
         // New session — use provided threadId if available (e.g. from createSession mutation)
         const fresh = newThreadId ?? `web-${crypto.randomUUID()}`;
         setThreadId(fresh);
         setSessionId(null);
-        setIsReadOnly(false);
         setMessages([]);
-        localStorage.setItem(STORAGE_KEY, fresh);
         return;
       }
 
-      // Load past session
+      // Load existing session — set threadId synchronously so the UI resets immediately
       setSessionId(newSessionId);
-      setIsReadOnly(true);
       setMessages([]);
+      if (newThreadId) setThreadId(newThreadId);
 
-      // Fetch session messages
+      // Fetch session messages (network-only to avoid stale cached data)
       void (async () => {
-        const result = await client.query(SESSION_DETAIL_QUERY, { id: newSessionId }).toPromise();
+        const result = await client
+          .query(SESSION_DETAIL_QUERY, { id: newSessionId }, { requestPolicy: 'network-only' })
+          .toPromise();
+
+        // Stale guard: if another switch happened since we started, discard this result
+        if (switchVersionRef.current !== version) return;
 
         if (result.data?.session) {
           const session = result.data.session as {
             threadId: string;
-            messages: { id: string; role: string; content: string }[];
+            messages: { id: string; role: string; content: string; toolCards?: ToolCardRef[] }[];
           };
           setThreadId(newThreadId ?? session.threadId);
-          setMessages(
-            session.messages.map((m) => ({
-              id: m.id,
-              role: m.role === 'USER' ? ('user' as const) : ('assistant' as const),
-              content: m.content,
-            })),
-          );
+          setMessages(collapseSessionMessages(session.messages));
         }
       })();
     },
     [client, resetStreamingState],
   );
 
-  /** Continue the currently viewed session (switch from read-only to live). */
-  const continueSession = useCallback(() => {
-    setIsReadOnly(false);
-    localStorage.setItem(STORAGE_KEY, threadId);
-  }, [threadId]);
-
   const activeSessionInfo: ActiveSessionInfo = {
     sessionId,
     threadId,
-    isReadOnly,
   };
 
   const value: ChatContextValue = {
@@ -305,10 +390,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isThinking,
     activeTools,
+    pendingToolCards,
     sendMessage,
     activeSession: activeSessionInfo,
     switchSession,
-    continueSession,
+    sessionVersion,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

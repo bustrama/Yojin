@@ -64,6 +64,7 @@ import { createSignalTools } from './signals/tools.js';
 import { createApiHealthTools } from './tools/api-health.js';
 import { createBrainTools } from './tools/brain-tools.js';
 import { createDataSourceQueryTools } from './tools/data-source-query.js';
+import { createDisplayTools } from './tools/display-tools.js';
 import { createErrorAnalysisTools } from './tools/error-analysis.js';
 import { createPortfolioReasoningTools } from './tools/portfolio-reasoning.js';
 import { createPortfolioTools } from './tools/portfolio-tools.js';
@@ -73,6 +74,7 @@ import { ChatPiiScanner } from './trust/pii/chat-scanner.js';
 import { DefaultPiiRedactor } from './trust/pii/redactor.js';
 import { createSecretTools } from './trust/vault/secure-input.js';
 import { EncryptedVault } from './trust/vault/vault.js';
+import { wireWatchlist } from './watchlist/adapter.js';
 
 const log = getLogger().sub('composition');
 
@@ -344,6 +346,20 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     toolRegistry.register(tool);
   }
 
+  // Watchlist tools (3 tools: watchlist.add, watchlist.remove, watchlist.list)
+  const {
+    enrichment: watchlistEnrichment,
+    toolOptions: watchlistToolOptions,
+    tools: watchlistTools,
+  } = await wireWatchlist({
+    dataDir: dataRoot,
+    jintelClient,
+    ttlSeconds: config.watchlist.enrichmentTtlSeconds,
+  });
+  for (const tool of watchlistTools) {
+    toolRegistry.register(tool);
+  }
+
   // Hot-swap Jintel client on key validation.
   setJintelKeyValidatedCallback((apiKey: string) => {
     const newClient = new JintelClient({
@@ -352,6 +368,8 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     });
     jintelToolOptions.client = newClient;
     jintelClient = newClient;
+    watchlistEnrichment.setJintelClient(newClient);
+    watchlistToolOptions.client = newClient;
     log.info('Jintel client hot-swapped after key validation');
   });
 
@@ -386,6 +404,11 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
 
   // Portfolio tools (2 tools: save_portfolio_positions, get_portfolio)
   for (const tool of createPortfolioTools({ snapshotStore })) {
+    toolRegistry.register(tool);
+  }
+
+  // Display tools — trigger rich card rendering on the frontend
+  for (const tool of createDisplayTools()) {
     toolRegistry.register(tool);
   }
 
