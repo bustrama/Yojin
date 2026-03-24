@@ -19,6 +19,7 @@ import {
   type ConnectionStatus,
   type ConnectionsFile,
   ConnectionsFileSchema,
+  type ExtractedPosition,
   type IntegrationTier,
   type PlatformConnector,
   type PlatformConnectorResult,
@@ -248,23 +249,7 @@ export class ConnectionManager {
 
       // Save fetched positions to snapshot store
       if (this.snapshotStore && fetchResult.positions.length > 0) {
-        const positions: Position[] = fetchResult.positions.map((ep) => {
-          const qty = ep.quantity ?? 0;
-          const mv = ep.marketValue ?? 0;
-          const price = qty > 0 ? mv / qty : 0;
-          return {
-            symbol: ep.symbol,
-            name: ep.symbol,
-            quantity: qty,
-            costBasis: 0,
-            currentPrice: price,
-            marketValue: mv,
-            unrealizedPnl: 0,
-            unrealizedPnlPercent: 0,
-            assetClass: ep.assetClass ?? 'CRYPTO',
-            platform,
-          };
-        });
+        const positions = this.mapExtractedPositions(fetchResult.positions, platform);
         await this.snapshotStore.save({ positions, platform });
       }
 
@@ -422,23 +407,7 @@ export class ConnectionManager {
 
       // Save to snapshot store
       if (this.snapshotStore && fetchResult.positions.length > 0) {
-        const positions: Position[] = fetchResult.positions.map((ep) => {
-          const qty = ep.quantity ?? 0;
-          const mv = ep.marketValue ?? 0;
-          const price = qty > 0 ? mv / qty : 0;
-          return {
-            symbol: ep.symbol,
-            name: ep.symbol,
-            quantity: qty,
-            costBasis: 0,
-            currentPrice: price,
-            marketValue: mv,
-            unrealizedPnl: 0,
-            unrealizedPnlPercent: 0,
-            assetClass: ep.assetClass ?? 'CRYPTO',
-            platform,
-          };
-        });
+        const positions = this.mapExtractedPositions(fetchResult.positions, platform);
         await this.snapshotStore.save({ positions, platform });
       }
 
@@ -588,6 +557,34 @@ export class ConnectionManager {
       const filtered = states.filter((s) => s.platform !== entry.platform);
       filtered.push(entry);
       await this.writeState(filtered);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Position mapping
+  // -------------------------------------------------------------------------
+
+  private static readonly CRYPTO_PLATFORMS = new Set(['BINANCE', 'COINBASE', 'METAMASK', 'PHANTOM', 'POLYMARKET']);
+
+  /** Map ExtractedPositions to Position[] for snapshot storage. */
+  private mapExtractedPositions(extracted: ExtractedPosition[], platform: Platform): Position[] {
+    const defaultAssetClass = ConnectionManager.CRYPTO_PLATFORMS.has(platform.toUpperCase()) ? 'CRYPTO' : 'EQUITY';
+    return extracted.map((ep) => {
+      const qty = ep.quantity ?? 0;
+      const mv = ep.marketValue ?? 0;
+      const price = qty > 0 ? mv / qty : 0;
+      return {
+        symbol: ep.symbol,
+        name: ep.name ?? ep.symbol,
+        quantity: qty,
+        costBasis: ep.costBasis ?? price,
+        currentPrice: price,
+        marketValue: mv,
+        unrealizedPnl: ep.unrealizedPnl ?? 0,
+        unrealizedPnlPercent: ep.unrealizedPnlPercent ?? 0,
+        assetClass: ep.assetClass ?? defaultAssetClass,
+        platform,
+      };
     });
   }
 

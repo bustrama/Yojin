@@ -205,19 +205,27 @@ export async function addManualPositionMutation(
     unrealizedPnl: 0,
     unrealizedPnlPercent: 0,
     assetClass: (assetClass as AssetClass) ?? 'EQUITY',
-    platform: (platform as Position['platform']) ?? 'MANUAL',
+    platform: ((platform as Position['platform']) ?? 'MANUAL').toUpperCase(),
   };
 
-  // Merge with existing positions, replacing any existing entry for the same symbol
-  const existing = await snapshotStore.getLatest();
-  const existingPositions = existing?.positions ?? [];
-  const existingIdx = existingPositions.findIndex((p) => p.symbol === newPosition.symbol);
-  const mergedPositions =
-    existingIdx !== -1
-      ? existingPositions.map((p, i) => (i === existingIdx ? newPosition : p))
-      : [...existingPositions, newPosition];
+  const effectivePlatform = newPosition.platform;
 
-  const snapshot = await snapshotStore.save({ positions: mergedPositions, platform: 'MANUAL' });
+  // Symbol-level dedup within this platform only
+  const existing = await snapshotStore.getLatest();
+  const samePlatformPositions = (existing?.positions ?? []).filter(
+    (p) => p.platform?.toUpperCase() === effectivePlatform,
+  );
+  const existingIdx = samePlatformPositions.findIndex((p) => p.symbol === newPosition.symbol);
+  const updatedPlatformPositions =
+    existingIdx !== -1
+      ? samePlatformPositions.map((p, i) => (i === existingIdx ? newPosition : p))
+      : [...samePlatformPositions, newPosition];
+
+  const snapshot = await snapshotStore.save({
+    positions: updatedPlatformPositions,
+    platform: effectivePlatform,
+    existingSnapshot: existing,
+  });
   pubsub.publish('portfolioUpdate', snapshot);
   return snapshot;
 }

@@ -67,7 +67,7 @@ describe('PortfolioSnapshotStore', () => {
 
     expect(snapshot.id).toMatch(/^snap-/);
     expect(snapshot.positions).toHaveLength(2);
-    expect(snapshot.platform).toBe('INTERACTIVE_BROKERS');
+    expect(snapshot.platform).toBeNull();
     expect(snapshot.totalValue).toBe(8925.0 + 33750.0);
     expect(snapshot.timestamp).toBeDefined();
 
@@ -95,7 +95,7 @@ describe('PortfolioSnapshotStore', () => {
 
     const latest = await store.getLatest();
     expect(latest?.id).toBe(second.id);
-    expect(latest?.positions).toHaveLength(2);
+    expect(latest?.positions).toHaveLength(3);
   });
 
   it('getAll returns all snapshots in order', async () => {
@@ -105,7 +105,7 @@ describe('PortfolioSnapshotStore', () => {
     const all = await store.getAll();
     expect(all).toHaveLength(2);
     expect(all[0].positions).toHaveLength(1);
-    expect(all[1].positions).toHaveLength(2);
+    expect(all[1].positions).toHaveLength(3);
   });
 
   it('getLatestRedacted returns snapshot with balances converted to ranges', async () => {
@@ -131,5 +131,289 @@ describe('PortfolioSnapshotStore', () => {
     // currentPrice and quantity should be stripped to prevent balance reconstruction
     expect(pos).not.toHaveProperty('currentPrice');
     expect(pos).not.toHaveProperty('quantity');
+  });
+
+  it('save merges by platform — saving MANUAL preserves ROBINHOOD positions', async () => {
+    const robinhoodPositions: Position[] = [
+      {
+        symbol: 'AAPL',
+        name: 'Apple Inc.',
+        quantity: 10,
+        costBasis: 150,
+        currentPrice: 178,
+        marketValue: 1780,
+        unrealizedPnl: 280,
+        unrealizedPnlPercent: 18.67,
+        assetClass: 'EQUITY',
+        platform: 'ROBINHOOD',
+      },
+    ];
+
+    const manualPositions: Position[] = [
+      {
+        symbol: 'MSFT',
+        name: 'Microsoft',
+        quantity: 5,
+        costBasis: 300,
+        currentPrice: 420,
+        marketValue: 2100,
+        unrealizedPnl: 600,
+        unrealizedPnlPercent: 40,
+        assetClass: 'EQUITY',
+        platform: 'MANUAL',
+      },
+    ];
+
+    await store.save({ positions: robinhoodPositions, platform: 'ROBINHOOD' });
+    await store.save({ positions: manualPositions, platform: 'MANUAL' });
+
+    const latest = await store.getLatest();
+    expect(latest!.positions).toHaveLength(2);
+    expect(latest!.positions.map((p) => p.symbol).sort()).toEqual(['AAPL', 'MSFT']);
+    expect(latest!.positions.find((p) => p.symbol === 'AAPL')!.platform).toBe('ROBINHOOD');
+    expect(latest!.positions.find((p) => p.symbol === 'MSFT')!.platform).toBe('MANUAL');
+  });
+
+  it('save replaces positions for the same platform, preserves others', async () => {
+    const robinhoodV1: Position[] = [
+      {
+        symbol: 'AAPL',
+        name: 'Apple Inc.',
+        quantity: 10,
+        costBasis: 150,
+        currentPrice: 178,
+        marketValue: 1780,
+        unrealizedPnl: 280,
+        unrealizedPnlPercent: 18.67,
+        assetClass: 'EQUITY',
+        platform: 'ROBINHOOD',
+      },
+    ];
+
+    const manualPositions: Position[] = [
+      {
+        symbol: 'MSFT',
+        name: 'Microsoft',
+        quantity: 5,
+        costBasis: 300,
+        currentPrice: 420,
+        marketValue: 2100,
+        unrealizedPnl: 600,
+        unrealizedPnlPercent: 40,
+        assetClass: 'EQUITY',
+        platform: 'MANUAL',
+      },
+    ];
+
+    const robinhoodV2: Position[] = [
+      {
+        symbol: 'AAPL',
+        name: 'Apple Inc.',
+        quantity: 15,
+        costBasis: 150,
+        currentPrice: 180,
+        marketValue: 2700,
+        unrealizedPnl: 450,
+        unrealizedPnlPercent: 20,
+        assetClass: 'EQUITY',
+        platform: 'ROBINHOOD',
+      },
+      {
+        symbol: 'GOOG',
+        name: 'Alphabet',
+        quantity: 3,
+        costBasis: 140,
+        currentPrice: 175,
+        marketValue: 525,
+        unrealizedPnl: 105,
+        unrealizedPnlPercent: 25,
+        assetClass: 'EQUITY',
+        platform: 'ROBINHOOD',
+      },
+    ];
+
+    await store.save({ positions: robinhoodV1, platform: 'ROBINHOOD' });
+    await store.save({ positions: manualPositions, platform: 'MANUAL' });
+    await store.save({ positions: robinhoodV2, platform: 'ROBINHOOD' });
+
+    const latest = await store.getLatest();
+    expect(latest!.positions).toHaveLength(3);
+    expect(latest!.positions.find((p) => p.symbol === 'MSFT')!.platform).toBe('MANUAL');
+    expect(latest!.positions.find((p) => p.symbol === 'AAPL')!.quantity).toBe(15);
+    expect(latest!.positions.find((p) => p.symbol === 'GOOG')!.platform).toBe('ROBINHOOD');
+  });
+
+  it('snapshot-level platform is null (multi-platform)', async () => {
+    await store.save({
+      positions: [
+        {
+          symbol: 'AAPL',
+          name: 'Apple',
+          quantity: 1,
+          costBasis: 100,
+          currentPrice: 100,
+          marketValue: 100,
+          unrealizedPnl: 0,
+          unrealizedPnlPercent: 0,
+          assetClass: 'EQUITY',
+          platform: 'ROBINHOOD',
+        },
+      ],
+      platform: 'ROBINHOOD',
+    });
+
+    const latest = await store.getLatest();
+    expect(latest!.platform).toBeNull();
+  });
+
+  it('totals are recomputed from all merged positions', async () => {
+    await store.save({
+      positions: [
+        {
+          symbol: 'AAPL',
+          name: 'Apple',
+          quantity: 10,
+          costBasis: 150,
+          currentPrice: 178,
+          marketValue: 1780,
+          unrealizedPnl: 280,
+          unrealizedPnlPercent: 18.67,
+          assetClass: 'EQUITY',
+          platform: 'ROBINHOOD',
+        },
+      ],
+      platform: 'ROBINHOOD',
+    });
+    await store.save({
+      positions: [
+        {
+          symbol: 'BTC',
+          name: 'Bitcoin',
+          quantity: 1,
+          costBasis: 60000,
+          currentPrice: 67000,
+          marketValue: 67000,
+          unrealizedPnl: 7000,
+          unrealizedPnlPercent: 11.67,
+          assetClass: 'CRYPTO',
+          platform: 'COINBASE',
+        },
+      ],
+      platform: 'COINBASE',
+    });
+
+    const latest = await store.getLatest();
+    expect(latest!.totalValue).toBe(1780 + 67000);
+    expect(latest!.totalPnl).toBe(280 + 7000);
+  });
+
+  it('saving empty positions for a platform removes that platform', async () => {
+    await store.save({
+      positions: [
+        {
+          symbol: 'AAPL',
+          name: 'Apple',
+          quantity: 10,
+          costBasis: 150,
+          currentPrice: 178,
+          marketValue: 1780,
+          unrealizedPnl: 280,
+          unrealizedPnlPercent: 18.67,
+          assetClass: 'EQUITY',
+          platform: 'ROBINHOOD',
+        },
+      ],
+      platform: 'ROBINHOOD',
+    });
+    await store.save({
+      positions: [
+        {
+          symbol: 'BTC',
+          name: 'Bitcoin',
+          quantity: 1,
+          costBasis: 60000,
+          currentPrice: 67000,
+          marketValue: 67000,
+          unrealizedPnl: 7000,
+          unrealizedPnlPercent: 11.67,
+          assetClass: 'CRYPTO',
+          platform: 'COINBASE',
+        },
+      ],
+      platform: 'COINBASE',
+    });
+
+    await store.save({ positions: [], platform: 'ROBINHOOD' });
+
+    const latest = await store.getLatest();
+    expect(latest!.positions).toHaveLength(1);
+    expect(latest!.positions[0].symbol).toBe('BTC');
+  });
+
+  it('MANUAL same-symbol update preserves other platforms (simulates addManualPosition flow)', async () => {
+    // Save ROBINHOOD position
+    await store.save({
+      positions: [
+        {
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          quantity: 10,
+          costBasis: 150,
+          currentPrice: 178,
+          marketValue: 1780,
+          unrealizedPnl: 280,
+          unrealizedPnlPercent: 18.67,
+          assetClass: 'EQUITY',
+          platform: 'ROBINHOOD',
+        },
+      ],
+      platform: 'ROBINHOOD',
+    });
+
+    // First MANUAL save: MSFT qty 5
+    await store.save({
+      positions: [
+        {
+          symbol: 'MSFT',
+          name: 'Microsoft',
+          quantity: 5,
+          costBasis: 300,
+          currentPrice: 420,
+          marketValue: 2100,
+          unrealizedPnl: 600,
+          unrealizedPnlPercent: 40,
+          assetClass: 'EQUITY',
+          platform: 'MANUAL',
+        },
+      ],
+      platform: 'MANUAL',
+    });
+
+    // Second MANUAL save: MSFT qty 10 (simulates resolver dedup — passes full MANUAL set)
+    await store.save({
+      positions: [
+        {
+          symbol: 'MSFT',
+          name: 'Microsoft',
+          quantity: 10,
+          costBasis: 300,
+          currentPrice: 420,
+          marketValue: 4200,
+          unrealizedPnl: 1200,
+          unrealizedPnlPercent: 40,
+          assetClass: 'EQUITY',
+          platform: 'MANUAL',
+        },
+      ],
+      platform: 'MANUAL',
+    });
+
+    const latest = await store.getLatest();
+    expect(latest!.positions).toHaveLength(2);
+    // ROBINHOOD preserved
+    expect(latest!.positions.find((p) => p.symbol === 'AAPL')!.platform).toBe('ROBINHOOD');
+    // MANUAL updated — latest quantity wins
+    expect(latest!.positions.find((p) => p.symbol === 'MSFT')!.quantity).toBe(10);
+    expect(latest!.positions.find((p) => p.symbol === 'MSFT')!.platform).toBe('MANUAL');
   });
 });

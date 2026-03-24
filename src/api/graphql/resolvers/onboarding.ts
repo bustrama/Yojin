@@ -709,11 +709,12 @@ export async function confirmPositionsMutation(
   _parent: unknown,
   args: { input: ConfirmPositionsInput },
 ): Promise<boolean> {
-  const { platform, positions } = args.input;
+  const { platform: rawPlatform, positions } = args.input;
+  const platform = rawPlatform.toUpperCase();
 
   if (snapshotStore) {
-    const CRYPTO_PLATFORMS = new Set(['binance', 'coinbase', 'metamask', 'phantom', 'polymarket']);
-    const inferredClass = CRYPTO_PLATFORMS.has(platform.toLowerCase()) ? 'CRYPTO' : 'EQUITY';
+    const CRYPTO_PLATFORMS = new Set(['BINANCE', 'COINBASE', 'METAMASK', 'PHANTOM', 'POLYMARKET']);
+    const inferredClass = CRYPTO_PLATFORMS.has(platform) ? 'CRYPTO' : 'EQUITY';
 
     const snapshotPositions = positions.map((p) => ({
       symbol: p.symbol,
@@ -728,14 +729,7 @@ export async function confirmPositionsMutation(
       platform,
     }));
 
-    // Merge with existing positions: keep positions from other platforms, replace this platform's positions
-    const existing = await snapshotStore.getLatest();
-    const otherPositions = (existing?.positions ?? []).filter(
-      (p) => p.platform?.toLowerCase() !== platform.toLowerCase(),
-    );
-    const mergedPositions = [...otherPositions, ...snapshotPositions];
-
-    await snapshotStore.save({ positions: mergedPositions, platform });
+    await snapshotStore.save({ positions: snapshotPositions, platform });
   }
 
   return true;

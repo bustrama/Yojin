@@ -23,6 +23,7 @@ const logger = createSubsystemLogger('snapshot-store');
 export interface SaveSnapshotParams {
   positions: Position[];
   platform: Platform;
+  existingSnapshot?: PortfolioSnapshot | null;
 }
 
 export class PortfolioSnapshotStore {
@@ -32,28 +33,46 @@ export class PortfolioSnapshotStore {
     this.filePath = join(dataRoot, 'snapshots', 'portfolio.jsonl');
   }
 
-  /** Append a new snapshot. Returns the saved snapshot with computed totals. */
+  /**
+   * Save positions for a single platform. Merges with existing snapshot:
+   * positions from other platforms are preserved, positions for `params.platform`
+   * are replaced wholesale. All incoming positions are stamped with the declared
+   * platform. Returns the merged snapshot with recomputed totals.
+   */
   async save(params: SaveSnapshotParams): Promise<PortfolioSnapshot> {
     await mkdir(join(this.filePath, '..'), { recursive: true });
 
-    const { positions, platform } = params;
-    const totalValue = positions.reduce((sum, p) => sum + p.marketValue, 0);
-    const totalPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+    const { positions, platform: rawPlatform } = params;
+    const platform = rawPlatform.toUpperCase();
+
+    const stamped = positions.map((p) => ({ ...p, platform }));
+
+    const existing = params.existingSnapshot !== undefined ? params.existingSnapshot : await this.getLatest();
+    const otherPlatformPositions = (existing?.positions ?? []).filter((p) => p.platform?.toUpperCase() !== platform);
+    const merged = [...otherPlatformPositions, ...stamped];
+
+    const totalValue = merged.reduce((sum, p) => sum + p.marketValue, 0);
+    const totalPnl = merged.reduce((sum, p) => sum + p.unrealizedPnl, 0);
     const totalCost = totalValue - totalPnl;
 
     const snapshot: PortfolioSnapshot = {
       id: `snap-${randomUUID().slice(0, 8)}`,
-      positions,
+      positions: merged,
       totalValue,
       totalCost,
       totalPnl,
       totalPnlPercent: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
       timestamp: new Date().toISOString(),
-      platform,
+      platform: null,
     };
 
     await appendFile(this.filePath, JSON.stringify(snapshot) + '\n');
-    logger.info('Snapshot saved', { id: snapshot.id, platform, positionCount: positions.length });
+    logger.info('Snapshot saved', {
+      id: snapshot.id,
+      platform,
+      positionCount: positions.length,
+      totalPositions: merged.length,
+    });
 
     return snapshot;
   }
