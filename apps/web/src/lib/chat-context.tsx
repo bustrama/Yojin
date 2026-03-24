@@ -301,10 +301,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         resetStreamingState();
         setTimeout(() => processQueue(), 0);
       } else if (event.type === 'ERROR') {
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: `Sorry, something went wrong. ${event.error ?? ''}` },
-        ]);
+        const isAuthError = event.error?.startsWith('[AUTH_EXPIRED]');
+        const errorContent = isAuthError ? '[AUTH_EXPIRED]' : `Sorry, something went wrong. ${event.error ?? ''}`;
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errorContent }]);
         resetStreamingState();
         setTimeout(() => processQueue(), 0);
       }

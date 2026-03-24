@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router';
 import MorningBriefing from '../components/chat/morning-briefing';
 import QueryBuilder from '../components/chat/query-builder';
 import WaterfallFlow from '../components/chat/waterfall-flow';
-import ManualPositionFlow from '../components/chat/manual-position-flow';
 import ChatInput from '../components/chat/chat-input';
 import type { ImageAttachment } from '../components/chat/chat-input';
 import ChatMessage from '../components/chat/chat-message';
@@ -11,14 +10,15 @@ import ChatAvatar from '../components/chat/chat-avatar';
 import CardSkeleton from '../components/chat/tool-cards/card-skeleton';
 import { SessionSidebar } from '../components/chat/session-sidebar';
 import { useChatContext } from '../lib/chat-context';
+import { useAddPositionModal } from '../lib/add-position-modal-context';
 
 /* ─── Page ─── */
 
 export default function Chat() {
   const { messages, pendingMessages, streamingContent, isLoading, pendingToolCards, sendMessage, activeSession } =
     useChatContext();
+  const { openModal: openAddPosition } = useAddPositionModal();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [activeAction, setActiveAction] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -47,7 +47,6 @@ export default function Chat() {
   if (prevSessionId !== sessionThreadId) {
     setPrevSessionId(sessionThreadId);
     setActiveCategory(null);
-    setActiveAction(null);
   }
 
   const handleSend = useCallback(
@@ -78,25 +77,17 @@ export default function Chat() {
     (action: string, displayLabel: string) => {
       setActiveCategory(null);
 
-      // Non-tool actions (e.g. add-asset) use the manual entry flow
+      // Non-tool actions (e.g. add-asset) open the add position modal
       if (action === 'add-asset') {
-        setActiveAction(action);
+        openAddPosition();
         return;
       }
 
       // All tool actions go through the backend as real messages
       sendMessage(displayLabel);
     },
-    [sendMessage],
+    [sendMessage, openAddPosition],
   );
-
-  const handleActionComplete = useCallback(() => {
-    setActiveAction(null);
-  }, []);
-
-  const handleActionCancel = useCallback(() => {
-    setActiveAction(null);
-  }, []);
 
   const handleWaterfallCancel = useCallback(() => {
     setActiveCategory(null);
@@ -176,13 +167,11 @@ export default function Chat() {
           </div>
         </div>
 
-        {/* Query builder / waterfall / manual entry — shown when no messages */}
+        {/* Query builder / waterfall — shown when no messages */}
         {messages.length === 0 && (
           <div className="px-6 pb-4 pt-2">
             <div className="mx-auto max-w-3xl">
-              {activeAction === 'add-asset' ? (
-                <ManualPositionFlow onComplete={handleActionComplete} onCancel={handleActionCancel} />
-              ) : activeCategory ? (
+              {activeCategory ? (
                 <WaterfallFlow
                   categoryId={activeCategory}
                   onComplete={handleWaterfallComplete}

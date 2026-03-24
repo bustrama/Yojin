@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { cn } from '../../../lib/utils';
 import { usePositions } from '../../../api';
 import type { Position } from '../../../api';
+import { useAddPositionModal } from '../../../lib/add-position-modal-context';
 import { SymbolCell } from '../../common/symbol-logo';
 import Spinner from '../../common/spinner';
 import RichCard from '../rich-card';
@@ -59,6 +60,7 @@ interface PositionsListCardProps {
 export default function PositionsListCard({ variant }: PositionsListCardProps) {
   const [{ data, fetching, error }] = usePositions();
   const navigate = useNavigate();
+  const { openModal: openAddPosition } = useAddPositionModal();
   const config = VARIANT_CONFIG[variant];
 
   if (fetching) {
@@ -117,7 +119,7 @@ export default function PositionsListCard({ variant }: PositionsListCardProps) {
           { label: 'View Portfolio', onClick: () => navigate('/portfolio') },
           {
             label: 'Add Position',
-            onClick: () => navigate('/chat', { state: { preset: 'I want to add a position manually' } }),
+            onClick: openAddPosition,
           },
         ]}
       />

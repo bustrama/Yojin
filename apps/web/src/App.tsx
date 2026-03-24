@@ -11,6 +11,8 @@ import {
   OnboardingStatusContext,
 } from './lib/onboarding-context';
 import { ThemeProvider } from './lib/theme';
+import { AddPositionModalProvider } from './lib/add-position-modal-context';
+import AddPositionModal from './components/portfolio/add-position-modal';
 import AppShell from './components/layout/app-shell';
 import Position from './pages/position';
 import Skills from './pages/skills';
@@ -135,24 +137,27 @@ export default function App() {
       <Provider value={graphqlClient}>
         <ChatProvider>
           <ChatPanelProvider>
-            <Routes>
-              {/* Main app — guarded by onboarding check */}
-              <Route element={<OnboardingGuard />}>
-                <Route index element={<Dashboard />} />
-                <Route path="portfolio" element={<Positions />} />
-                <Route path="portfolio/:symbol" element={<Position />} />
-                <Route path="chat" element={<Chat />} />
-                <Route path="skills" element={<Skills />} />
-                <Route path="profile" element={<Profile />} />
-                <Route path="settings" element={<Settings />} />
+            <AddPositionModalProvider>
+              <Routes>
+                {/* Main app — guarded by onboarding check */}
+                <Route element={<OnboardingGuard />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="portfolio" element={<Positions />} />
+                  <Route path="portfolio/:symbol" element={<Position />} />
+                  <Route path="chat" element={<Chat />} />
+                  <Route path="skills" element={<Skills />} />
+                  <Route path="profile" element={<Profile />} />
+                  <Route path="settings" element={<Settings />} />
 
-                {/* Redirects for old paths */}
-                <Route path="positions" element={<Navigate to="/portfolio" replace />} />
-                <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
-                <Route path="alerts" element={<Navigate to="/skills" replace />} />
-              </Route>
-            </Routes>
-            {import.meta.env.VITE_AGENTATION_ENABLED === 'true' && <DevFeedbackTool />}
+                  {/* Redirects for old paths */}
+                  <Route path="positions" element={<Navigate to="/portfolio" replace />} />
+                  <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
+                  <Route path="alerts" element={<Navigate to="/skills" replace />} />
+                </Route>
+              </Routes>
+              <AddPositionModal />
+              {import.meta.env.VITE_AGENTATION_ENABLED === 'true' && <DevFeedbackTool />}
+            </AddPositionModalProvider>
           </ChatPanelProvider>
         </ChatProvider>
       </Provider>
