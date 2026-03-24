@@ -1,9 +1,71 @@
 import type { AgentStepResult, Workflow, WorkflowStep } from './types.js';
 import type { AgentRuntime } from '../core/agent-runtime.js';
+import type { InsightStore } from '../insights/insight-store.js';
+import { registerProcessInsightsWorkflow } from '../insights/workflow.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { ReflectionEngine } from '../memory/reflection.js';
 
 const logger = createSubsystemLogger('orchestrator');
+
+// ---------------------------------------------------------------------------
+// Workflow progress events
+// ---------------------------------------------------------------------------
+
+export interface WorkflowProgressEvent {
+  workflowId: string;
+  stage: 'start' | 'stage_start' | 'stage_complete' | 'complete' | 'error' | 'activity';
+  stageIndex?: number;
+  totalStages?: number;
+  agentIds?: string[];
+  error?: string;
+  /** Human-readable activity message (e.g. "Research Analyst → enrich_entity(AAPL)") */
+  message?: string;
+  timestamp: string;
+}
+
+/** Optional callback fired when a workflow progresses through stages. */
+let progressCallback: ((event: WorkflowProgressEvent) => void) | null = null;
+
+/** Register a callback to receive workflow progress events. */
+export function setWorkflowProgressCallback(cb: (event: WorkflowProgressEvent) => void): void {
+  progressCallback = cb;
+}
+
+function emitProgress(event: WorkflowProgressEvent): void {
+  if (progressCallback) {
+    try {
+      progressCallback(event);
+    } catch (err) {
+      logger.warn('Progress callback threw', { error: err });
+    }
+  }
+}
+
+/** Extract agent IDs from a workflow stage (single step or parallel steps). */
+function stageAgentIds(stage: WorkflowStep | WorkflowStep[]): string[] {
+  return Array.isArray(stage) ? stage.map((s) => s.agentId) : [stage.agentId];
+}
+
+/** Format agent ID for display (e.g. "research-analyst" → "Research Analyst"). */
+function formatAgentName(agentId: string): string {
+  return agentId
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/** Summarize tool params into a short hint string like "(AAPL)" or "(ticker: MSFT)". */
+function summarizeToolParams(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  const obj = input as Record<string, unknown>;
+  // Pick the most informative param to show
+  for (const key of ['symbol', 'ticker', 'query', 'id', 'search', 'type']) {
+    if (typeof obj[key] === 'string' && obj[key]) {
+      return `(${obj[key]})`;
+    }
+  }
+  return '';
+}
 
 export class Orchestrator {
   private workflows = new Map<string, Workflow>();
@@ -26,35 +88,73 @@ export class Orchestrator {
       throw new Error(`Workflow not found: ${workflowId}`);
     }
 
+    const totalStages = workflow.stages.length;
+
     logger.info(`Executing workflow: ${workflow.name}`, { workflowId });
+    emitProgress({ workflowId, stage: 'start', totalStages, timestamp: new Date().toISOString() });
+
     const outputs = new Map<string, AgentStepResult>();
 
-    let stageIndex = 0;
-    for (const stage of workflow.stages) {
-      if (Array.isArray(stage)) {
-        const results = await Promise.all(stage.map((step) => this.executeStep(step, outputs, trigger, true)));
-        for (const result of results) {
+    try {
+      let stageIndex = 0;
+      for (const stage of workflow.stages) {
+        const agentIds = stageAgentIds(stage);
+
+        emitProgress({
+          workflowId,
+          stage: 'stage_start',
+          stageIndex,
+          totalStages,
+          agentIds,
+          timestamp: new Date().toISOString(),
+        });
+
+        if (Array.isArray(stage)) {
+          const results = await Promise.all(
+            stage.map((step) => this.executeStep(step, outputs, trigger, true, workflowId, stageIndex)),
+          );
+          for (const result of results) {
+            outputs.set(result.agentId, result);
+          }
+        } else {
+          const result = await this.executeStep(stage, outputs, trigger, false, workflowId, stageIndex);
           outputs.set(result.agentId, result);
         }
-      } else {
-        const result = await this.executeStep(stage, outputs, trigger);
-        outputs.set(result.agentId, result);
+
+        emitProgress({
+          workflowId,
+          stage: 'stage_complete',
+          stageIndex,
+          totalStages,
+          agentIds,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Run after-stage hook if registered
+        const hook = workflow.afterStageHooks?.get(stageIndex);
+        if (hook) {
+          await hook();
+        }
+        stageIndex++;
       }
 
-      // Run after-stage hook if registered
-      const hook = workflow.afterStageHooks?.get(stageIndex);
-      if (hook) {
-        await hook();
-      }
-      stageIndex++;
+      logger.info(`Workflow complete: ${workflow.name}`, {
+        workflowId,
+        agentsRun: [...outputs.keys()],
+      });
+
+      emitProgress({ workflowId, stage: 'complete', totalStages, timestamp: new Date().toISOString() });
+
+      return outputs;
+    } catch (err) {
+      emitProgress({
+        workflowId,
+        stage: 'error',
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      });
+      throw err;
     }
-
-    logger.info(`Workflow complete: ${workflow.name}`, {
-      workflowId,
-      agentsRun: [...outputs.keys()],
-    });
-
-    return outputs;
   }
 
   private async executeStep(
@@ -62,6 +162,8 @@ export class Orchestrator {
     previousOutputs: Map<string, AgentStepResult>,
     trigger: { message?: string; sessionKey?: string },
     parallel = false,
+    workflowId?: string,
+    stageIndex?: number,
   ): Promise<AgentStepResult> {
     const message = step.buildMessage(previousOutputs, trigger.message);
 
@@ -70,13 +172,41 @@ export class Orchestrator {
       message,
       // Parallel steps must not share a session — concurrent appends would interleave writes.
       sessionKey: parallel ? undefined : trigger.sessionKey,
+      onEvent:
+        workflowId != null
+          ? (event) => {
+              if (event.type === 'action') {
+                for (const tc of event.toolCalls) {
+                  const paramHint = summarizeToolParams(tc.input);
+                  emitProgress({
+                    workflowId,
+                    stage: 'activity',
+                    stageIndex,
+                    agentIds: [step.agentId],
+                    message: `${formatAgentName(step.agentId)} → ${tc.name}${paramHint}`,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+              } else if (event.type === 'thought' && event.text.length > 0) {
+                const snippet = event.text.length > 120 ? event.text.slice(0, 120) + '…' : event.text;
+                emitProgress({
+                  workflowId,
+                  stage: 'activity',
+                  stageIndex,
+                  agentIds: [step.agentId],
+                  message: `${formatAgentName(step.agentId)}: ${snippet}`,
+                  timestamp: new Date().toISOString(),
+                });
+              }
+            }
+          : undefined,
     });
   }
 }
 
 export function registerBuiltinWorkflows(
   orchestrator: Orchestrator,
-  options?: { reflectionEngine?: ReflectionEngine },
+  options?: { reflectionEngine?: ReflectionEngine; insightStore?: InsightStore },
 ): void {
   const afterStageHooks = new Map<number, () => Promise<void>>();
 
@@ -165,4 +295,9 @@ export function registerBuiltinWorkflows(
       },
     ],
   });
+
+  // Process Insights workflow (requires insightStore)
+  if (options?.insightStore) {
+    registerProcessInsightsWorkflow(orchestrator, { insightStore: options.insightStore });
+  }
 }

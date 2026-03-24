@@ -67,6 +67,8 @@ Routes defined in `App.tsx`, all nested under `<AppShell>`:
 | `/` | Dashboard | Overview with portfolio chart, positions preview, news |
 | `/portfolio` | Positions | Full position table with filters |
 | `/portfolio/:symbol` | Position | Single position detail |
+| `/insights` | Insights | Multi-agent portfolio analysis |
+| `/signals` | Signals | Signal archive with search, filters, deep-linking |
 | `/chat` | Chat | AI chat REPL |
 | `/skills` | Skills | Alert rules and skill browser |
 | `/profile` | Profile | User profile |
