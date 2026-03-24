@@ -64,6 +64,7 @@ import { createSignalTools } from './signals/tools.js';
 import { createApiHealthTools } from './tools/api-health.js';
 import { createBrainTools } from './tools/brain-tools.js';
 import { createDataSourceQueryTools } from './tools/data-source-query.js';
+import { createDisplayTools } from './tools/display-tools.js';
 import { createErrorAnalysisTools } from './tools/error-analysis.js';
 import { createPortfolioReasoningTools } from './tools/portfolio-reasoning.js';
 import { createPortfolioTools } from './tools/portfolio-tools.js';
@@ -406,6 +407,11 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
 
   // Portfolio tools (2 tools: save_portfolio_positions, get_portfolio)
   for (const tool of createPortfolioTools({ snapshotStore })) {
+    toolRegistry.register(tool);
+  }
+
+  // Display tools — trigger rich card rendering on the frontend
+  for (const tool of createDisplayTools()) {
     toolRegistry.register(tool);
   }
 

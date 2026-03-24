@@ -729,7 +729,14 @@ export async function confirmPositionsMutation(
       platform,
     }));
 
-    await snapshotStore.save({ positions: snapshotPositions, platform });
+    // Merge with existing positions: keep positions from other platforms, replace this platform's positions
+    const existing = await snapshotStore.getLatest();
+    const otherPositions = (existing?.positions ?? []).filter(
+      (p) => p.platform?.toLowerCase() !== platform.toLowerCase(),
+    );
+    const mergedPositions = [...otherPositions, ...snapshotPositions];
+
+    await snapshotStore.save({ positions: mergedPositions, platform });
   }
 
   return true;

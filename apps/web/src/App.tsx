@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router';
 import { Provider, useQuery } from 'urql';
 import { ChatProvider } from './lib/chat-context';
@@ -11,6 +11,8 @@ import {
   OnboardingStatusContext,
 } from './lib/onboarding-context';
 import { ThemeProvider } from './lib/theme';
+import { AddPositionModalProvider } from './lib/add-position-modal-context';
+import AddPositionModal from './components/portfolio/add-position-modal';
 import AppShell from './components/layout/app-shell';
 import Position from './pages/position';
 import Skills from './pages/skills';
@@ -22,6 +24,23 @@ import Positions from './pages/positions';
 import OnboardingPage from './pages/onboarding';
 import { ONBOARDING_STATUS_QUERY } from './api/documents';
 import type { OnboardingStatusQueryResult } from './api/types';
+
+// Gate the lazy import behind the build-time env flag so Vite tree-shakes
+// the entire chunk when disabled — avoids 404 in production where
+// `agentation` (a devDependency) isn't installed.
+const AgentationComponent =
+  import.meta.env.VITE_AGENTATION_ENABLED === 'true'
+    ? lazy(() => import('agentation').then((m) => ({ default: m.Agentation })))
+    : null;
+
+function DevFeedbackTool() {
+  if (!AgentationComponent) return null;
+  return (
+    <Suspense fallback={null}>
+      <AgentationComponent />
+    </Suspense>
+  );
+}
 
 function RedirectPositionSymbol() {
   const { symbol } = useParams<{ symbol: string }>();
@@ -131,23 +150,27 @@ export default function App() {
       <Provider value={graphqlClient}>
         <ChatProvider>
           <ChatPanelProvider>
-            <Routes>
-              {/* Main app — guarded by onboarding check */}
-              <Route element={<OnboardingGuard />}>
-                <Route index element={<Dashboard />} />
-                <Route path="portfolio" element={<Positions />} />
-                <Route path="portfolio/:symbol" element={<Position />} />
-                <Route path="chat" element={<Chat />} />
-                <Route path="skills" element={<Skills />} />
-                <Route path="profile" element={<Profile />} />
-                <Route path="settings" element={<Settings />} />
+            <AddPositionModalProvider>
+              <Routes>
+                {/* Main app — guarded by onboarding check */}
+                <Route element={<OnboardingGuard />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="portfolio" element={<Positions />} />
+                  <Route path="portfolio/:symbol" element={<Position />} />
+                  <Route path="chat" element={<Chat />} />
+                  <Route path="skills" element={<Skills />} />
+                  <Route path="profile" element={<Profile />} />
+                  <Route path="settings" element={<Settings />} />
 
-                {/* Redirects for old paths */}
-                <Route path="positions" element={<Navigate to="/portfolio" replace />} />
-                <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
-                <Route path="alerts" element={<Navigate to="/skills" replace />} />
-              </Route>
-            </Routes>
+                  {/* Redirects for old paths */}
+                  <Route path="positions" element={<Navigate to="/portfolio" replace />} />
+                  <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
+                  <Route path="alerts" element={<Navigate to="/skills" replace />} />
+                </Route>
+              </Routes>
+              <AddPositionModal />
+              {import.meta.env.VITE_AGENTATION_ENABLED === 'true' && <DevFeedbackTool />}
+            </AddPositionModalProvider>
           </ChatPanelProvider>
         </ChatProvider>
       </Provider>
