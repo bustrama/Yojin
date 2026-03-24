@@ -200,13 +200,6 @@ export default function Insights() {
 // ---------------------------------------------------------------------------
 
 function InsightReportView({ report }: { report: InsightReport }) {
-  // Collect all signals across positions for the summary
-  const allSignals = report.positions.flatMap((p) => p.keySignals);
-  const signalsByType = new Map<string, number>();
-  for (const s of allSignals) {
-    signalsByType.set(s.type, (signalsByType.get(s.type) ?? 0) + 1);
-  }
-
   return (
     <div className="space-y-6">
       {/* Health + Confidence row */}
@@ -230,109 +223,6 @@ function InsightReportView({ report }: { report: InsightReport }) {
           <p className="mt-4 text-sm text-text-muted leading-relaxed">{report.emotionState.reason}</p>
         </Card>
       </div>
-
-      {/* Signal coverage summary */}
-      {allSignals.length > 0 && (
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-primary/10">
-                <svg
-                  className="h-4 w-4 text-accent-primary"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-text-primary">Signal Coverage</h3>
-                <p className="text-xs text-text-muted">
-                  {allSignals.length} signal{allSignals.length !== 1 ? 's' : ''} analyzed across{' '}
-                  {report.positions.length} position{report.positions.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
-            <Link
-              to="/signals"
-              className="text-xs font-medium text-accent-primary hover:underline flex items-center gap-1"
-            >
-              Browse all signals
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-              </svg>
-            </Link>
-          </div>
-
-          {/* Type breakdown as horizontal stacked bar */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 flex h-3 rounded-full overflow-hidden bg-bg-tertiary">
-              {[...signalsByType.entries()].map(([type, count]) => {
-                const pct = (count / allSignals.length) * 100;
-                const colors: Record<string, string> = {
-                  NEWS: 'bg-info',
-                  FUNDAMENTAL: 'bg-success',
-                  SENTIMENT: 'bg-warning',
-                  TECHNICAL: 'bg-text-muted',
-                  MACRO: 'bg-error',
-                };
-                return (
-                  <div
-                    key={type}
-                    className={cn('h-full transition-all', colors[type] ?? 'bg-accent-primary')}
-                    style={{ width: `${pct}%` }}
-                    title={`${type}: ${count}`}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Type legend */}
-          <div className="mt-3 flex flex-wrap gap-3">
-            {[...signalsByType.entries()].map(([type, count]) => (
-              <Link
-                key={type}
-                to={`/signals?type=${type}`}
-                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <Badge variant={signalTypeVariant[type] ?? 'neutral'} size="xs">
-                  {type}
-                </Badge>
-                <span className="font-medium">{count}</span>
-              </Link>
-            ))}
-          </div>
-
-          {/* Impact breakdown */}
-          <div className="mt-3 flex gap-4 border-t border-border pt-3">
-            {(['POSITIVE', 'NEGATIVE', 'NEUTRAL'] as const).map((impact) => {
-              const count = allSignals.filter((s) => s.impact === impact).length;
-              if (count === 0) return null;
-              const config = {
-                POSITIVE: { icon: '↑', color: 'text-success', label: 'Positive' },
-                NEGATIVE: { icon: '↓', color: 'text-error', label: 'Negative' },
-                NEUTRAL: { icon: '→', color: 'text-text-muted', label: 'Neutral' },
-              };
-              const c = config[impact];
-              return (
-                <div key={impact} className="flex items-center gap-1.5">
-                  <span className={cn('text-sm font-bold', c.color)}>{c.icon}</span>
-                  <span className="text-xs text-text-secondary">
-                    {count} {c.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
 
       {/* Action Items */}
       {report.portfolio.actionItems.length > 0 && (
