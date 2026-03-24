@@ -10,6 +10,7 @@ export function createResearchAnalystProfile(): AgentProfile {
       // Jintel tools
       'search_entities',
       'enrich_entity',
+      'batch_enrich',
       'market_quotes',
       'news_search',
       'sanctions_screen',

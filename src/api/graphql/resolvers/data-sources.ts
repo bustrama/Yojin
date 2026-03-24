@@ -11,6 +11,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 
+import type { JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
 import { createSubsystemLogger } from '../../../logging/logger.js';
@@ -68,8 +69,15 @@ interface DataSourceResult {
 
 let configPath = 'data/config/data-sources.json';
 
+/** Optional getter for the Jintel client — used for API health checks. */
+let getJintelClient: (() => JintelClient | undefined) | null = null;
+
 export function setDataSourceConfigPath(path: string): void {
   configPath = path;
+}
+
+export function setDataSourceJintelClient(getter: () => JintelClient | undefined): void {
+  getJintelClient = getter;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +127,15 @@ function configToDataSource(config: DataSourceConfig): DataSource {
 
 export async function listDataSourcesResolver(): Promise<DataSource[]> {
   const configs = await loadConfigs();
+
+  // Re-check API sources live (Jintel status may have changed after vault update)
+  for (const config of configs) {
+    if (config.type === 'API' && config.enabled) {
+      const error = await checkSource(config);
+      healthStatus.set(config.id, error ? { status: 'ERROR', lastError: error } : { status: 'ACTIVE' });
+    }
+  }
+
   return configs.map(configToDataSource);
 }
 
@@ -218,6 +235,18 @@ async function checkSource(config: DataSourceConfig): Promise<string | null> {
       await runExec('which', [config.command]);
     } catch {
       return `"${config.command}" is not installed`;
+    }
+  }
+
+  if (config.type === 'API' && config.id === 'jintel') {
+    const client = getJintelClient?.();
+    if (!client) {
+      return 'API key not configured — add "jintel-api-key" in Settings → Vault';
+    }
+    try {
+      await client.healthCheck();
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
     }
   }
 
