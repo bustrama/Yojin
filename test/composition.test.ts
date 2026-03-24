@@ -19,20 +19,21 @@ describe('buildContext', () => {
     expect(services.vault).toBeUndefined();
   });
 
-  it('registers 39 tools (with vault-locked stubs)', async () => {
+  it('registers 40 tools (with vault-locked stubs)', async () => {
     const services = await buildContext({ skipVault: true });
     const schemas = services.toolRegistry.toSchemas();
 
     // 2 starter + 4 credential stubs + 8 brain + 1 security audit
-    // + 4 jintel tools + 3 watchlist tools + 3 signal tools
+    // + 5 jintel tools (search, enrich, batch_enrich, quotes, sanctions)
+    // + 3 watchlist tools + 3 signal tools
     // + 1 error analysis + 1 api health + 1 portfolio reasoning
     // + 2 portfolio tools (save_portfolio_positions, get_portfolio)
     // + 1 insight tool (save_insight_report)
     // + 2 data source query tools (query_data_source, list_data_sources)
     // + 2 memory tools (store_signal_memory, recall_signal_memories)
     // + 4 display tools (display_portfolio_overview, display_positions_list, display_allocation, display_morning_briefing)
-    // + 1 insight tool (save_insight_report) = 39
-    expect(schemas.length).toBe(39);
+    // = 40
+    expect(schemas.length).toBe(40);
 
     const names = schemas.map((s) => s.name).sort();
     expect(names).toContain('get_current_time');
@@ -58,6 +59,7 @@ describe('buildContext', () => {
     // Jintel tools
     expect(names).toContain('search_entities');
     expect(names).toContain('enrich_entity');
+    expect(names).toContain('batch_enrich');
     expect(names).toContain('market_quotes');
     expect(names).toContain('sanctions_screen');
     // Signal tools

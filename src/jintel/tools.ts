@@ -252,6 +252,40 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
+  const batchEnrich: ToolDefinition = {
+    name: 'batch_enrich',
+    description:
+      'Enrich multiple tickers in a SINGLE API call. Returns market data (quote + fundamentals) ' +
+      'and risk profiles for all tickers at once. Much more efficient than calling enrich_entity ' +
+      'per ticker — use this when analyzing 2+ tickers.',
+    parameters: z.object({
+      tickers: z.array(z.string()).min(1).max(20).describe('List of ticker symbols (max 20)'),
+      fields: z
+        .array(ENRICHMENT_FIELDS)
+        .optional()
+        .describe("Specific enrichment fields to fetch (default: ['market', 'risk'])"),
+    }),
+    async execute(params: { tickers: string[]; fields?: EnrichmentField[] }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const fields = params.fields ?? ['market', 'risk'];
+      const result = await options.client.batchEnrich(params.tickers, fields);
+      const handled = handleResult(result);
+      if (!handled.ok) return handled.toolResult;
+
+      const sections = handled.data.map((entity) => formatEnrichment(entity));
+
+      // Best-effort signal ingestion for risk signals in all entities
+      for (const entity of handled.data) {
+        if (entity.risk?.signals?.length) {
+          const tickers = entity.tickers ?? [];
+          await bestEffortIngest(options.ingestor, riskSignalsToRaw(entity.risk.signals, tickers));
+        }
+      }
+
+      return { content: sections.join('\n\n---\n\n') };
+    },
+  };
+
   const sanctionsScreen: ToolDefinition = {
     name: 'sanctions_screen',
     description:
@@ -269,5 +303,5 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
-  return [searchEntities, enrichEntity, marketQuotes, sanctionsScreen];
+  return [searchEntities, enrichEntity, batchEnrich, marketQuotes, sanctionsScreen];
 }

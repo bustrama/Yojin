@@ -33,10 +33,10 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, _opt
           `2. Call market_quotes ONCE with ALL tickers in a single batch to get prices\n` +
           `3. Call grep_signals for each ticker (last 7 days) — this is free (local files)\n` +
           `4. Call recall_signal_memories for each ticker — this is free (local search)\n` +
-          `5. Call enrich_entity ONLY for the 3-5 tickers with the most signal activity,\n` +
-          `   using fields: ['market', 'risk'] to reduce payload. Skip tickers with no signals.\n\n` +
-          `DO NOT call enrich_entity for every ticker — market_quotes already gives you prices.\n` +
-          `Only enrich tickers where you need fundamentals or risk data to explain signal activity.\n\n` +
+          `5. Call batch_enrich ONCE with all tickers that have signal activity,\n` +
+          `   using fields: ['market', 'risk']. This is a SINGLE API call for all tickers.\n\n` +
+          `DO NOT call enrich_entity per ticker — use batch_enrich for all tickers at once.\n` +
+          `DO NOT call market_quotes if you already called batch_enrich with market field.\n\n` +
           `Produce a structured data brief per position with: symbol, key data points, ` +
           `recent signals summary, sentiment direction, and any notable changes.\n\n` +
           `IMPORTANT: For each signal, preserve its exact ID (e.g. sig-xxx) and source link URL. ` +
