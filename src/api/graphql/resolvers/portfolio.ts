@@ -140,8 +140,11 @@ export async function enrichedSnapshotQuery(): Promise<EnrichedSnapshot> {
         return { ...p };
       }
 
-      const result = await jintelClient.enrichEntity(p.symbol, ['market']);
-      if (!result.success || !result.data.market?.fundamentals) {
+      const result = await jintelClient.enrichEntity(p.symbol, ['market']).catch(() => ({
+        success: false as const,
+        error: 'enrichEntity threw',
+      }));
+      if (!result.success || !('data' in result) || !result.data.market?.fundamentals) {
         return { ...p };
       }
 

@@ -25,7 +25,7 @@ export function setMarketJintelClient(c: JintelClient | undefined): void {
   jintelClient = c;
 }
 
-export function setMarketSnapshotStore(s: PortfolioSnapshotStore): void {
+export function setMarketSnapshotStore(s: PortfolioSnapshotStore | undefined): void {
   snapshotStore = s;
 }
 
@@ -118,7 +118,11 @@ export async function quoteQuery(_parent: unknown, args: { symbol: string }): Pr
   const sym = args.symbol.toUpperCase();
 
   if (jintelClient) {
-    const result = await jintelClient.quotes([sym]);
+    const result = await jintelClient.quotes([sym]).catch(() => ({
+      success: false as const,
+      error: 'quotes threw',
+      data: [] as never[],
+    }));
     if (result.success && result.data[0]) {
       const q = result.data[0];
       return {
@@ -144,7 +148,11 @@ export async function quoteQuery(_parent: unknown, args: { symbol: string }): Pr
 
 export async function newsQuery(_parent: unknown, args: { symbol?: string; limit?: number }): Promise<Article[]> {
   if (jintelClient) {
-    const result = await jintelClient.newsSearch(args.symbol ?? '', args.limit);
+    const result = await jintelClient.newsSearch(args.symbol ?? '', args.limit).catch(() => ({
+      success: false as const,
+      error: 'newsSearch threw',
+      data: [] as never[],
+    }));
     if (result.success) {
       return result.data.map((a) => ({
         id: createHash('sha256').update(a.url).digest('hex').slice(0, 12),
@@ -154,7 +162,12 @@ export async function newsQuery(_parent: unknown, args: { symbol?: string; limit
         publishedAt: a.publishedAt,
         summary: a.snippet ?? undefined,
         symbols: [],
-        sentiment: a.sentiment != null ? parseFloat(a.sentiment) || undefined : undefined,
+        sentiment:
+          a.sentiment != null
+            ? Number.isNaN(parseFloat(a.sentiment))
+              ? undefined
+              : parseFloat(a.sentiment)
+            : undefined,
       }));
     }
     log.warn('Jintel news failed, using stubs', { query: args.symbol, error: result.error });

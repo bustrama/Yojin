@@ -30,6 +30,7 @@ function resolveResumeStep(status: OnboardingStatusQueryResult['onboardingStatus
 
   // Persona exists but onboarding wasn't completed — resume at first missing step
   if (status.connectedPlatforms.length === 0) return 3;
+  if (!status.jintelConfigured) return 4;
   if (!status.briefingConfigured) return 5;
 
   return 6;
