@@ -16,6 +16,7 @@ import type {
   PortfolioHealth,
   PositionInsight,
   ProcessInsightsMutationResult,
+  SignalSummary,
   WorkflowProgressEvent,
 } from '../api/types';
 import Badge from '../components/common/badge';
@@ -77,6 +78,14 @@ const healthVariant: Record<PortfolioHealth, BadgeVariant> = {
   CAUTIOUS: 'warning',
   WEAK: 'error',
   CRITICAL: 'error',
+};
+
+const signalTypeVariant: Record<string, BadgeVariant> = {
+  NEWS: 'info',
+  FUNDAMENTAL: 'success',
+  SENTIMENT: 'warning',
+  TECHNICAL: 'neutral',
+  MACRO: 'error',
 };
 
 export default function Insights() {
@@ -186,7 +195,18 @@ export default function Insights() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Report view
+// ---------------------------------------------------------------------------
+
 function InsightReportView({ report }: { report: InsightReport }) {
+  // Collect all signals across positions for the summary
+  const allSignals = report.positions.flatMap((p) => p.keySignals);
+  const signalsByType = new Map<string, number>();
+  for (const s of allSignals) {
+    signalsByType.set(s.type, (signalsByType.get(s.type) ?? 0) + 1);
+  }
+
   return (
     <div className="space-y-6">
       {/* Health + Confidence row */}
@@ -210,6 +230,109 @@ function InsightReportView({ report }: { report: InsightReport }) {
           <p className="mt-4 text-sm text-text-muted leading-relaxed">{report.emotionState.reason}</p>
         </Card>
       </div>
+
+      {/* Signal coverage summary */}
+      {allSignals.length > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-primary/10">
+                <svg
+                  className="h-4 w-4 text-accent-primary"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">Signal Coverage</h3>
+                <p className="text-xs text-text-muted">
+                  {allSignals.length} signal{allSignals.length !== 1 ? 's' : ''} analyzed across{' '}
+                  {report.positions.length} position{report.positions.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/signals"
+              className="text-xs font-medium text-accent-primary hover:underline flex items-center gap-1"
+            >
+              Browse all signals
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              </svg>
+            </Link>
+          </div>
+
+          {/* Type breakdown as horizontal stacked bar */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 flex h-3 rounded-full overflow-hidden bg-bg-tertiary">
+              {[...signalsByType.entries()].map(([type, count]) => {
+                const pct = (count / allSignals.length) * 100;
+                const colors: Record<string, string> = {
+                  NEWS: 'bg-info',
+                  FUNDAMENTAL: 'bg-success',
+                  SENTIMENT: 'bg-warning',
+                  TECHNICAL: 'bg-text-muted',
+                  MACRO: 'bg-error',
+                };
+                return (
+                  <div
+                    key={type}
+                    className={cn('h-full transition-all', colors[type] ?? 'bg-accent-primary')}
+                    style={{ width: `${pct}%` }}
+                    title={`${type}: ${count}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Type legend */}
+          <div className="mt-3 flex flex-wrap gap-3">
+            {[...signalsByType.entries()].map(([type, count]) => (
+              <Link
+                key={type}
+                to={`/signals?type=${type}`}
+                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <Badge variant={signalTypeVariant[type] ?? 'neutral'} size="xs">
+                  {type}
+                </Badge>
+                <span className="font-medium">{count}</span>
+              </Link>
+            ))}
+          </div>
+
+          {/* Impact breakdown */}
+          <div className="mt-3 flex gap-4 border-t border-border pt-3">
+            {(['POSITIVE', 'NEGATIVE', 'NEUTRAL'] as const).map((impact) => {
+              const count = allSignals.filter((s) => s.impact === impact).length;
+              if (count === 0) return null;
+              const config = {
+                POSITIVE: { icon: '↑', color: 'text-success', label: 'Positive' },
+                NEGATIVE: { icon: '↓', color: 'text-error', label: 'Negative' },
+                NEUTRAL: { icon: '→', color: 'text-text-muted', label: 'Neutral' },
+              };
+              const c = config[impact];
+              return (
+                <div key={impact} className="flex items-center gap-1.5">
+                  <span className={cn('text-sm font-bold', c.color)}>{c.icon}</span>
+                  <span className="text-xs text-text-secondary">
+                    {count} {c.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Action Items */}
       {report.portfolio.actionItems.length > 0 && (
@@ -239,8 +362,17 @@ function InsightReportView({ report }: { report: InsightReport }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Position insight card
+// ---------------------------------------------------------------------------
+
 function PositionInsightCard({ position }: { position: PositionInsight }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Group signals by impact
+  const positiveSignals = position.keySignals.filter((s) => s.impact === 'POSITIVE');
+  const negativeSignals = position.keySignals.filter((s) => s.impact === 'NEGATIVE');
+  const neutralSignals = position.keySignals.filter((s) => s.impact !== 'POSITIVE' && s.impact !== 'NEGATIVE');
 
   return (
     <Card className="p-5">
@@ -257,6 +389,32 @@ function PositionInsightCard({ position }: { position: PositionInsight }) {
           <span className="text-sm text-text-muted">{position.name}</span>
         </div>
         <div className="flex items-center gap-4">
+          {/* Signal count indicator */}
+          {position.keySignals.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-bg-tertiary">
+              <svg
+                className="h-3 w-3 text-text-muted"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546"
+                />
+              </svg>
+              <span className="text-xs text-text-muted">{position.keySignals.length}</span>
+              {/* Mini impact dots */}
+              {positiveSignals.length > 0 && (
+                <span className="h-1.5 w-1.5 rounded-full bg-success" title={`${positiveSignals.length} positive`} />
+              )}
+              {negativeSignals.length > 0 && (
+                <span className="h-1.5 w-1.5 rounded-full bg-error" title={`${negativeSignals.length} negative`} />
+              )}
+            </div>
+          )}
           <ConvictionMeter value={position.conviction} />
           {position.priceTarget != null && (
             <span className="text-sm text-text-muted">Target: ${position.priceTarget}</span>
@@ -277,36 +435,30 @@ function PositionInsightCard({ position }: { position: PositionInsight }) {
         <div className="mt-4 border-t border-border pt-4 space-y-4">
           <p className="text-sm text-text-secondary leading-relaxed">{position.thesis}</p>
 
+          {/* Key Signals — grouped by impact */}
           {position.keySignals.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {position.keySignals.map((signal) => {
-                const variant =
-                  signal.impact === 'POSITIVE' ? 'success' : signal.impact === 'NEGATIVE' ? 'error' : 'neutral';
-                return (
-                  <Link
-                    key={signal.signalId}
-                    to={`/signals?highlight=${encodeURIComponent(signal.signalId)}`}
-                    className="inline-flex items-center hover:opacity-80 transition-opacity"
-                  >
-                    <Badge variant={variant as BadgeVariant} size="sm">
-                      {signal.title}
-                      <svg
-                        className="ml-1 h-3 w-3 inline"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={2}
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
-                        />
-                      </svg>
-                    </Badge>
-                  </Link>
-                );
-              })}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Key Signals</h4>
+                <Link
+                  to={`/signals?ticker=${position.symbol}`}
+                  className="text-xs font-medium text-accent-primary hover:underline flex items-center gap-1"
+                >
+                  View all {position.symbol} signals
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                  </svg>
+                </Link>
+              </div>
+
+              {/* Positive signals */}
+              {positiveSignals.length > 0 && <SignalGroup signals={positiveSignals} impact="POSITIVE" />}
+
+              {/* Negative signals */}
+              {negativeSignals.length > 0 && <SignalGroup signals={negativeSignals} impact="NEGATIVE" />}
+
+              {/* Neutral signals */}
+              {neutralSignals.length > 0 && <SignalGroup signals={neutralSignals} impact="NEUTRAL" />}
             </div>
           )}
 
@@ -345,6 +497,92 @@ function PositionInsightCard({ position }: { position: PositionInsight }) {
     </Card>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Signal group (positive / negative / neutral)
+// ---------------------------------------------------------------------------
+
+function SignalGroup({ signals, impact }: { signals: SignalSummary[]; impact: string }) {
+  const config: Record<string, { icon: string; color: string; borderColor: string; bgColor: string; label: string }> = {
+    POSITIVE: {
+      icon: '↑',
+      color: 'text-success',
+      borderColor: 'border-success/20',
+      bgColor: 'bg-success/5',
+      label: 'Bullish',
+    },
+    NEGATIVE: {
+      icon: '↓',
+      color: 'text-error',
+      borderColor: 'border-error/20',
+      bgColor: 'bg-error/5',
+      label: 'Bearish',
+    },
+    NEUTRAL: {
+      icon: '→',
+      color: 'text-text-muted',
+      borderColor: 'border-border',
+      bgColor: 'bg-bg-secondary',
+      label: 'Neutral',
+    },
+  };
+  const c = config[impact] ?? config.NEUTRAL;
+
+  return (
+    <div className={cn('rounded-lg border p-3', c.borderColor, c.bgColor)}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className={cn('text-sm font-bold', c.color)}>{c.icon}</span>
+        <span className={cn('text-xs font-semibold', c.color)}>{c.label}</span>
+        <span className="text-xs text-text-muted">({signals.length})</span>
+      </div>
+      <div className="space-y-1.5">
+        {signals.map((signal) => (
+          <Link
+            key={signal.signalId}
+            to={`/signals?highlight=${encodeURIComponent(signal.signalId)}`}
+            className="flex items-center gap-2 group"
+          >
+            <Badge variant={signalTypeVariant[signal.type] ?? 'neutral'} size="xs">
+              {signal.type}
+            </Badge>
+            <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors flex-1 min-w-0 truncate">
+              {signal.title}
+            </span>
+            <SignalConfidenceDot confidence={signal.confidence} />
+            <svg
+              className="h-3 w-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+            </svg>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SignalConfidenceDot({ confidence }: { confidence: number }) {
+  const pct = Math.round(confidence * 100);
+  return (
+    <span
+      className={cn(
+        'text-2xs font-medium flex-shrink-0',
+        pct >= 80 ? 'text-success' : pct >= 50 ? 'text-warning' : 'text-text-muted',
+      )}
+      title={`${pct}% confidence`}
+    >
+      {pct}%
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Confidence / conviction meters
+// ---------------------------------------------------------------------------
 
 function ConfidenceBar({ label, value }: { label: string; value: number }) {
   const pct = Math.round(value * 100);
