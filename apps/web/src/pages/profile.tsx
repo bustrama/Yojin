@@ -351,8 +351,9 @@ export default function Profile() {
                 setClearing(true);
                 try {
                   await clearAppData({});
-                  window.location.reload();
-                } finally {
+                  // Hard redirect to bust urql cache
+                  window.location.href = '/';
+                } catch {
                   setClearing(false);
                   setClearConfirm(false);
                 }
