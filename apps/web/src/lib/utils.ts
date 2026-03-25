@@ -5,6 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Sanitize a URL for use in href attributes — only allow http(s) protocols. */
+export function safeHref(url: string | null, fallback: string): string {
+  if (!url) return fallback;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? url : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);

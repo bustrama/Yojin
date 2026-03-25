@@ -36,6 +36,16 @@ export default function YojinActionsCard() {
     return map;
   }, [report]);
 
+  if (result.fetching) {
+    return (
+      <DashboardCard title="Action Items" variant="feature" className="flex-1">
+        <div className="flex flex-1 items-center justify-center px-5 pb-5">
+          <p className="text-sm text-text-muted">Loading...</p>
+        </div>
+      </DashboardCard>
+    );
+  }
+
   if (!report) {
     return (
       <DashboardCard title="Action Items" variant="feature" className="flex-1">
