@@ -10,6 +10,7 @@
  */
 
 import type { Entity, JintelClient, MarketQuote } from '@yojinhq/jintel-client';
+import { ALL_ENRICHMENT_FIELDS } from '@yojinhq/jintel-client';
 
 import type { InsightStore } from './insight-store.js';
 import type { InsightReport } from './types.js';
@@ -21,7 +22,7 @@ import type { SignalMemoryStore } from '../memory/memory-store.js';
 import type { MemoryEntry } from '../memory/types.js';
 import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
 import type { SignalArchive } from '../signals/archive.js';
-import type { SignalIngestor } from '../signals/ingestor.js';
+import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
 import type { Signal } from '../signals/types.js';
 
 const logger = createSubsystemLogger('data-gatherer');
@@ -45,19 +46,38 @@ export interface DataBrief {
   quotePrice: number | null;
   changePercent: number | null;
   volume: number | null;
-  // Enrichment
+  // Enrichment — fundamentals
   marketCap: number | null;
   pe: number | null;
   eps: number | null;
+  beta: number | null;
+  dividendYield: number | null;
+  debtToEquity: number | null;
+  fiftyTwoWeekHigh: number | null;
+  fiftyTwoWeekLow: number | null;
   enrichmentSector: string | null;
+  enrichmentIndustry: string | null;
+  // Enrichment — risk
   riskScore: number | null;
   riskSignals: string[];
+  // Enrichment — regulatory
+  recentFilings: FilingBrief[];
+  // Enrichment — corporate
+  legalName: string | null;
+  jurisdiction: string | null;
   // Signals
   signalCount: number;
   signals: SignalBrief[];
   sentimentDirection: 'BULLISH' | 'BEARISH' | 'MIXED' | 'NEUTRAL';
   // Memory
   memories: MemoryBrief[];
+}
+
+export interface FilingBrief {
+  type: string;
+  date: string;
+  description: string | null;
+  url: string;
 }
 
 export interface SignalBrief {
@@ -145,23 +165,20 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
     insightStore.getLatest(),
   ]);
 
-  // 4. Ingest Jintel risk signals into the signal archive
+  // 4. Ingest Jintel enrichment data into the signal archive
   if (signalIngestor && enrichments.length > 0) {
     try {
-      const rawSignals = enrichments.flatMap((entity) => {
-        if (!entity.risk?.signals?.length) return [];
-        const entityTickers = entity.tickers ?? [];
-        return riskSignalsToRaw(entity.risk.signals, entityTickers);
-      });
+      const rawSignals = enrichments.flatMap((entity) => enrichmentToSignals(entity));
       if (rawSignals.length > 0) {
         const ingestResult = await signalIngestor.ingest(rawSignals);
-        logger.info('Jintel risk signals ingested', {
+        logger.info('Jintel enrichment signals ingested', {
           ingested: ingestResult.ingested,
           duplicates: ingestResult.duplicates,
+          total: rawSignals.length,
         });
       }
     } catch (err) {
-      logger.warn('Jintel risk signal ingestion failed', {
+      logger.warn('Jintel enrichment signal ingestion failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -210,17 +227,41 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
     const change = b.changePercent != null ? ` (${b.changePercent > 0 ? '+' : ''}${b.changePercent.toFixed(2)}%)` : '';
     lines.push(`Price: $${price.toFixed(2)}${change} | P&L: ${b.unrealizedPnlPercent.toFixed(1)}%`);
 
-    // Fundamentals
+    // Fundamentals (row 1: sector + valuation)
     const fundParts: string[] = [];
     if (b.enrichmentSector ?? b.sector) fundParts.push(`Sector: ${b.enrichmentSector ?? b.sector}`);
+    if (b.enrichmentIndustry) fundParts.push(`Industry: ${b.enrichmentIndustry}`);
     if (b.marketCap) fundParts.push(`MCap: $${formatLargeNumber(b.marketCap)}`);
     if (b.pe) fundParts.push(`P/E: ${b.pe.toFixed(1)}`);
-    if (b.riskScore != null) fundParts.push(`Risk: ${b.riskScore.toFixed(1)}/10`);
+    if (b.eps) fundParts.push(`EPS: $${b.eps.toFixed(2)}`);
     if (fundParts.length > 0) lines.push(fundParts.join(' | '));
+
+    // Fundamentals (row 2: risk metrics)
+    const riskParts: string[] = [];
+    if (b.beta != null) riskParts.push(`Beta: ${b.beta.toFixed(2)}`);
+    if (b.dividendYield != null) riskParts.push(`Div: ${(b.dividendYield * 100).toFixed(2)}%`);
+    if (b.debtToEquity != null) riskParts.push(`D/E: ${b.debtToEquity.toFixed(2)}`);
+    if (b.fiftyTwoWeekHigh != null && b.fiftyTwoWeekLow != null) {
+      const curPrice = b.quotePrice ?? b.currentPrice;
+      const range = b.fiftyTwoWeekHigh - b.fiftyTwoWeekLow;
+      const pctInRange = range > 0 ? (((curPrice - b.fiftyTwoWeekLow) / range) * 100).toFixed(0) : '–';
+      riskParts.push(`52w: $${b.fiftyTwoWeekLow.toFixed(0)}–$${b.fiftyTwoWeekHigh.toFixed(0)} (${pctInRange}%)`);
+    }
+    if (b.riskScore != null) riskParts.push(`Risk: ${b.riskScore.toFixed(1)}/100`);
+    if (riskParts.length > 0) lines.push(riskParts.join(' | '));
 
     // Risk signals
     if (b.riskSignals.length > 0) {
       lines.push(`Risk flags: ${b.riskSignals.slice(0, 3).join('; ')}`);
+    }
+
+    // Recent SEC filings
+    if (b.recentFilings.length > 0) {
+      lines.push(`Recent filings:`);
+      for (const f of b.recentFilings.slice(0, 3)) {
+        const desc = f.description ? ` — ${f.description}` : '';
+        lines.push(`  - [${f.type}] ${f.date}${desc}`);
+      }
     }
 
     // Signals
@@ -260,6 +301,7 @@ export function formatRiskMetrics(briefs: DataBrief[]): string {
     weight: b.marketValue / totalValue,
     marketValue: b.marketValue,
     sector: b.enrichmentSector ?? b.sector ?? 'Unknown',
+    beta: b.beta,
   }));
 
   // Sector exposure
@@ -302,6 +344,21 @@ export function formatRiskMetrics(briefs: DataBrief[]): string {
     ...sectors.map((s) => `- ${s}`),
   ];
 
+  // Weighted portfolio beta
+  const betaWeights = weights.filter((w) => w.beta != null);
+  if (betaWeights.length > 0) {
+    const weightedBeta = betaWeights.reduce((s, w) => s + w.weight * (w.beta ?? 0), 0);
+    const coverage = betaWeights.reduce((s, w) => s + w.weight, 0);
+    lines.push(``, `### Portfolio Beta`);
+    lines.push(`Weighted beta: ${weightedBeta.toFixed(2)} (${(coverage * 100).toFixed(0)}% coverage)`);
+    // Flag high-beta positions
+    for (const w of weights) {
+      if (w.beta != null && w.beta > 1.5) {
+        flags.push(`WARNING: ${w.symbol} beta ${w.beta.toFixed(2)} (high volatility)`);
+      }
+    }
+  }
+
   if (flags.length > 0) {
     lines.push(``, `### Concentration Flags`, ...flags.map((f) => `- ${f}`));
   }
@@ -313,6 +370,111 @@ export function formatRiskMetrics(briefs: DataBrief[]): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Convert a Jintel Entity enrichment into RawSignalInput items.
+ * Extracts fundamentals, risk, regulatory filings, and market data.
+ */
+function enrichmentToSignals(entity: Entity): RawSignalInput[] {
+  const tickers = entity.tickers ?? [];
+  if (tickers.length === 0) return [];
+
+  const now = new Date().toISOString();
+  const signals: RawSignalInput[] = [];
+
+  // 1. Risk signals (OFAC, adverse media, etc.)
+  if (entity.risk?.signals?.length) {
+    signals.push(...riskSignalsToRaw(entity.risk.signals, tickers));
+  }
+
+  // 2. Fundamentals snapshot → FUNDAMENTAL signal
+  const fund = entity.market?.fundamentals;
+  if (fund) {
+    const parts: string[] = [];
+    if (fund.sector) parts.push(`Sector: ${fund.sector}`);
+    if (fund.industry) parts.push(`Industry: ${fund.industry}`);
+    if (fund.marketCap) parts.push(`MCap: $${formatLargeNumber(fund.marketCap)}`);
+    if (fund.peRatio != null) parts.push(`P/E: ${fund.peRatio.toFixed(1)}`);
+    if (fund.eps != null) parts.push(`EPS: $${fund.eps.toFixed(2)}`);
+    if (fund.beta != null) parts.push(`Beta: ${fund.beta.toFixed(2)}`);
+    if (fund.dividendYield != null) parts.push(`Div yield: ${(fund.dividendYield * 100).toFixed(2)}%`);
+    if (fund.debtToEquity != null) parts.push(`D/E: ${fund.debtToEquity.toFixed(2)}`);
+    if (fund.fiftyTwoWeekHigh != null) parts.push(`52w high: $${fund.fiftyTwoWeekHigh.toFixed(2)}`);
+    if (fund.fiftyTwoWeekLow != null) parts.push(`52w low: $${fund.fiftyTwoWeekLow.toFixed(2)}`);
+
+    if (parts.length > 0) {
+      signals.push({
+        sourceId: 'jintel-fundamentals',
+        sourceName: 'Jintel Fundamentals',
+        sourceType: 'ENRICHMENT',
+        reliability: 0.9,
+        title: `${entity.name ?? tickers[0]} fundamentals: ${parts.slice(0, 4).join(', ')}`,
+        content: parts.join('\n'),
+        publishedAt: now,
+        type: 'FUNDAMENTAL',
+        tickers,
+        confidence: 0.9,
+        metadata: {
+          source: fund.source,
+          marketCap: fund.marketCap,
+          peRatio: fund.peRatio,
+          eps: fund.eps,
+          beta: fund.beta,
+          dividendYield: fund.dividendYield,
+          debtToEquity: fund.debtToEquity,
+          fiftyTwoWeekHigh: fund.fiftyTwoWeekHigh,
+          fiftyTwoWeekLow: fund.fiftyTwoWeekLow,
+          sector: fund.sector,
+          industry: fund.industry,
+        },
+      });
+    }
+  }
+
+  // 3. Regulatory filings → FUNDAMENTAL signals
+  const filings = entity.regulatory?.filings ?? [];
+  for (const filing of filings.slice(0, 5)) {
+    signals.push({
+      sourceId: 'jintel-sec',
+      sourceName: 'Jintel SEC',
+      sourceType: 'ENRICHMENT',
+      reliability: 0.95,
+      title: `${entity.name ?? tickers[0]}: ${filing.type} filed ${filing.date}`,
+      content: filing.description ?? undefined,
+      link: filing.url,
+      publishedAt: filing.date.includes('T') ? filing.date : `${filing.date}T00:00:00Z`,
+      type: 'FUNDAMENTAL',
+      tickers,
+      confidence: 0.95,
+      metadata: { filingType: filing.type },
+    });
+  }
+
+  // 4. Market quote → price-change signal (only if significant)
+  const quote = entity.market?.quote;
+  if (quote && Math.abs(quote.changePercent) >= 2) {
+    const direction = quote.changePercent > 0 ? 'up' : 'down';
+    signals.push({
+      sourceId: 'jintel-market',
+      sourceName: 'Jintel Market',
+      sourceType: 'ENRICHMENT',
+      reliability: 0.95,
+      title: `${quote.ticker} ${direction} ${Math.abs(quote.changePercent).toFixed(1)}% to $${quote.price.toFixed(2)}`,
+      publishedAt: quote.timestamp,
+      type: 'TECHNICAL',
+      tickers,
+      confidence: 0.95,
+      metadata: {
+        price: quote.price,
+        change: quote.change,
+        changePercent: quote.changePercent,
+        volume: quote.volume,
+      },
+    });
+  }
+
+  return signals;
+}
+
 async function batchEnrichChunked(client: JintelClient, tickers: string[]): Promise<Entity[]> {
   const CHUNK_SIZE = 20;
   const entities: Entity[] = [];
@@ -320,14 +482,20 @@ async function batchEnrichChunked(client: JintelClient, tickers: string[]): Prom
   for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
     const chunk = tickers.slice(i, i + CHUNK_SIZE);
     try {
-      const result = await client.batchEnrich(chunk, ['market', 'risk']);
+      const result = await client.batchEnrich(chunk, ALL_ENRICHMENT_FIELDS);
       if (result.success) {
         entities.push(...result.data);
         const riskCount = result.data.reduce((n, e) => n + (e.risk?.signals?.length ?? 0), 0);
+        const filingCount = result.data.reduce((n, e) => n + (e.regulatory?.filings?.length ?? 0), 0);
+        const hasMarket = result.data.filter((e) => e.market?.quote).length;
+        const hasFundamentals = result.data.filter((e) => e.market?.fundamentals).length;
         logger.info('Batch enrich succeeded', {
           tickers: chunk,
           entities: result.data.length,
+          withQuotes: hasMarket,
+          withFundamentals: hasFundamentals,
           riskSignals: riskCount,
+          filings: filingCount,
         });
       } else {
         logger.warn('Batch enrich returned failure', { tickers: chunk, error: result.error });
@@ -462,9 +630,23 @@ function buildBrief(
     marketCap: entity?.market?.fundamentals?.marketCap ?? null,
     pe: entity?.market?.fundamentals?.peRatio ?? null,
     eps: entity?.market?.fundamentals?.eps ?? null,
+    beta: entity?.market?.fundamentals?.beta ?? null,
+    dividendYield: entity?.market?.fundamentals?.dividendYield ?? null,
+    debtToEquity: entity?.market?.fundamentals?.debtToEquity ?? null,
+    fiftyTwoWeekHigh: entity?.market?.fundamentals?.fiftyTwoWeekHigh ?? null,
+    fiftyTwoWeekLow: entity?.market?.fundamentals?.fiftyTwoWeekLow ?? null,
     enrichmentSector: entity?.market?.fundamentals?.sector ?? null,
+    enrichmentIndustry: entity?.market?.fundamentals?.industry ?? null,
     riskScore: entity?.risk?.overallScore ?? null,
     riskSignals: (entity?.risk?.signals ?? []).map((s) => `${s.severity}: ${s.description}`),
+    recentFilings: (entity?.regulatory?.filings ?? []).slice(0, 5).map((f) => ({
+      type: f.type,
+      date: f.date,
+      description: f.description ?? null,
+      url: f.url,
+    })),
+    legalName: entity?.corporate?.legalName ?? null,
+    jurisdiction: entity?.corporate?.jurisdiction ?? null,
     signalCount: signals.length,
     signals: signals.slice(0, 10).map((s) => ({
       id: s.id,
