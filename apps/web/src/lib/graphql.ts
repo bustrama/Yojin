@@ -60,6 +60,24 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'enrichedSnapshot');
         cache.invalidate('Query', 'listConnections');
       },
+      editPosition(_result, _args, cache) {
+        cache.invalidate('Query', 'portfolio');
+        cache.invalidate('Query', 'positions');
+        cache.invalidate('Query', 'enrichedSnapshot');
+      },
+      removePosition(_result, _args, cache) {
+        cache.invalidate('Query', 'portfolio');
+        cache.invalidate('Query', 'positions');
+        cache.invalidate('Query', 'enrichedSnapshot');
+      },
+      processInsights(_result, _args, cache) {
+        cache.invalidate('Query', 'signals');
+        cache.invalidate('Query', 'latestInsightReport');
+        cache.invalidate('Query', 'insightReports');
+      },
+      fetchDataSource(_result, _args, cache) {
+        cache.invalidate('Query', 'signals');
+      },
       createAlert(_result, _args, cache) {
         cache.invalidate('Query', 'alerts');
       },
@@ -71,6 +89,20 @@ const cache = cacheExchange({
       },
       deleteSession(_result, _args, cache) {
         cache.invalidate('Query', 'sessions');
+      },
+      clearAppData(_result, _args, cache) {
+        cache.invalidate('Query', 'portfolio');
+        cache.invalidate('Query', 'positions');
+        cache.invalidate('Query', 'portfolioHistory');
+        cache.invalidate('Query', 'enrichedSnapshot');
+        cache.invalidate('Query', 'riskReport');
+        cache.invalidate('Query', 'alerts');
+        cache.invalidate('Query', 'signals');
+        cache.invalidate('Query', 'sessions');
+        cache.invalidate('Query', 'latestInsightReport');
+        cache.invalidate('Query', 'insightReports');
+        cache.invalidate('Query', 'watchlist');
+        cache.invalidate('Query', 'deviceInfo');
       },
     },
   },

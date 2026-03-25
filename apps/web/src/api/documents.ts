@@ -307,6 +307,12 @@ export const RESET_ONBOARDING_MUTATION = gql`
   }
 `;
 
+export const CLEAR_APP_DATA_MUTATION = gql`
+  mutation ClearAppData {
+    clearAppData
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // Queries — Connections
 // ---------------------------------------------------------------------------
@@ -378,6 +384,42 @@ export const DISMISS_ALERT_MUTATION = gql`
 export const ADD_MANUAL_POSITION_MUTATION = gql`
   mutation AddManualPosition($input: ManualPositionInput!) {
     addManualPosition(input: $input) {
+      id
+      positions {
+        ...PositionFields
+      }
+      totalValue
+      totalCost
+      totalPnl
+      totalPnlPercent
+      timestamp
+      platform
+    }
+  }
+  ${POSITION_FIELDS}
+`;
+
+export const EDIT_POSITION_MUTATION = gql`
+  mutation EditPosition($symbol: String!, $platform: String!, $input: ManualPositionInput!) {
+    editPosition(symbol: $symbol, platform: $platform, input: $input) {
+      id
+      positions {
+        ...PositionFields
+      }
+      totalValue
+      totalCost
+      totalPnl
+      totalPnlPercent
+      timestamp
+      platform
+    }
+  }
+  ${POSITION_FIELDS}
+`;
+
+export const REMOVE_POSITION_MUTATION = gql`
+  mutation RemovePosition($symbol: String!, $platform: String!) {
+    removePosition(symbol: $symbol, platform: $platform) {
       id
       positions {
         ...PositionFields

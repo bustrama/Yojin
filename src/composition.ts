@@ -119,6 +119,7 @@ export interface YojinServices {
   reflectionEngine?: ReflectionEngine;
   insightStore: InsightStore;
   signalArchive: SignalArchive;
+  signalIngestor: SignalIngestor;
   brain: {
     persona: PersonaManager;
     frontalLobe: FrontalLobe;
@@ -218,7 +219,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   let vault: EncryptedVault | undefined;
   if (!skipVault) {
     try {
-      vault = new EncryptedVault({ auditLog, vaultPath: `${dataRoot}/vault/secrets.json` });
+      vault = new EncryptedVault({ auditLog });
       // Always expose vault to GraphQL so the web UI can manage it
       setVault(vault);
 
@@ -538,6 +539,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     reflectionEngine: memoryResult.reflectionEngine,
     insightStore,
     signalArchive,
+    signalIngestor,
     brain: {
       persona,
       frontalLobe,
