@@ -90,6 +90,10 @@ export class SignalIngestor {
     const recentSignals = await this.archive.query({ since: ninetyDaysAgo });
     for (const sig of recentSignals) {
       this.knownHashes.set(sig.contentHash, sig.id);
+      const currentHash = this.computeHash(sig.title, sig.publishedAt);
+      if (currentHash !== sig.contentHash) {
+        this.knownHashes.set(currentHash, sig.id);
+      }
     }
     logger.info(`Loaded ${this.knownHashes.size} existing content hashes`);
     this.initialized = true;
