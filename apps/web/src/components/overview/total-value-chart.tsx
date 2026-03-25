@@ -84,7 +84,7 @@ export default function TotalValueChart() {
     return (
       <DashboardCard title="Total Value" headerAction={timeRangeButtons} className="min-h-[120px] flex-1">
         <div className="flex flex-1 items-center justify-center">
-          <Spinner size="sm" />
+          <Spinner size="sm" label="Fetching chart data…" />
         </div>
       </DashboardCard>
     );

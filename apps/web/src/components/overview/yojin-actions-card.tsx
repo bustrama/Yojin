@@ -7,6 +7,7 @@ import type { LatestInsightReportQueryResult } from '../../api/types';
 import { cn } from '../../lib/utils';
 import { CardEmptyState } from '../common/card-empty-state';
 import { DashboardCard } from '../common/dashboard-card';
+import Spinner from '../common/spinner';
 import { SignalChips } from './signal-chips';
 
 function getPriority(text: string): { label: string; style: string } {
@@ -41,7 +42,7 @@ export default function YojinActionsCard() {
     return (
       <DashboardCard title="Action Items" variant="feature" className="flex-1">
         <div className="flex flex-1 items-center justify-center px-5 pb-5">
-          <p className="text-sm text-text-muted">Loading...</p>
+          <Spinner size="sm" label="Loading actions…" />
         </div>
       </DashboardCard>
     );

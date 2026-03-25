@@ -71,7 +71,7 @@ export default function PositionsPreview() {
     return (
       <DashboardCard title="Top Positions" headerAction={viewAllLink}>
         <div className="flex flex-1 items-center justify-center">
-          <Spinner size="sm" />
+          <Spinner size="sm" label="Fetching positions…" />
         </div>
       </DashboardCard>
     );

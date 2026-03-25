@@ -7,6 +7,7 @@ import type { LatestInsightReportQueryResult, PortfolioItem, PositionInsight } f
 import { cn, timeAgo } from '../../lib/utils';
 import Button from '../common/button';
 import { CardEmptyState } from '../common/card-empty-state';
+import Spinner from '../common/spinner';
 import FeedDetailModal from './feed-detail-modal';
 import type { FeedDetailData } from './feed-detail-modal';
 import { SignalChips } from './signal-chips';
@@ -298,7 +299,7 @@ export default function NewsFeed() {
   if (reportResult.fetching) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-sm text-text-muted">Loading...</p>
+        <Spinner size="sm" label="Loading news…" />
       </div>
     );
   }

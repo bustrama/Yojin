@@ -136,7 +136,7 @@ export default function ConnectedAccountsCard() {
     return (
       <DashboardCard title="Connected Accounts" headerAction={addButton}>
         <div className="flex flex-1 items-center justify-center px-4 pb-4">
-          <Spinner size="sm" />
+          <Spinner size="sm" label="Loading accounts…" />
         </div>
         {modal}
       </DashboardCard>

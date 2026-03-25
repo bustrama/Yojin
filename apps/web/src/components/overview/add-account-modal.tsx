@@ -10,6 +10,13 @@ import { EditableTable } from '../onboarding/editable-table';
 import type { ExtractedPosition } from '../onboarding/editable-table';
 import { CONFIRM_POSITIONS_MUTATION } from '../../api/documents';
 import { lookupSymbolName } from '../../lib/symbol-names';
+import {
+  sanitizeSymbol,
+  sanitizeNumeric,
+  sanitizePlatformName,
+  validateEntries,
+  type ManualEntryErrors,
+} from '../../lib/manual-entry-validation';
 
 type Screen = 'grid' | 'detail' | 'manual' | 'custom' | 'verify';
 
@@ -59,6 +66,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([{ ...EMPTY_MANUAL }]);
   const [, executeConfirmPositions] = useMutation(CONFIRM_POSITIONS_MUTATION);
   const [customPlatformName, setCustomPlatformName] = useState('');
+  const [entryErrors, setEntryErrors] = useState<ManualEntryErrors[]>([]);
 
   const selectedPlatform = PLATFORMS.find((p) => p.id === selectedPlatformId);
   const isConnected = (id: string) => connectedPlatforms.includes(id);
@@ -72,6 +80,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
     setConfirming(false);
     setManualEntries([{ ...EMPTY_MANUAL }]);
     setCustomPlatformName('');
+    setEntryErrors([]);
   };
 
   const handleClose = () => {
@@ -134,6 +143,10 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   );
 
   const handleManualDone = () => {
+    const { valid, errors } = validateEntries(manualEntries);
+    setEntryErrors(errors);
+    if (!valid) return;
+
     const positions: ExtractedPosition[] = manualEntries
       .filter((e) => e.symbol.trim())
       .map((e) => ({
@@ -194,22 +207,34 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   };
 
   const updateManualEntry = (idx: number, field: keyof ManualEntry, value: string) => {
+    const sanitized = field === 'symbol' ? sanitizeSymbol(value) : field === 'name' ? value : sanitizeNumeric(value);
+
     setManualEntries((prev) =>
       prev.map((e, i) => {
         if (i !== idx) return e;
-        const updated = { ...e, [field]: value };
+        const updated = { ...e, [field]: sanitized };
         if (field === 'symbol') {
-          updated.name = lookupName(value);
+          updated.name = lookupName(sanitized);
         }
         if (field === 'quantity' || field === 'marketPrice') {
           updated.marketValue = computeValue(
-            field === 'quantity' ? value : e.quantity,
-            field === 'marketPrice' ? value : e.marketPrice,
+            field === 'quantity' ? sanitized : e.quantity,
+            field === 'marketPrice' ? sanitized : e.marketPrice,
           );
         }
         return updated;
       }),
     );
+
+    // Clear error for the field being edited
+    setEntryErrors((prev) => {
+      const copy = [...prev];
+      if (copy[idx]) {
+        const { [field]: _, ...rest } = copy[idx];
+        copy[idx] = rest;
+      }
+      return copy;
+    });
   };
 
   const addManualRow = () => setManualEntries((prev) => [...prev, { ...EMPTY_MANUAL }]);
@@ -227,6 +252,10 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   };
 
   const handleCustomDone = () => {
+    const { valid, errors } = validateEntries(manualEntries);
+    setEntryErrors(errors);
+    if (!valid) return;
+
     const platformId = customPlatformName.trim().toUpperCase().replace(/\s+/g, '_');
     const positions: ExtractedPosition[] = manualEntries
       .filter((e) => e.symbol.trim())
@@ -337,69 +366,85 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
         <div>
           <p className="mb-4 text-sm text-text-secondary">Enter your holdings manually.</p>
           <div className="mb-5 space-y-3">
-            {manualEntries.map((entry, idx) => (
-              <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
-                <Input
-                  label={idx === 0 ? 'Symbol' : undefined}
-                  placeholder="AAPL"
-                  value={entry.symbol}
-                  onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Auto"
-                  value={entry.name}
-                  readOnly
-                  size="sm"
-                  className="flex-1 opacity-60"
-                />
-                <Input
-                  label={idx === 0 ? 'Qty' : undefined}
-                  placeholder="10"
-                  value={entry.quantity}
-                  onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Avg Entry' : undefined}
-                  placeholder="150.00"
-                  value={entry.avgEntry}
-                  onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Mkt Price' : undefined}
-                  placeholder="175.00"
-                  value={entry.marketPrice}
-                  onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Value' : undefined}
-                  placeholder="Auto"
-                  value={entry.marketValue}
-                  readOnly
-                  size="sm"
-                  className="w-24 opacity-60"
-                />
-                {manualEntries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeManualRow(idx)}
-                    className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+            {manualEntries.map((entry, idx) => {
+              const rowErrors = entryErrors[idx] ?? {};
+              return (
+                <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
+                  <Input
+                    label={idx === 0 ? 'Symbol' : undefined}
+                    placeholder="AAPL"
+                    value={entry.symbol}
+                    onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
+                    error={rowErrors.symbol}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Name' : undefined}
+                    placeholder="Auto"
+                    value={entry.name}
+                    readOnly
+                    size="sm"
+                    className="flex-1 opacity-60"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Qty' : undefined}
+                    placeholder="10"
+                    inputMode="decimal"
+                    value={entry.quantity}
+                    onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
+                    error={rowErrors.quantity}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Avg Entry' : undefined}
+                    placeholder="150.00"
+                    inputMode="decimal"
+                    value={entry.avgEntry}
+                    onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
+                    error={rowErrors.avgEntry}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Mkt Price' : undefined}
+                    placeholder="175.00"
+                    inputMode="decimal"
+                    value={entry.marketPrice}
+                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
+                    error={rowErrors.marketPrice}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Value' : undefined}
+                    placeholder="Auto"
+                    value={entry.marketValue}
+                    readOnly
+                    size="sm"
+                    className="w-24 opacity-60"
+                  />
+                  {manualEntries.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeManualRow(idx)}
+                      className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
               onClick={addManualRow}
@@ -436,75 +481,91 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
               label="Platform name"
               placeholder="e.g. eToro, Vanguard, My 401k"
               value={customPlatformName}
-              onChange={(e) => setCustomPlatformName(e.target.value)}
+              onChange={(e) => setCustomPlatformName(sanitizePlatformName(e.target.value))}
               size="md"
             />
           </div>
           <p className="mb-2 text-sm font-medium text-text-secondary">Positions</p>
           <div className="mb-5 space-y-3">
-            {manualEntries.map((entry, idx) => (
-              <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
-                <Input
-                  label={idx === 0 ? 'Symbol' : undefined}
-                  placeholder="AAPL"
-                  value={entry.symbol}
-                  onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Auto"
-                  value={entry.name}
-                  readOnly
-                  size="sm"
-                  className="flex-1 opacity-60"
-                />
-                <Input
-                  label={idx === 0 ? 'Qty' : undefined}
-                  placeholder="10"
-                  value={entry.quantity}
-                  onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Avg Entry' : undefined}
-                  placeholder="150.00"
-                  value={entry.avgEntry}
-                  onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Mkt Price' : undefined}
-                  placeholder="175.00"
-                  value={entry.marketPrice}
-                  onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Value' : undefined}
-                  placeholder="Auto"
-                  value={entry.marketValue}
-                  readOnly
-                  size="sm"
-                  className="w-24 opacity-60"
-                />
-                {manualEntries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeManualRow(idx)}
-                    className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+            {manualEntries.map((entry, idx) => {
+              const rowErrors = entryErrors[idx] ?? {};
+              return (
+                <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
+                  <Input
+                    label={idx === 0 ? 'Symbol' : undefined}
+                    placeholder="AAPL"
+                    value={entry.symbol}
+                    onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
+                    error={rowErrors.symbol}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Name' : undefined}
+                    placeholder="Auto"
+                    value={entry.name}
+                    readOnly
+                    size="sm"
+                    className="flex-1 opacity-60"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Qty' : undefined}
+                    placeholder="10"
+                    inputMode="decimal"
+                    value={entry.quantity}
+                    onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
+                    error={rowErrors.quantity}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Avg Entry' : undefined}
+                    placeholder="150.00"
+                    inputMode="decimal"
+                    value={entry.avgEntry}
+                    onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
+                    error={rowErrors.avgEntry}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Mkt Price' : undefined}
+                    placeholder="175.00"
+                    inputMode="decimal"
+                    value={entry.marketPrice}
+                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
+                    error={rowErrors.marketPrice}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Value' : undefined}
+                    placeholder="Auto"
+                    value={entry.marketValue}
+                    readOnly
+                    size="sm"
+                    className="w-24 opacity-60"
+                  />
+                  {manualEntries.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeManualRow(idx)}
+                      className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
               onClick={addManualRow}

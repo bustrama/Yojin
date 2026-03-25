@@ -7,6 +7,7 @@ import type { LatestInsightReportQueryResult } from '../../api/types';
 import { cn, timeAgo } from '../../lib/utils';
 import { CardEmptyState } from '../common/card-empty-state';
 import { DashboardCard } from '../common/dashboard-card';
+import Spinner from '../common/spinner';
 import { SignalChips } from './signal-chips';
 
 const HEALTH_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -50,7 +51,7 @@ export default function YojinSnapCard() {
     return (
       <DashboardCard title="Yojin Snap" variant="feature" className="flex-1">
         <div className="flex flex-1 items-center justify-center px-5 pb-5">
-          <p className="text-sm text-text-muted">Loading...</p>
+          <Spinner size="sm" label="Loading insights…" />
         </div>
       </DashboardCard>
     );
