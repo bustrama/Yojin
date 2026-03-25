@@ -85,13 +85,19 @@ describe('extractTickers', () => {
     expect(extractTickers('$BTC bitcoin price surges')).toEqual(['BTC']);
   });
 
-  it('extracts "microstrategy" and "strategy" as MSTR', () => {
+  it('extracts "microstrategy" as MSTR', () => {
     expect(extractTickers("MicroStrategy's bitcoin holdings grow")).toEqual(['BTC', 'MSTR']);
-    expect(extractTickers('Strategy adds more bitcoin to treasury')).toEqual(['BTC', 'MSTR']);
   });
 
-  it('does not match names as substrings of other words', () => {
-    // "meta" should not match in "metadata" or "metaphor"
+  it('does not false-positive on common words like "strategy" and "meta"', () => {
+    // "strategy" is too common in financial text — should not tag MSTR
+    expect(extractTickers('investment strategy for 2026')).toEqual([]);
+    // "meta" as a standalone word or hyphenated prefix — should not tag META
     expect(extractTickers('The metadata contains no useful metaphor')).toEqual([]);
+    expect(extractTickers('A meta-analysis of hedge fund returns')).toEqual([]);
+  });
+
+  it('extracts "meta platforms" as META', () => {
+    expect(extractTickers('Meta Platforms reports strong ad revenue')).toEqual(['META']);
   });
 });

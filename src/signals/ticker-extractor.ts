@@ -278,13 +278,12 @@ const NAME_TO_TICKER: ReadonlyMap<string, string> = new Map([
   ['amazon', 'AMZN'],
   ['tesla', 'TSLA'],
   ['nvidia', 'NVDA'],
-  ['meta', 'META'],
+  ['meta platforms', 'META'],
   ['netflix', 'NFLX'],
   ['gamestop', 'GME'],
   ['palantir', 'PLTR'],
   ['coinbase', 'COIN'],
   ['microstrategy', 'MSTR'],
-  ['strategy', 'MSTR'],
 ]);
 
 /**
