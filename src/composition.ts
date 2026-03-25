@@ -119,6 +119,7 @@ export interface YojinServices {
   reflectionEngine?: ReflectionEngine;
   insightStore: InsightStore;
   signalArchive: SignalArchive;
+  signalIngestor: SignalIngestor;
   brain: {
     persona: PersonaManager;
     frontalLobe: FrontalLobe;
@@ -538,6 +539,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     reflectionEngine: memoryResult.reflectionEngine,
     insightStore,
     signalArchive,
+    signalIngestor,
     brain: {
       persona,
       frontalLobe,

@@ -15,11 +15,13 @@ import type { InsightStore } from './insight-store.js';
 import type { InsightReport } from './types.js';
 import { fetchAllEnabledSources } from '../api/graphql/resolvers/fetch-data-source.js';
 import type { Position } from '../api/graphql/types.js';
+import { riskSignalsToRaw } from '../jintel/tools.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
 import type { MemoryEntry } from '../memory/types.js';
 import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
 import type { SignalArchive } from '../signals/archive.js';
+import type { SignalIngestor } from '../signals/ingestor.js';
 import type { Signal } from '../signals/types.js';
 
 const logger = createSubsystemLogger('data-gatherer');
@@ -85,6 +87,7 @@ export interface DataGathererOptions {
   signalArchive: SignalArchive;
   insightStore: InsightStore;
   jintelClient?: JintelClient;
+  signalIngestor?: SignalIngestor;
   memoryStores: Map<string, SignalMemoryStore>;
 }
 
@@ -94,7 +97,7 @@ export interface DataGathererOptions {
 
 export async function gatherDataBriefs(options: DataGathererOptions): Promise<GatherResult> {
   const start = Date.now();
-  const { snapshotStore, signalArchive, insightStore, jintelClient, memoryStores } = options;
+  const { snapshotStore, signalArchive, insightStore, jintelClient, signalIngestor, memoryStores } = options;
 
   // 1. Get current portfolio
   const snapshot = await snapshotStore.getLatest();
@@ -137,13 +140,35 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
     insightStore.getLatest(),
   ]);
 
-  // 4. Index data by ticker for O(1) lookup
+  // 4. Ingest Jintel risk signals into the signal archive
+  if (signalIngestor && enrichments.length > 0) {
+    try {
+      const rawSignals = enrichments.flatMap((entity) => {
+        if (!entity.risk?.signals?.length) return [];
+        const entityTickers = entity.tickers ?? [];
+        return riskSignalsToRaw(entity.risk.signals, entityTickers);
+      });
+      if (rawSignals.length > 0) {
+        const ingestResult = await signalIngestor.ingest(rawSignals);
+        logger.info('Jintel risk signals ingested', {
+          ingested: ingestResult.ingested,
+          duplicates: ingestResult.duplicates,
+        });
+      }
+    } catch (err) {
+      logger.warn('Jintel risk signal ingestion failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // 5. Index data by ticker for O(1) lookup
   const signalsByTicker = groupSignalsByTicker(signals, tickers);
   const quotesByTicker = indexQuotes(quotes);
   const enrichmentByTicker = indexEnrichments(enrichments);
   const memoriesByTicker = indexMemories(memories, tickers);
 
-  // 5. Build compact briefs
+  // 6. Build compact briefs
   const briefs: DataBrief[] = snapshot.positions.map((pos) => {
     const tickerSignals = signalsByTicker.get(pos.symbol) ?? [];
     const quote = quotesByTicker.get(pos.symbol);

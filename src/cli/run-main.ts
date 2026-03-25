@@ -135,6 +135,7 @@ async function startGateway(): Promise<void> {
       signalArchive: services.signalArchive,
       insightStore: services.insightStore,
       jintelClient: services.jintelClient,
+      signalIngestor: services.signalIngestor,
       memoryStores: services.memoryStores,
     },
   });
@@ -212,6 +213,7 @@ async function runInsights(): Promise<void> {
       signalArchive: services.signalArchive,
       insightStore: services.insightStore,
       jintelClient: services.jintelClient,
+      signalIngestor: services.signalIngestor,
       memoryStores: services.memoryStores,
     },
   });
