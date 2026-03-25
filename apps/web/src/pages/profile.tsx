@@ -337,8 +337,8 @@ export default function Profile() {
       <Card className="border border-error/30 p-6">
         <h3 className="text-sm font-medium text-error mb-2">Danger Zone</h3>
         <p className="text-xs text-text-secondary mb-4">
-          Clear all app data including portfolio, insights, sessions, brain memory, and vault. Config, audit log, device
-          identity, and logs are preserved. This action cannot be undone.
+          Clear all app data including portfolio, insights, sessions, and brain memory. Config, audit log, device
+          identity, logs, and vault credentials are preserved. This action cannot be undone.
         </p>
         {clearConfirm ? (
           <div className="flex items-center gap-3">

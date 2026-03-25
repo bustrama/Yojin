@@ -5,7 +5,8 @@
  * Factory defaults: resolved from the package install location via import.meta.url
  */
 
-import { mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { copyFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,5 +87,13 @@ export async function ensureDataDirs(dataRoot: string): Promise<void> {
     await mkdir(join(dataRoot, sub), { recursive: true });
   }
   // Vault directory is separate from app data
-  await mkdir(resolveVaultDir(), { recursive: true });
+  const vaultDir = resolveVaultDir();
+  await mkdir(vaultDir, { recursive: true });
+
+  // One-time migration: copy vault from old location (~/.yojin/vault/) to new (~/.yojin-vault/)
+  const oldVaultPath = join(dataRoot, 'vault', 'secrets.json');
+  const newVaultPath = join(vaultDir, 'secrets.json');
+  if (existsSync(oldVaultPath) && !existsSync(newVaultPath)) {
+    await copyFile(oldVaultPath, newVaultPath);
+  }
 }

@@ -289,12 +289,19 @@ export async function editPositionMutation(
   };
 
   // Replace the matching position within the target platform only
-  const targetPlatformPositions = existing.positions
-    .filter((p) => (p.platform ?? '').toUpperCase() === targetPlatform)
-    .map((p) => (p.symbol.toUpperCase() === targetSymbol ? updatedPosition : p));
+  const targetPlatformPositions = existing.positions.filter((p) => (p.platform ?? '').toUpperCase() === targetPlatform);
+
+  const positionExists = targetPlatformPositions.some((p) => p.symbol.toUpperCase() === targetSymbol);
+  if (!positionExists) {
+    throw new Error(`Position ${targetSymbol} not found on platform ${targetPlatform}`);
+  }
+
+  const updatedPlatformPositions = targetPlatformPositions.map((p) =>
+    p.symbol.toUpperCase() === targetSymbol ? updatedPosition : p,
+  );
 
   const snapshot = await snapshotStore.save({
-    positions: targetPlatformPositions,
+    positions: updatedPlatformPositions,
     platform: updatedPosition.platform,
     existingSnapshot: {
       ...existing,
