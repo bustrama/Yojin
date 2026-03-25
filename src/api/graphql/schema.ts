@@ -783,6 +783,8 @@ export const typeDefs = /* GraphQL */ `
   type Mutation {
     refreshPositions(platform: String!): PortfolioSnapshot!
     addManualPosition(input: ManualPositionInput!): PortfolioSnapshot!
+    editPosition(symbol: String!, platform: String!, input: ManualPositionInput!): PortfolioSnapshot!
+    removePosition(symbol: String!, platform: String!): PortfolioSnapshot!
     createAlert(rule: AlertRuleInput!): Alert!
     dismissAlert(id: ID!): Alert!
     sendMessage(threadId: String!, message: String!, imageBase64: String, imageMediaType: String): SendMessagePayload!
@@ -816,6 +818,7 @@ export const typeDefs = /* GraphQL */ `
     processInsights: InsightReport
     addToWatchlist(symbol: String!, name: String!, assetClass: AssetClass!): WatchlistResult!
     removeFromWatchlist(symbol: String!): WatchlistResult!
+    clearAppData: Boolean!
   }
 
   # ---------------------------------------------------------------------------

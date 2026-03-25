@@ -57,7 +57,7 @@ export default function Positions() {
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6 max-w-5xl mx-auto">
       <PortfolioStats portfolio={portfolio} />
-      <PositionTable positions={positions} />
+      <PositionTable positions={positions} onAdd={openAddPosition} />
     </div>
   );
 }

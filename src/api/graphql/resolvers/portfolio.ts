@@ -35,6 +35,30 @@ export function setPortfolioJintelClient(c: JintelClient | undefined): void {
 // Live quote enrichment — batch-fetch from Jintel and merge onto positions
 // ---------------------------------------------------------------------------
 
+/** Build a synthetic sparkline (~20 points) from OHLC quote data. */
+function buildSyntheticSparkline(quote: MarketQuote): number[] {
+  const price = quote.price;
+  const o = quote.open ?? price;
+  const h = quote.high ?? Math.max(price, o);
+  const l = quote.low ?? Math.min(price, o);
+  const start = quote.previousClose ?? o;
+
+  // If price rose, show dip-then-rise; if fell, rise-then-dip
+  const anchors = price >= o ? [start, o, l, h, price] : [start, o, h, l, price];
+
+  const points: number[] = [];
+  const perSegment = 5;
+  for (let s = 0; s < anchors.length - 1; s++) {
+    const from = anchors[s];
+    const to = anchors[s + 1];
+    for (let i = 0; i < perSegment; i++) {
+      points.push(from + (to - from) * (i / perSegment));
+    }
+  }
+  points.push(anchors[anchors.length - 1]);
+  return points;
+}
+
 /**
  * Enrich a snapshot's positions with live market quotes from Jintel.
  * One batch call per snapshot — avoids N+1 per-position fetches.
@@ -85,7 +109,8 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
 
     const currentPrice = quote.price;
     const marketValue = pos.quantity * currentPrice;
-    const totalCost = pos.costBasis * pos.quantity;
+    const hasCostBasis = pos.costBasis > 0;
+    const totalCost = hasCostBasis ? pos.costBasis * pos.quantity : 0;
 
     return {
       ...pos,
@@ -93,8 +118,9 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
       marketValue,
       dayChange: quote.change,
       dayChangePercent: quote.changePercent,
-      unrealizedPnl: marketValue - totalCost,
-      unrealizedPnlPercent: pos.costBasis > 0 ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
+      unrealizedPnl: hasCostBasis ? marketValue - totalCost : 0,
+      unrealizedPnlPercent: hasCostBasis ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
+      sparkline: buildSyntheticSparkline(quote),
     };
   });
 
@@ -257,6 +283,86 @@ export async function addManualPositionMutation(
     positions: updatedPlatformPositions,
     platform: effectivePlatform,
     existingSnapshot: existing,
+  });
+  pubsub.publish('portfolioUpdate', snapshot);
+  return snapshot;
+}
+
+export async function editPositionMutation(
+  _parent: unknown,
+  args: { symbol: string; platform: string; input: ManualPositionInput },
+): Promise<PortfolioSnapshot> {
+  if (!snapshotStore) throw new Error('Snapshot store not available');
+
+  const existing = await snapshotStore.getLatest();
+  if (!existing) throw new Error('No portfolio snapshot exists');
+
+  const targetSymbol = args.symbol.toUpperCase();
+  const targetPlatform = args.platform.toUpperCase();
+  const { symbol, name, quantity, costBasis, assetClass, platform } = args.input;
+
+  const updatedPosition: Position = {
+    symbol: symbol.toUpperCase(),
+    name: name ?? symbol.toUpperCase(),
+    quantity,
+    costBasis,
+    currentPrice: costBasis,
+    marketValue: quantity * costBasis,
+    unrealizedPnl: 0,
+    unrealizedPnlPercent: 0,
+    assetClass: (assetClass as AssetClass) ?? 'EQUITY',
+    platform: ((platform as Position['platform']) ?? targetPlatform).toUpperCase(),
+  };
+
+  // Replace the matching position within the target platform only
+  const targetPlatformPositions = existing.positions.filter((p) => (p.platform ?? '').toUpperCase() === targetPlatform);
+
+  const positionExists = targetPlatformPositions.some((p) => p.symbol.toUpperCase() === targetSymbol);
+  if (!positionExists) {
+    throw new Error(`Position ${targetSymbol} not found on platform ${targetPlatform}`);
+  }
+
+  const updatedPlatformPositions = targetPlatformPositions.map((p) =>
+    p.symbol.toUpperCase() === targetSymbol ? updatedPosition : p,
+  );
+
+  const snapshot = await snapshotStore.save({
+    positions: updatedPlatformPositions,
+    platform: updatedPosition.platform,
+    existingSnapshot: {
+      ...existing,
+      positions: existing.positions.filter((p) => (p.platform ?? '').toUpperCase() !== targetPlatform),
+    },
+  });
+  pubsub.publish('portfolioUpdate', snapshot);
+  return snapshot;
+}
+
+export async function removePositionMutation(
+  _parent: unknown,
+  args: { symbol: string; platform: string },
+): Promise<PortfolioSnapshot> {
+  if (!snapshotStore) throw new Error('Snapshot store not available');
+
+  const existing = await snapshotStore.getLatest();
+  if (!existing) throw new Error('No portfolio snapshot exists');
+
+  const targetSymbol = args.symbol.toUpperCase();
+  const targetPlatform = args.platform.toUpperCase();
+
+  const remaining = existing.positions.filter(
+    (p) => !(p.symbol.toUpperCase() === targetSymbol && (p.platform ?? '').toUpperCase() === targetPlatform),
+  );
+
+  // Save the filtered positions for this platform
+  const platformPositions = remaining.filter((p) => (p.platform ?? '').toUpperCase() === targetPlatform);
+  const snapshot = await snapshotStore.save({
+    positions: platformPositions,
+    platform: targetPlatform,
+    existingSnapshot: {
+      ...existing,
+      positions: existing.positions.filter((p) => (p.platform ?? '').toUpperCase() !== targetPlatform),
+    },
   });
   pubsub.publish('portfolioUpdate', snapshot);
   return snapshot;

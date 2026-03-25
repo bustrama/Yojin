@@ -55,7 +55,7 @@ export function createPortfolioTools(options: PortfolioToolsOptions): ToolDefini
         costBasis: p.costBasis,
         currentPrice: p.currentPrice,
         marketValue: p.marketValue || p.quantity * p.currentPrice,
-        unrealizedPnl: p.unrealizedPnl || (p.currentPrice - p.costBasis) * p.quantity,
+        unrealizedPnl: p.unrealizedPnl || (p.costBasis > 0 ? (p.currentPrice - p.costBasis) * p.quantity : 0),
         unrealizedPnlPercent:
           p.unrealizedPnlPercent || (p.costBasis > 0 ? ((p.currentPrice - p.costBasis) / p.costBasis) * 100 : 0),
         sector: p.sector,

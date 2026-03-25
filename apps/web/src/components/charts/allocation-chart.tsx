@@ -169,7 +169,7 @@ export default function AllocationChart() {
         <AllocationBar assetClasses={assetClasses} />
       ) : (
         <div className="min-h-0 flex-1">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minHeight={1}>
             <AreaChart data={chartData} stackOffset="expand" margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <XAxis
                 dataKey="date"
