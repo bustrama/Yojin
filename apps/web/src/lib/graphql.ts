@@ -59,6 +59,20 @@ const cache = cacheExchange({
       deleteSession(_result, _args, cache) {
         cache.invalidate('Query', 'sessions');
       },
+      clearAppData(_result, _args, cache) {
+        cache.invalidate('Query', 'portfolio');
+        cache.invalidate('Query', 'positions');
+        cache.invalidate('Query', 'portfolioHistory');
+        cache.invalidate('Query', 'enrichedSnapshot');
+        cache.invalidate('Query', 'riskReport');
+        cache.invalidate('Query', 'alerts');
+        cache.invalidate('Query', 'signals');
+        cache.invalidate('Query', 'sessions');
+        cache.invalidate('Query', 'latestInsightReport');
+        cache.invalidate('Query', 'insightReports');
+        cache.invalidate('Query', 'watchlist');
+        cache.invalidate('Query', 'deviceInfo');
+      },
     },
   },
 });
