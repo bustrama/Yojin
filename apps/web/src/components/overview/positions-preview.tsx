@@ -33,7 +33,7 @@ function Sparkline({ symbol, data, dayChangePercent }: { symbol: string; data: n
 
   return (
     <div className="pointer-events-none h-8 w-[100px]">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minHeight={1}>
         <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
           <defs>
             <linearGradient id={`positions-preview-spark-${symbol}`} x1="0" y1="0" x2="0" y2="1">
@@ -123,7 +123,7 @@ export default function PositionsPreview() {
               const arrow = isUp ? '\u25B2' : isDown ? '\u25BC' : '';
 
               return (
-                <tr key={pos.symbol} className="border-b border-border last:border-b-0">
+                <tr key={`${pos.symbol}:${pos.platform}`} className="border-b border-border last:border-b-0">
                   {/* Asset: logo + symbol + name */}
                   <td className="px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2">

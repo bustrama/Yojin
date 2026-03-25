@@ -85,7 +85,8 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
 
     const currentPrice = quote.price;
     const marketValue = pos.quantity * currentPrice;
-    const totalCost = pos.costBasis * pos.quantity;
+    const hasCostBasis = pos.costBasis > 0;
+    const totalCost = hasCostBasis ? pos.costBasis * pos.quantity : 0;
 
     return {
       ...pos,
@@ -93,8 +94,8 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
       marketValue,
       dayChange: quote.change,
       dayChangePercent: quote.changePercent,
-      unrealizedPnl: marketValue - totalCost,
-      unrealizedPnlPercent: pos.costBasis > 0 ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
+      unrealizedPnl: hasCostBasis ? marketValue - totalCost : 0,
+      unrealizedPnlPercent: hasCostBasis ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
     };
   });
 

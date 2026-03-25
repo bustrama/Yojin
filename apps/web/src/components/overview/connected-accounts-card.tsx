@@ -192,7 +192,7 @@ export default function ConnectedAccountsCard() {
         {allocation.length > 0 && (
           <div className="flex flex-shrink-0 flex-col items-center">
             <div className="h-[72px] w-[72px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minHeight={1}>
                 <PieChart>
                   <Pie
                     data={allocation}

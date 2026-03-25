@@ -67,8 +67,8 @@ export default function PositionTable({ positions }: { positions: Position[] }) 
             <th className={cn(TH, 'text-right')}>Avg Entry</th>
             <th className={cn(TH, 'text-right')}>Price</th>
             <th className={cn(TH, 'text-right')}>Value</th>
-            <th className={cn(TH, 'text-right')}>Today ($)</th>
-            <th className={cn(TH, 'text-right')}>Today (%)</th>
+            <th className={cn(TH, 'text-right')}>P&L ($)</th>
+            <th className={cn(TH, 'text-right')}>P&L (%)</th>
             <th className={cn(TH, 'text-right')}>Weight</th>
           </tr>
         </thead>

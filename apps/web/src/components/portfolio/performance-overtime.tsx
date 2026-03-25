@@ -42,7 +42,7 @@ export function PerformanceOvertime({ scale, empty }: PerformanceOvertimeProps) 
   }
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" minHeight={1}>
       <BarChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
         <XAxis dataKey="date" hide />
         <YAxis hide />
