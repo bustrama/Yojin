@@ -71,7 +71,7 @@ export default function PortfolioValueCard() {
 
   return (
     <DashboardCard title="Portfolio Value">
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 pt-2">
         <p className="text-3xl font-bold text-text-primary">{formatCurrency(totalValue)}</p>
         <div
           className={cn(

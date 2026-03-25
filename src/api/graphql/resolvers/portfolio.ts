@@ -35,6 +35,30 @@ export function setPortfolioJintelClient(c: JintelClient | undefined): void {
 // Live quote enrichment — batch-fetch from Jintel and merge onto positions
 // ---------------------------------------------------------------------------
 
+/** Build a synthetic sparkline (~20 points) from OHLC quote data. */
+function buildSyntheticSparkline(quote: MarketQuote): number[] {
+  const price = quote.price;
+  const o = quote.open ?? price;
+  const h = quote.high ?? Math.max(price, o);
+  const l = quote.low ?? Math.min(price, o);
+  const start = quote.previousClose ?? o;
+
+  // If price rose, show dip-then-rise; if fell, rise-then-dip
+  const anchors = price >= o ? [start, o, l, h, price] : [start, o, h, l, price];
+
+  const points: number[] = [];
+  const perSegment = 5;
+  for (let s = 0; s < anchors.length - 1; s++) {
+    const from = anchors[s];
+    const to = anchors[s + 1];
+    for (let i = 0; i < perSegment; i++) {
+      points.push(from + (to - from) * (i / perSegment));
+    }
+  }
+  points.push(anchors[anchors.length - 1]);
+  return points;
+}
+
 /**
  * Enrich a snapshot's positions with live market quotes from Jintel.
  * One batch call per snapshot — avoids N+1 per-position fetches.
@@ -85,7 +109,8 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
 
     const currentPrice = quote.price;
     const marketValue = pos.quantity * currentPrice;
-    const totalCost = pos.costBasis * pos.quantity;
+    const hasCostBasis = pos.costBasis > 0;
+    const totalCost = hasCostBasis ? pos.costBasis * pos.quantity : 0;
 
     return {
       ...pos,
@@ -93,8 +118,9 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
       marketValue,
       dayChange: quote.change,
       dayChangePercent: quote.changePercent,
-      unrealizedPnl: marketValue - totalCost,
-      unrealizedPnlPercent: pos.costBasis > 0 ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
+      unrealizedPnl: hasCostBasis ? marketValue - totalCost : 0,
+      unrealizedPnlPercent: hasCostBasis ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
+      sparkline: buildSyntheticSparkline(quote),
     };
   });
 
