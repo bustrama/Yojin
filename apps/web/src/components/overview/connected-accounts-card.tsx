@@ -174,9 +174,9 @@ export default function ConnectedAccountsCard() {
 
   return (
     <DashboardCard title="Connected Accounts" headerAction={addButton}>
-      <div className="flex min-h-0 flex-1 items-start gap-6 px-4 pb-4">
+      <div className="flex min-h-0 flex-1 items-start gap-6 px-4 pb-4 pt-2">
         {/* Account list */}
-        <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-2.5 overflow-y-auto" style={{ maxHeight: '160px' }}>
           {accounts.map((account) => (
             <div key={account.platform} className="flex items-center gap-2">
               <PlatformLogo platform={account.platform} size="xs" className="flex-shrink-0" />
@@ -192,7 +192,7 @@ export default function ConnectedAccountsCard() {
         {allocation.length > 0 && (
           <div className="flex flex-shrink-0 flex-col items-center">
             <div className="h-[72px] w-[72px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minHeight={1}>
                 <PieChart>
                   <Pie
                     data={allocation}

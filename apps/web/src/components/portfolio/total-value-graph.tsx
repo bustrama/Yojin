@@ -104,7 +104,7 @@ export function TotalValueGraph({ scale }: TotalValueGraphProps) {
   const pad = Math.max(5, (maxVal - minVal) * 0.1 || maxVal * 0.1);
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" minHeight={1}>
       <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
         <defs>
           <linearGradient id="totalValueGrad" x1="0" y1="0" x2="0" y2="1">

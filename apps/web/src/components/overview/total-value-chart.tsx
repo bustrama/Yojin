@@ -110,7 +110,7 @@ export default function TotalValueChart() {
   return (
     <DashboardCard title="Total Value" headerAction={timeRangeButtons} className="min-h-[120px] flex-1">
       <div className="min-h-0 flex-1 px-3 pb-1">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minHeight={1}>
           <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="totalValueGrad" x1="0" y1="0" x2="0" y2="1">
