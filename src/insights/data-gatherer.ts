@@ -100,6 +100,9 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
   const start = Date.now();
   const { snapshotStore, signalArchive, insightStore, getJintelClient, signalIngestor, memoryStores } = options;
   const jintelClient = getJintelClient?.();
+  if (!jintelClient) {
+    logger.warn('Jintel client not available — skipping enrichment and quotes');
+  }
 
   // 1. Get current portfolio
   const snapshot = await snapshotStore.getLatest();
@@ -320,6 +323,14 @@ async function batchEnrichChunked(client: JintelClient, tickers: string[]): Prom
       const result = await client.batchEnrich(chunk, ['market', 'risk']);
       if (result.success) {
         entities.push(...result.data);
+        const riskCount = result.data.reduce((n, e) => n + (e.risk?.signals?.length ?? 0), 0);
+        logger.info('Batch enrich succeeded', {
+          tickers: chunk,
+          entities: result.data.length,
+          riskSignals: riskCount,
+        });
+      } else {
+        logger.warn('Batch enrich returned failure', { tickers: chunk, error: result.error });
       }
     } catch (err) {
       logger.warn('Batch enrich chunk failed', { chunk: chunk.slice(0, 3), error: err });
