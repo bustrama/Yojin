@@ -86,8 +86,8 @@ export class SignalIngestor {
   /** Load existing content hashes from archive for dedup. */
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const recentSignals = await this.archive.query({ since: thirtyDaysAgo });
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const recentSignals = await this.archive.query({ since: ninetyDaysAgo });
     for (const sig of recentSignals) {
       this.knownHashes.set(sig.contentHash, sig.id);
     }

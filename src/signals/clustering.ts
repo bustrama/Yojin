@@ -330,7 +330,7 @@ export class SignalClustering {
       ...summary,
       version: (signal.version ?? 1) + 1,
     };
-    await this.options.archive.appendUpdate(enriched);
+    await this.options.archive.append(enriched);
     return summary;
   }
 

@@ -277,7 +277,7 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
         sig.sourceCount > 1
           ? ` (${sig.sourceCount} sources: ${sig.sourceNames.join(', ')})`
           : ` (${sig.sourceNames[0] ?? 'unknown'})`;
-      lines.push(`  - ${sig.title}${sources}`);
+      lines.push(`  - [${sig.outputType}] ${sig.title}${sources} (id:${sig.id})`);
     }
 
     // Memories

@@ -127,8 +127,8 @@ export class SignalGroupArchive {
     const windowMs = windowHours * 60 * 60 * 1000;
     const cutoff = new Date(Date.now() - windowMs).toISOString();
 
-    const allGroups = await this.query({});
-    return allGroups.filter((g) => g.lastEventAt >= cutoff && g.tickers.some((t) => tickerSet.has(t)));
+    const allGroups = await this.query({ since: cutoff });
+    return allGroups.filter((g) => g.tickers.some((t) => tickerSet.has(t)));
   }
 
   /** List all available date keys (YYYY-MM-DD). */

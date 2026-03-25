@@ -94,8 +94,8 @@ describe('formatBriefsForContext', () => {
     expect(result).toContain('Risk: 3.5/100');
     expect(result).toContain('Signals (7d): 2');
     expect(result).toContain('sentiment: BULLISH');
-    expect(result).toContain('Q4 earnings beat estimates by 5% (Reuters)');
-    expect(result).toContain('Apple announces new AI features (Bloomberg)');
+    expect(result).toContain('[INSIGHT] Q4 earnings beat estimates by 5% (Reuters) (id:sig-001)');
+    expect(result).toContain('[INSIGHT] Apple announces new AI features (Bloomberg) (id:sig-002)');
     expect(result).toContain('Past analysis:');
     expect(result).toContain('Hold position with trailing stop');
   });
