@@ -3,12 +3,10 @@
  * portfolio against recent signals and produces structured InsightReports.
  *
  * Pipeline:
- *   0. Data Gathering (code, no LLM) — fetches data sources, ingests signals, gathers data in parallel
- *   1. Triage (code, no LLM) — scores positions → hot / warm / cold
- *   2. Research Analyst (LLM) — deep analysis on hot + quick pass on warm
- *   3. Risk Manager (LLM) — portfolio risk from research brief
- *   4. Strategist (LLM) — synthesis, saves InsightReport, updates brain
- *   5. Merge (code) — carry forward cold positions from previous report
+ *   0. Data Gathering + Triage (code, no LLM) — fetches data sources, ingests signals, scores positions
+ *   1. Research Analyst + Risk Manager (LLM, parallel) — deep analysis + risk assessment simultaneously
+ *   2. Strategist (LLM) — synthesis, saves InsightReport, updates brain
+ *   3. Merge (code) — carry forward cold positions from previous report
  */
 
 import type { DataGathererOptions } from './data-gatherer.js';
@@ -18,6 +16,7 @@ import { mergeColdPositions } from './merge.js';
 import type { ColdPosition } from './triage.js';
 import { triagePositions } from './triage.js';
 import type { Orchestrator } from '../agents/orchestrator.js';
+import { emitProgress } from '../agents/orchestrator.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 
 const logger = createSubsystemLogger('process-insights');
@@ -91,94 +90,95 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
     id: 'process-insights',
     name: 'Process Insights',
     stages: [
-      // Stage 0: Research Analyst — pure analysis, no tool calls when data is pre-aggregated
-      {
-        agentId: 'research-analyst',
-        maxIterations: hasGatherer ? 1 : undefined,
-        disabledTools: hasGatherer ? RA_DISABLED_TOOLS : undefined,
-        buildMessage: (prev) => {
-          const dataBriefs = prev.get('__data_briefs')?.text;
-          const warmBriefs = prev.get('__warm_briefs')?.text;
-          const coldSummary = prev.get('__cold_summary')?.text;
+      // Stage 0: Research Analyst + Risk Manager — run in parallel
+      // Both read from pre-aggregated data, neither depends on the other.
+      // RA produces research briefs, RM produces risk assessment — Strategist synthesizes both.
+      [
+        {
+          agentId: 'research-analyst',
+          maxIterations: hasGatherer ? 1 : undefined,
+          disabledTools: hasGatherer ? RA_DISABLED_TOOLS : undefined,
+          buildMessage: (prev) => {
+            const dataBriefs = prev.get('__data_briefs')?.text;
+            const warmBriefs = prev.get('__warm_briefs')?.text;
+            const coldSummary = prev.get('__cold_summary')?.text;
 
-          // If pre-aggregated data exists, use it (no tool calls needed)
-          if (dataBriefs) {
-            let prompt =
-              `All portfolio data has been pre-aggregated below — no data-gathering tools are available. ` +
-              `Analyze ONLY using the data provided.\n\n` +
-              `## Positions Requiring Deep Analysis\n\n${dataBriefs}\n\n` +
-              `## Instructions — complete in 1 iteration\n` +
-              `Analyze ALL positions and output a structured brief per position:\n` +
-              `- Rating direction (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL) and conviction (0-1)\n` +
-              `- Key thesis (1-2 sentences)\n` +
-              `- Conflicting signals and sentiment shifts\n` +
-              `- Catalysts and risks\n` +
-              `- IMPORTANT: Preserve signal IDs (sig-xxx) and source URLs — the Strategist needs these for the report\n` +
-              `\nDo NOT call store_signal_memory — the Strategist handles memory persistence.\n` +
-              `Be concise — output a structured brief per position, not lengthy prose.\n`;
+            // If pre-aggregated data exists, use it (no tool calls needed)
+            if (dataBriefs) {
+              let prompt =
+                `All portfolio data has been pre-aggregated below — no data-gathering tools are available. ` +
+                `Analyze ONLY using the data provided.\n\n` +
+                `## Positions Requiring Deep Analysis\n\n${dataBriefs}\n\n` +
+                `## Instructions — complete in 1 iteration\n` +
+                `Analyze ALL positions and output a structured brief per position:\n` +
+                `- Rating direction (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL) and conviction (0-1)\n` +
+                `- Key thesis (1-2 sentences)\n` +
+                `- Conflicting signals and sentiment shifts\n` +
+                `- Catalysts and risks\n` +
+                `- IMPORTANT: Preserve signal IDs (sig-xxx) and source URLs — the Strategist needs these for the report\n` +
+                `\nDo NOT call store_signal_memory — the Strategist handles memory persistence.\n` +
+                `Be concise — output a structured brief per position, not lengthy prose.\n`;
 
-            if (warmBriefs) {
-              prompt +=
-                `\n## Positions Requiring Quick Rating\n` +
-                `These positions have moderate activity. Provide a brief 1-2 sentence rating ` +
-                `(STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL) with conviction for each:\n\n${warmBriefs}\n`;
+              if (warmBriefs) {
+                prompt +=
+                  `\n## Positions Requiring Quick Rating\n` +
+                  `These positions have moderate activity. Provide a brief 1-2 sentence rating ` +
+                  `(STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL) with conviction for each:\n\n${warmBriefs}\n`;
+              }
+
+              if (coldSummary) {
+                prompt +=
+                  `\n## Carried-Forward Positions (no analysis needed)\n` +
+                  `These positions have minimal activity and their previous ratings are carried forward:\n${coldSummary}\n`;
+              }
+
+              return prompt;
             }
 
-            if (coldSummary) {
-              prompt +=
-                `\n## Carried-Forward Positions (no analysis needed)\n` +
-                `These positions have minimal activity and their previous ratings are carried forward:\n${coldSummary}\n`;
-            }
-
-            return prompt;
-          }
-
-          // Fallback: original behavior if no pre-aggregated data
-          return (
-            `Analyze all positions in the current portfolio.\n\n` +
-            `## API Budget — minimize external calls\n` +
-            `You MUST minimize tool calls. Use batch parameters wherever possible.\n\n` +
-            `1. Call get_portfolio ONCE to see all current holdings\n` +
-            `2. Call market_quotes ONCE with ALL tickers in a single batch\n` +
-            `3. Call grep_signals ONCE with tickers=[...all tickers...] and since=(7 days ago)\n` +
-            `4. Call recall_signal_memories ONCE with tickers=[...all tickers...]\n` +
-            `5. Call batch_enrich ONCE with all tickers, fields: ['market', 'risk']\n\n` +
-            `CRITICAL: Do NOT loop over tickers individually.\n\n` +
-            `## Output — structured research brief per position\n` +
-            `For each position produce:\n` +
-            `- Symbol, name, key data points (price, market cap, P/E, etc.)\n` +
-            `- Recent signals summary with sentiment direction\n` +
-            `- Deep analysis: conflicting signals, sentiment shifts, upcoming catalysts\n` +
-            `- Notable changes or anomalies\n\n` +
-            `IMPORTANT: Preserve signal IDs (sig-xxx) and source URLs for provenance.`
-          );
+            // Fallback: original behavior if no pre-aggregated data
+            return (
+              `Analyze all positions in the current portfolio.\n\n` +
+              `## API Budget — minimize external calls\n` +
+              `You MUST minimize tool calls. Use batch parameters wherever possible.\n\n` +
+              `1. Call get_portfolio ONCE to see all current holdings\n` +
+              `2. Call market_quotes ONCE with ALL tickers in a single batch\n` +
+              `3. Call grep_signals ONCE with tickers=[...all tickers...] and since=(7 days ago)\n` +
+              `4. Call recall_signal_memories ONCE with tickers=[...all tickers...]\n` +
+              `5. Call batch_enrich ONCE with all tickers, fields: ['market', 'risk']\n\n` +
+              `CRITICAL: Do NOT loop over tickers individually.\n\n` +
+              `## Output — structured research brief per position\n` +
+              `For each position produce:\n` +
+              `- Symbol, name, key data points (price, market cap, P/E, etc.)\n` +
+              `- Recent signals summary with sentiment direction\n` +
+              `- Deep analysis: conflicting signals, sentiment shifts, upcoming catalysts\n` +
+              `- Notable changes or anomalies\n\n` +
+              `IMPORTANT: Preserve signal IDs (sig-xxx) and source URLs for provenance.`
+            );
+          },
         },
-      },
 
-      // Stage 1: Risk Manager — pure analysis, no tool calls when data is pre-aggregated
-      {
-        agentId: 'risk-manager',
-        maxIterations: hasGatherer ? 1 : undefined,
-        disabledTools: hasGatherer ? RM_DISABLED_TOOLS : undefined,
-        buildMessage: (prev) => {
-          const dataBriefs = prev.get('__data_briefs')?.text;
-          const riskMetrics = prev.get('__risk_metrics')?.text;
-          const raOutput = prev.get('research-analyst')?.text ?? '';
+        {
+          agentId: 'risk-manager',
+          maxIterations: hasGatherer ? 1 : undefined,
+          disabledTools: hasGatherer ? RM_DISABLED_TOOLS : undefined,
+          buildMessage: (prev) => {
+            const dataBriefs = prev.get('__data_briefs')?.text;
+            const riskMetrics = prev.get('__risk_metrics')?.text;
 
-          return (
-            `Analyze full portfolio risk using ONLY the data provided below.\n` +
-            `Risk metrics (weights, HHI, sector exposure) are already pre-computed — do NOT recalculate them.\n` +
-            `Focus on: interpreting the metrics, detecting correlations, identifying risk-adjusted themes.\n` +
-            `Complete in 1 iteration. Do NOT call any tools — all data is provided. Output analysis only.\n` +
-            `Be concise — output structured risk assessment, not lengthy narrative.\n\n` +
-            (riskMetrics ? `${riskMetrics}\n\n` : '') +
-            (dataBriefs ? `## Pre-Aggregated Position Data\n${dataBriefs}\n\n` : '') +
-            `## Research Analysis\n${raOutput}`
-          );
+            return (
+              `Analyze full portfolio risk using ONLY the data provided below.\n` +
+              `Risk metrics (weights, HHI, sector exposure) are already pre-computed — do NOT recalculate them.\n` +
+              `Focus on: interpreting the metrics, detecting correlations, identifying risk-adjusted themes.\n` +
+              `Complete in 1 iteration. Do NOT call any tools — all data is provided. Output analysis only.\n` +
+              `Be concise — output structured risk assessment, not lengthy narrative.\n\n` +
+              (riskMetrics ? `${riskMetrics}\n\n` : '') +
+              (dataBriefs ? `## Pre-Aggregated Position Data\n${dataBriefs}\n\n` : '')
+            );
+          },
         },
-      },
+      ],
 
-      // Stage 2: Strategist — 1 iteration to batch all tool calls, 1 to emit final text
+      // Stage 1: Strategist — 1 iteration to batch all tool calls, 1 to emit final text
       {
         agentId: 'strategist',
         maxIterations: hasGatherer ? 2 : undefined,
@@ -224,6 +224,14 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
     // Pre-aggregate data before the workflow stages run
     beforeWorkflow: gathererOptions
       ? async (outputs) => {
+          const wfId = 'process-insights';
+          emitProgress({
+            workflowId: wfId,
+            stage: 'activity',
+            message: 'Gathering portfolio data, market quotes, and signals...',
+            timestamp: new Date().toISOString(),
+          });
+
           logger.info('Running data pre-aggregation...');
           pendingColdPositions = []; // Reset for this run
           const result = await gatherDataBriefs(gathererOptions);
@@ -240,6 +248,13 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
             warm: triage.warm.length,
             cold: triage.cold.length,
             gatherMs: result.gatherDurationMs,
+          });
+
+          emitProgress({
+            workflowId: wfId,
+            stage: 'activity',
+            message: `Data gathered in ${(result.gatherDurationMs / 1000).toFixed(1)}s — ${triage.hot.length} hot, ${triage.warm.length} warm, ${triage.cold.length} cold positions`,
+            timestamp: new Date().toISOString(),
           });
 
           // Inject pre-aggregated data as pseudo-agent outputs
