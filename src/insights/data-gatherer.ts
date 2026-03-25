@@ -13,6 +13,7 @@ import type { Entity, JintelClient, MarketQuote } from '@yojinhq/jintel-client';
 
 import type { InsightStore } from './insight-store.js';
 import type { InsightReport } from './types.js';
+import { fetchAllEnabledSources } from '../api/graphql/resolvers/fetch-data-source.js';
 import type { Position } from '../api/graphql/types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
@@ -104,7 +105,21 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
   const tickers = snapshot.positions.map((p) => p.symbol);
   logger.info('Gathering data briefs', { positionCount: tickers.length });
 
-  // 2. Parallel data fetching — all independent calls at once
+  // 2. Fetch fresh signals from all enabled data sources
+  try {
+    const fetchResult = await fetchAllEnabledSources();
+    logger.info('Data source fetch complete', {
+      ingested: fetchResult.totalIngested,
+      duplicates: fetchResult.totalDuplicates,
+      sources: fetchResult.sourcesAttempted,
+    });
+  } catch (err) {
+    logger.warn('Data source fetch failed — continuing with existing signals', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // 3. Parallel lookups — signals (now fresh), quotes, enrichments, memories
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const [signals, quotes, enrichments, memories, previousReport] = await Promise.all([
@@ -122,13 +137,13 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
     insightStore.getLatest(),
   ]);
 
-  // 3. Index data by ticker for O(1) lookup
+  // 4. Index data by ticker for O(1) lookup
   const signalsByTicker = groupSignalsByTicker(signals, tickers);
   const quotesByTicker = indexQuotes(quotes);
   const enrichmentByTicker = indexEnrichments(enrichments);
   const memoriesByTicker = indexMemories(memories, tickers);
 
-  // 4. Build compact briefs
+  // 5. Build compact briefs
   const briefs: DataBrief[] = snapshot.positions.map((pos) => {
     const tickerSignals = signalsByTicker.get(pos.symbol) ?? [];
     const quote = quotesByTicker.get(pos.symbol);
