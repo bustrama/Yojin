@@ -38,7 +38,7 @@ export default function PortfolioOverviewCard({ period }: PortfolioOverviewCardP
       <RichCard>
         <RichCard.Header icon={BarChart3} title="Portfolio Performance" badge={PERIOD_LABELS[period]} />
         <div className="flex items-center justify-center px-6 py-8">
-          <Spinner size="sm" />
+          <Spinner size="sm" label="Loading portfolio…" />
         </div>
       </RichCard>
     );

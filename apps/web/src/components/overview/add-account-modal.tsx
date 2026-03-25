@@ -1,11 +1,22 @@
 import { useState, useCallback } from 'react';
+import { useMutation } from 'urql';
 import Modal from '../common/modal';
 import Button from '../common/button';
 import Input from '../common/input';
 import { PlatformTile, PLATFORMS } from '../onboarding/platform-tile';
+import { PlatformLogo } from '../platforms/platform-logos';
 import { DropZone } from '../onboarding/drop-zone';
 import { EditableTable } from '../onboarding/editable-table';
 import type { ExtractedPosition } from '../onboarding/editable-table';
+import { CONFIRM_POSITIONS_MUTATION } from '../../api/documents';
+import { lookupSymbolName } from '../../lib/symbol-names';
+import {
+  sanitizeSymbol,
+  sanitizeNumeric,
+  sanitizePlatformName,
+  validateEntries,
+  type ManualEntryErrors,
+} from '../../lib/manual-entry-validation';
 
 type Screen = 'grid' | 'detail' | 'manual' | 'custom' | 'verify';
 
@@ -14,81 +25,28 @@ interface ManualEntry {
   name: string;
   quantity: string;
   avgEntry: string;
+  marketPrice: string;
   marketValue: string;
 }
 
-const EMPTY_MANUAL: ManualEntry = { symbol: '', name: '', quantity: '', avgEntry: '', marketValue: '' };
-
-/** Common symbol → company name lookup for auto-complete. */
-const SYMBOL_NAMES: Record<string, string> = {
-  AAPL: 'Apple Inc.',
-  MSFT: 'Microsoft Corp.',
-  GOOGL: 'Alphabet Inc.',
-  AMZN: 'Amazon.com Inc.',
-  META: 'Meta Platforms Inc.',
-  NVDA: 'NVIDIA Corp.',
-  TSLA: 'Tesla Inc.',
-  BRK: 'Berkshire Hathaway',
-  JPM: 'JPMorgan Chase',
-  V: 'Visa Inc.',
-  JNJ: 'Johnson & Johnson',
-  WMT: 'Walmart Inc.',
-  PG: 'Procter & Gamble',
-  MA: 'Mastercard Inc.',
-  UNH: 'UnitedHealth Group',
-  HD: 'Home Depot',
-  DIS: 'Walt Disney Co.',
-  BAC: 'Bank of America',
-  ADBE: 'Adobe Inc.',
-  CRM: 'Salesforce Inc.',
-  NFLX: 'Netflix Inc.',
-  AMD: 'Advanced Micro Devices',
-  INTC: 'Intel Corp.',
-  PYPL: 'PayPal Holdings',
-  CSCO: 'Cisco Systems',
-  PEP: 'PepsiCo Inc.',
-  AVGO: 'Broadcom Inc.',
-  COST: 'Costco Wholesale',
-  TMO: 'Thermo Fisher',
-  ABT: 'Abbott Labs',
-  NKE: 'Nike Inc.',
-  MRK: 'Merck & Co.',
-  BTC: 'Bitcoin',
-  ETH: 'Ethereum',
-  SOL: 'Solana',
-  DOGE: 'Dogecoin',
-  ADA: 'Cardano',
-  XRP: 'Ripple',
-  DOT: 'Polkadot',
-  AVAX: 'Avalanche',
-  MATIC: 'Polygon',
-  LINK: 'Chainlink',
-  COIN: 'Coinbase Global',
-  SQ: 'Block Inc.',
-  SHOP: 'Shopify Inc.',
-  UBER: 'Uber Technologies',
-  ABNB: 'Airbnb Inc.',
-  SNAP: 'Snap Inc.',
-  PLTR: 'Palantir Technologies',
-  RIVN: 'Rivian Automotive',
-  SPY: 'SPDR S&P 500 ETF',
-  QQQ: 'Invesco QQQ Trust',
-  IWM: 'iShares Russell 2000',
-  VOO: 'Vanguard S&P 500',
-  VTI: 'Vanguard Total Market',
-  ARKK: 'ARK Innovation ETF',
-  GLD: 'SPDR Gold Shares',
+const EMPTY_MANUAL: ManualEntry = {
+  symbol: '',
+  name: '',
+  quantity: '',
+  avgEntry: '',
+  marketPrice: '',
+  marketValue: '',
 };
 
 function lookupName(symbol: string): string {
-  return SYMBOL_NAMES[symbol.toUpperCase().trim()] ?? '';
+  return lookupSymbolName(symbol);
 }
 
-function computeValue(qty: string, avgEntry: string): string {
+function computeValue(qty: string, price: string): string {
   const q = parseFloat(qty);
-  const a = parseFloat(avgEntry);
-  if (isNaN(q) || isNaN(a)) return '';
-  return (q * a).toFixed(2);
+  const p = parseFloat(price);
+  if (isNaN(q) || isNaN(p)) return '';
+  return (q * p).toFixed(2);
 }
 
 interface AddAccountModalProps {
@@ -106,7 +64,9 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   const [uploadError, setUploadError] = useState<string>();
   const [confirming, setConfirming] = useState(false);
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([{ ...EMPTY_MANUAL }]);
+  const [, executeConfirmPositions] = useMutation(CONFIRM_POSITIONS_MUTATION);
   const [customPlatformName, setCustomPlatformName] = useState('');
+  const [entryErrors, setEntryErrors] = useState<ManualEntryErrors[]>([]);
 
   const selectedPlatform = PLATFORMS.find((p) => p.id === selectedPlatformId);
   const isConnected = (id: string) => connectedPlatforms.includes(id);
@@ -120,6 +80,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
     setConfirming(false);
     setManualEntries([{ ...EMPTY_MANUAL }]);
     setCustomPlatformName('');
+    setEntryErrors([]);
   };
 
   const handleClose = () => {
@@ -156,7 +117,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `mutation ($input: ScreenshotInput!) { parsePortfolioScreenshot(input: $input) { success positions { symbol name quantity avgEntry marketValue } confidence warnings error } }`,
+            query: `mutation ($input: ScreenshotInput!) { parsePortfolioScreenshot(input: $input) { success positions { symbol name quantity avgEntry marketPrice marketValue } confidence warnings error } }`,
             variables: {
               input: { image: base64, mediaType: file.type, platform: selectedPlatformId },
             },
@@ -182,6 +143,10 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   );
 
   const handleManualDone = () => {
+    const { valid, errors } = validateEntries(manualEntries);
+    setEntryErrors(errors);
+    if (!valid) return;
+
     const positions: ExtractedPosition[] = manualEntries
       .filter((e) => e.symbol.trim())
       .map((e) => ({
@@ -189,6 +154,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
         name: e.name.trim(),
         quantity: e.quantity ? parseFloat(e.quantity) : null,
         avgEntry: e.avgEntry ? parseFloat(e.avgEntry) : null,
+        marketPrice: e.marketPrice ? parseFloat(e.marketPrice) : null,
         marketValue: e.marketValue ? parseFloat(e.marketValue) : null,
       }));
     if (positions.length) {
@@ -201,39 +167,32 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
     if (!selectedPlatformId || extractedPositions.length === 0) return;
     setConfirming(true);
     try {
-      const res = await fetch('/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `mutation ($input: ConfirmPositionsInput!) { confirmPositions(input: $input) }`,
-          variables: {
-            input: {
-              platform: selectedPlatformId,
-              positions: extractedPositions.map((p) => ({
-                symbol: p.symbol,
-                name: p.name,
-                quantity: p.quantity,
-                avgEntry: p.avgEntry,
-                marketValue: p.marketValue,
-              })),
-            },
-          },
-        }),
+      const result = await executeConfirmPositions({
+        input: {
+          platform: selectedPlatformId,
+          positions: extractedPositions.map((p) => ({
+            symbol: p.symbol,
+            name: p.name,
+            quantity: p.quantity,
+            avgEntry: p.avgEntry,
+            marketPrice: p.marketPrice,
+            marketValue: p.marketValue,
+          })),
+        },
       });
-      const json = await res.json();
-      if (json?.data?.confirmPositions) {
+      if (result.data?.confirmPositions) {
         resetState();
         onClose();
         onSuccess();
       } else {
-        setUploadError(json?.errors?.[0]?.message ?? 'Failed to save positions. Please try again.');
+        setUploadError(result.error?.message ?? 'Failed to save positions. Please try again.');
       }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Failed to save positions.');
     } finally {
       setConfirming(false);
     }
-  }, [selectedPlatformId, extractedPositions, onClose, onSuccess]);
+  }, [selectedPlatformId, extractedPositions, executeConfirmPositions, onClose, onSuccess]);
 
   const handleBack = () => {
     if (screen === 'detail' || screen === 'custom') {
@@ -248,22 +207,34 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   };
 
   const updateManualEntry = (idx: number, field: keyof ManualEntry, value: string) => {
+    const sanitized = field === 'symbol' ? sanitizeSymbol(value) : field === 'name' ? value : sanitizeNumeric(value);
+
     setManualEntries((prev) =>
       prev.map((e, i) => {
         if (i !== idx) return e;
-        const updated = { ...e, [field]: value };
+        const updated = { ...e, [field]: sanitized };
         if (field === 'symbol') {
-          updated.name = lookupName(value);
+          updated.name = lookupName(sanitized);
         }
-        if (field === 'quantity' || field === 'avgEntry') {
+        if (field === 'quantity' || field === 'marketPrice') {
           updated.marketValue = computeValue(
-            field === 'quantity' ? value : e.quantity,
-            field === 'avgEntry' ? value : e.avgEntry,
+            field === 'quantity' ? sanitized : e.quantity,
+            field === 'marketPrice' ? sanitized : e.marketPrice,
           );
         }
         return updated;
       }),
     );
+
+    // Clear error for the field being edited
+    setEntryErrors((prev) => {
+      const copy = [...prev];
+      if (copy[idx]) {
+        const { [field]: _, ...rest } = copy[idx];
+        copy[idx] = rest;
+      }
+      return copy;
+    });
   };
 
   const addManualRow = () => setManualEntries((prev) => [...prev, { ...EMPTY_MANUAL }]);
@@ -281,6 +252,10 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
   };
 
   const handleCustomDone = () => {
+    const { valid, errors } = validateEntries(manualEntries);
+    setEntryErrors(errors);
+    if (!valid) return;
+
     const platformId = customPlatformName.trim().toUpperCase().replace(/\s+/g, '_');
     const positions: ExtractedPosition[] = manualEntries
       .filter((e) => e.symbol.trim())
@@ -289,6 +264,7 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
         name: e.name.trim(),
         quantity: e.quantity ? parseFloat(e.quantity) : null,
         avgEntry: e.avgEntry ? parseFloat(e.avgEntry) : null,
+        marketPrice: e.marketPrice ? parseFloat(e.marketPrice) : null,
         marketValue: e.marketValue ? parseFloat(e.marketValue) : null,
       }));
     if (positions.length && platformId) {
@@ -298,16 +274,26 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
     }
   };
 
+  const platformTitle = (label: string) =>
+    selectedPlatformId ? (
+      <span className="flex items-center gap-2">
+        <PlatformLogo platform={selectedPlatformId} size="sm" />
+        {label}
+      </span>
+    ) : (
+      label
+    );
+
   const title =
     screen === 'grid'
       ? 'Add Account'
       : screen === 'detail'
-        ? (selectedPlatform?.name ?? 'Add Account')
+        ? platformTitle(selectedPlatform?.name ?? 'Add Account')
         : screen === 'manual'
-          ? `Add positions \u2014 ${selectedPlatform?.name}`
+          ? platformTitle(`Add positions \u2014 ${selectedPlatform?.name}`)
           : screen === 'custom'
             ? 'Add custom platform'
-            : `Verify positions \u2014 ${selectedPlatform?.name ?? customPlatformName.trim()}`;
+            : platformTitle(`Verify positions \u2014 ${selectedPlatform?.name ?? customPlatformName.trim()}`);
 
   return (
     <Modal open={open} onClose={handleClose} title={title} maxWidth="max-w-2xl">
@@ -351,12 +337,6 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
       {/* Platform Detail — screenshot upload */}
       {screen === 'detail' && selectedPlatform && (
         <div>
-          <div className="mb-4 flex items-center gap-3">
-            {selectedPlatform.logo && (
-              <img src={selectedPlatform.logo} alt={selectedPlatform.name} className="h-8 w-8 rounded-lg" />
-            )}
-            <p className="text-sm text-text-secondary">Add with screenshot</p>
-          </div>
           <ol className="mb-5 space-y-2">
             {selectedPlatform.instructions.map((step, i) => (
               <li key={i} className="flex gap-3 text-sm text-text-secondary">
@@ -386,61 +366,85 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
         <div>
           <p className="mb-4 text-sm text-text-secondary">Enter your holdings manually.</p>
           <div className="mb-5 space-y-3">
-            {manualEntries.map((entry, idx) => (
-              <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
-                <Input
-                  label={idx === 0 ? 'Symbol' : undefined}
-                  placeholder="AAPL"
-                  value={entry.symbol}
-                  onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Auto"
-                  value={entry.name}
-                  readOnly
-                  size="sm"
-                  className="flex-1 opacity-60"
-                />
-                <Input
-                  label={idx === 0 ? 'Qty' : undefined}
-                  placeholder="10"
-                  value={entry.quantity}
-                  onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Avg Entry' : undefined}
-                  placeholder="150.00"
-                  value={entry.avgEntry}
-                  onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Value' : undefined}
-                  placeholder="Auto"
-                  value={entry.marketValue}
-                  readOnly
-                  size="sm"
-                  className="w-24 opacity-60"
-                />
-                {manualEntries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeManualRow(idx)}
-                    className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+            {manualEntries.map((entry, idx) => {
+              const rowErrors = entryErrors[idx] ?? {};
+              return (
+                <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
+                  <Input
+                    label={idx === 0 ? 'Symbol' : undefined}
+                    placeholder="AAPL"
+                    value={entry.symbol}
+                    onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
+                    error={rowErrors.symbol}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Name' : undefined}
+                    placeholder="Auto"
+                    value={entry.name}
+                    readOnly
+                    size="sm"
+                    className="flex-1 opacity-60"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Qty' : undefined}
+                    placeholder="10"
+                    inputMode="decimal"
+                    value={entry.quantity}
+                    onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
+                    error={rowErrors.quantity}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Avg Entry' : undefined}
+                    placeholder="150.00"
+                    inputMode="decimal"
+                    value={entry.avgEntry}
+                    onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
+                    error={rowErrors.avgEntry}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Mkt Price' : undefined}
+                    placeholder="175.00"
+                    inputMode="decimal"
+                    value={entry.marketPrice}
+                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
+                    error={rowErrors.marketPrice}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Value' : undefined}
+                    placeholder="Auto"
+                    value={entry.marketValue}
+                    readOnly
+                    size="sm"
+                    className="w-24 opacity-60"
+                  />
+                  {manualEntries.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeManualRow(idx)}
+                      className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
               onClick={addManualRow}
@@ -477,67 +481,91 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
               label="Platform name"
               placeholder="e.g. eToro, Vanguard, My 401k"
               value={customPlatformName}
-              onChange={(e) => setCustomPlatformName(e.target.value)}
+              onChange={(e) => setCustomPlatformName(sanitizePlatformName(e.target.value))}
               size="md"
             />
           </div>
           <p className="mb-2 text-sm font-medium text-text-secondary">Positions</p>
           <div className="mb-5 space-y-3">
-            {manualEntries.map((entry, idx) => (
-              <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
-                <Input
-                  label={idx === 0 ? 'Symbol' : undefined}
-                  placeholder="AAPL"
-                  value={entry.symbol}
-                  onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Auto"
-                  value={entry.name}
-                  readOnly
-                  size="sm"
-                  className="flex-1 opacity-60"
-                />
-                <Input
-                  label={idx === 0 ? 'Qty' : undefined}
-                  placeholder="10"
-                  value={entry.quantity}
-                  onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Avg Entry' : undefined}
-                  placeholder="150.00"
-                  value={entry.avgEntry}
-                  onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Value' : undefined}
-                  placeholder="Auto"
-                  value={entry.marketValue}
-                  readOnly
-                  size="sm"
-                  className="w-24 opacity-60"
-                />
-                {manualEntries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeManualRow(idx)}
-                    className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+            {manualEntries.map((entry, idx) => {
+              const rowErrors = entryErrors[idx] ?? {};
+              return (
+                <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
+                  <Input
+                    label={idx === 0 ? 'Symbol' : undefined}
+                    placeholder="AAPL"
+                    value={entry.symbol}
+                    onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
+                    error={rowErrors.symbol}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Name' : undefined}
+                    placeholder="Auto"
+                    value={entry.name}
+                    readOnly
+                    size="sm"
+                    className="flex-1 opacity-60"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Qty' : undefined}
+                    placeholder="10"
+                    inputMode="decimal"
+                    value={entry.quantity}
+                    onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
+                    error={rowErrors.quantity}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Avg Entry' : undefined}
+                    placeholder="150.00"
+                    inputMode="decimal"
+                    value={entry.avgEntry}
+                    onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
+                    error={rowErrors.avgEntry}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Mkt Price' : undefined}
+                    placeholder="175.00"
+                    inputMode="decimal"
+                    value={entry.marketPrice}
+                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
+                    error={rowErrors.marketPrice}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Value' : undefined}
+                    placeholder="Auto"
+                    value={entry.marketValue}
+                    readOnly
+                    size="sm"
+                    className="w-24 opacity-60"
+                  />
+                  {manualEntries.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeManualRow(idx)}
+                      className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
               onClick={addManualRow}

@@ -29,7 +29,7 @@ export default function AllocationCard() {
       <RichCard>
         <RichCard.Header icon={PieChart} title="Allocation Breakdown" badge="PORTFOLIO" />
         <div className="flex items-center justify-center px-6 py-8">
-          <Spinner size="sm" />
+          <Spinner size="sm" label="Loading allocations…" />
         </div>
       </RichCard>
     );

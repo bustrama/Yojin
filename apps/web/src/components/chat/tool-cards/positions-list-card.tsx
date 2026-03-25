@@ -68,7 +68,7 @@ export default function PositionsListCard({ variant }: PositionsListCardProps) {
       <RichCard>
         <RichCard.Header icon={config.icon} title={config.title} badge={config.badge} />
         <div className="flex items-center justify-center px-6 py-8">
-          <Spinner size="sm" />
+          <Spinner size="sm" label="Fetching positions…" />
         </div>
       </RichCard>
     );
