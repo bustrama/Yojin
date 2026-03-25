@@ -45,6 +45,8 @@ export interface SignalQueryFilter {
   search?: string;
   /** Minimum confidence threshold (0-1). Signals below this are excluded. */
   minConfidence?: number;
+  /** Filter by output type (INSIGHT or ALERT). */
+  outputType?: string;
   /** Max signals to return. */
   limit?: number;
 }
@@ -63,6 +65,15 @@ export class SignalArchive {
     const dateKey = signal.publishedAt.slice(0, 10); // YYYY-MM-DD
     const filePath = join(this.dir, `${dateKey}.jsonl`);
     await appendFile(filePath, JSON.stringify(signal) + '\n');
+  }
+
+  /**
+   * Append an updated version of an existing signal to the archive.
+   * Semantic alias for `append()` — makes update intent clear at call sites.
+   * Deduplication (keeping only the highest version) happens on read via `readFile()`.
+   */
+  async appendUpdate(signal: Signal): Promise<void> {
+    return this.append(signal);
   }
 
   /** Append multiple signals (batched for same-day writes). */
@@ -193,10 +204,34 @@ export class SignalArchive {
         }
       }
 
-      return signals;
+      return this.deduplicateByVersion(signals);
     } catch {
       return [];
     }
+  }
+
+  /**
+   * When multiple entries share the same `id`, keep only the one with the
+   * highest `version`. Preserves the relative order of the winning entries.
+   */
+  private deduplicateByVersion(signals: Signal[]): Signal[] {
+    const best = new Map<string, Signal>();
+    for (const signal of signals) {
+      const existing = best.get(signal.id);
+      if (!existing || signal.version > existing.version) {
+        best.set(signal.id, signal);
+      }
+    }
+    // Return in original encounter order (first occurrence of each winning id)
+    const seen = new Set<string>();
+    const result: Signal[] = [];
+    for (const signal of signals) {
+      if (seen.has(signal.id)) continue;
+      const winner = best.get(signal.id);
+      if (winner) result.push(winner);
+      seen.add(signal.id);
+    }
+    return result;
   }
 
   private matchesFilter(signal: Signal, filter: SignalQueryFilter): boolean {
@@ -225,6 +260,7 @@ export class SignalArchive {
       if (!haystack.includes(term)) return false;
     }
     if (filter.minConfidence != null && signal.confidence < filter.minConfidence) return false;
+    if (filter.outputType && (signal.outputType ?? 'INSIGHT') !== filter.outputType) return false;
     return true;
   }
 
