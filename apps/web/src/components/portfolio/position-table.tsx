@@ -48,7 +48,7 @@ function getPlatformLabel(platform: string): string {
 
 const TH = 'px-4 py-2.5 text-2xs font-medium uppercase tracking-wider text-text-muted';
 
-export default function PositionTable({ positions }: { positions: Position[] }) {
+export default function PositionTable({ positions, onAdd }: { positions: Position[]; onAdd?: () => void }) {
   const totalValue = useMemo(() => positions.reduce((sum, p) => sum + p.marketValue, 0), [positions]);
   const [editing, setEditing] = useState<Position | null>(null);
   const [removing, setRemoving] = useState<Position | null>(null);
@@ -72,7 +72,20 @@ export default function PositionTable({ positions }: { positions: Position[] }) 
               <th className={cn(TH, 'text-right')}>Today ($)</th>
               <th className={cn(TH, 'text-right')}>Today (%)</th>
               <th className={cn(TH, 'text-right')}>Weight</th>
-              <th className={cn(TH, 'w-16')} />
+              <th className={cn(TH, 'w-16')}>
+                {onAdd && (
+                  <button
+                    type="button"
+                    title="Add position"
+                    onClick={onAdd}
+                    className="cursor-pointer rounded p-0.5 text-text-muted hover:text-accent-primary hover:bg-accent-primary/10 transition-colors"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                  </button>
+                )}
+              </th>
             </tr>
           </thead>
           <tbody>
