@@ -105,14 +105,9 @@ export async function signalsResolver(
   if (args.until) filter.until = args.until;
   if (args.search) filter.search = args.search;
   if (args.minConfidence != null) filter.minConfidence = args.minConfidence;
+  if (args.outputType) filter.outputType = args.outputType;
   filter.limit = args.limit ?? 50;
 
-  let signals = await archive.query(filter);
-
-  // Post-filter by outputType since SignalQueryFilter doesn't have it
-  if (args.outputType) {
-    signals = signals.filter((s) => (s.outputType ?? 'INSIGHT') === args.outputType);
-  }
-
+  const signals = await archive.query(filter);
   return signals.map(toGql);
 }

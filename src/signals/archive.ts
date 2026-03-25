@@ -45,6 +45,8 @@ export interface SignalQueryFilter {
   search?: string;
   /** Minimum confidence threshold (0-1). Signals below this are excluded. */
   minConfidence?: number;
+  /** Filter by output type (INSIGHT or ALERT). */
+  outputType?: string;
   /** Max signals to return. */
   limit?: number;
 }
@@ -258,6 +260,7 @@ export class SignalArchive {
       if (!haystack.includes(term)) return false;
     }
     if (filter.minConfidence != null && signal.confidence < filter.minConfidence) return false;
+    if (filter.outputType && (signal.outputType ?? 'INSIGHT') !== filter.outputType) return false;
     return true;
   }
 

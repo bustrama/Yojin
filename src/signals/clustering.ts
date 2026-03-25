@@ -237,13 +237,14 @@ export class SignalClustering {
       new Set([...existing.assets.map((a) => a.ticker), ...incoming.assets.map((a) => a.ticker)]),
     );
 
-    if (existingGroupId) {
-      // Existing group — fetch and update it
-      const group = await this.options.groupArchive.getById(existingGroupId);
+    // Try to add to an existing group (either signal may already belong to one)
+    const knownGroupId = existingGroupId ?? incomingGroupId;
+    if (knownGroupId) {
+      const group = await this.options.groupArchive.getById(knownGroupId);
       if (group) {
         const updatedGroup: SignalGroup = {
           ...group,
-          signalIds: Array.from(new Set([...group.signalIds, incoming.id])),
+          signalIds: Array.from(new Set([...group.signalIds, existing.id, incoming.id])),
           tickers: Array.from(new Set([...group.tickers, ...allTickers])),
           summary: groupSummary,
           lastEventAt: now,
@@ -252,17 +253,27 @@ export class SignalClustering {
         };
         await this.options.groupArchive.appendUpdate(updatedGroup);
 
-        // Store incoming signal enriched + with groupId in one write
+        // Store incoming signal enriched + with groupId
         const enrichedIncoming: Signal = {
           ...incoming,
           ...summary,
-          groupId: existingGroupId,
+          groupId: knownGroupId,
           version: (incoming.version ?? 1) + 1,
         };
         await this.options.archive.appendUpdate(enrichedIncoming);
 
+        // Ensure existing signal also has the groupId
+        if (!existingGroupId) {
+          const updatedExisting: Signal = {
+            ...existing,
+            groupId: knownGroupId,
+            version: (existing.version ?? 1) + 1,
+          };
+          await this.options.archive.appendUpdate(updatedExisting);
+        }
+
         logger.debug('SignalClustering: added signal to existing group', {
-          groupId: existingGroupId,
+          groupId: knownGroupId,
           incomingId: incoming.id,
         });
         return;

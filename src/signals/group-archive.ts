@@ -226,11 +226,11 @@ export class SignalGroupArchive {
     }
     if (filter.since) {
       const bound = filter.since.includes('T') ? filter.since : `${filter.since}T00:00:00.000Z`;
-      if (group.createdAt < bound) return false;
+      if (group.lastEventAt < bound) return false;
     }
     if (filter.until) {
       const bound = filter.until.includes('T') ? filter.until : `${filter.until}T23:59:59.999Z`;
-      if (group.createdAt > bound) return false;
+      if (group.lastEventAt > bound) return false;
     }
     return true;
   }
