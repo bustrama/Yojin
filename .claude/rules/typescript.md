@@ -35,6 +35,15 @@ globs: ["**/*.ts"]
 - Functions/methods: camelCase.
 - Constants: UPPER_SNAKE_CASE for true constants, camelCase for derived values.
 
+## String Matching
+- **Use word boundaries when matching identifiers in text.** Plain `string.includes(sym)` will match short tickers (e.g. "A", "T", "MO") as substrings of unrelated words ("MACRO", "TECH", "MOMENTUM"). Use `RegExp` with `(?<![A-Z0-9])` / `(?![A-Z0-9])` lookaround instead. Always escape user/data-derived strings before `new RegExp()` interpolation — tickers like `BRK.B` contain regex metacharacters.
+
+## React
+- **Keep reducers and subscription handlers pure.** urql `useSubscription` reducers and React `useReducer` handlers must not call `setState`, trigger queries, or produce other side effects. Derive state from the accumulated result and handle side effects in a separate `useEffect`.
+- **Extract shared components.** When a UI component (e.g. `SignalChips`) or utility (e.g. `timeAgo`) is duplicated across 2+ sibling files, extract it into a shared module immediately.
+- **Don't derive semantic meaning from CSS class names.** Use explicit data fields (e.g. `variant: 'accent'`) instead of parsing Tailwind utility strings to determine behavior.
+- **Distinguish loading from empty.** When a query result is `undefined`, check `result.fetching` before showing the no-data fallback. Users should see a loading indicator during fetch, not a misleading "no data yet" CTA.
+
 ## Imports
 - Group imports: node builtins, external packages, internal modules.
 - Use `import type` for type-only imports.

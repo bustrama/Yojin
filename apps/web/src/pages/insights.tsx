@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useSubscription } from 'urql';
 import { cn } from '../lib/utils';
 import {
+  INSIGHTS_WORKFLOW_STATUS_QUERY,
   LATEST_INSIGHT_REPORT_QUERY,
   ON_WORKFLOW_PROGRESS_SUBSCRIPTION,
   PROCESS_INSIGHTS_MUTATION,
@@ -10,6 +11,7 @@ import {
 import type {
   InsightRating,
   InsightReport,
+  InsightsWorkflowStatusQueryResult,
   LatestInsightReportQueryResult,
   OnWorkflowProgressSubscriptionResult,
   OnWorkflowProgressVariables,
@@ -95,7 +97,25 @@ export default function Insights() {
 
   const [mutationResult, processInsights] = useMutation<ProcessInsightsMutationResult>(PROCESS_INSIGHTS_MUTATION);
 
-  const loading = mutationResult.fetching;
+  // Check if a workflow is already running (e.g. user navigated away and back)
+  const [statusResult, reexecuteStatusQuery] = useQuery<InsightsWorkflowStatusQueryResult>({
+    query: INSIGHTS_WORKFLOW_STATUS_QUERY,
+    requestPolicy: 'network-only',
+  });
+
+  const [reconnecting, setReconnecting] = useState(false);
+  const reconnectStartedAt = useRef<string | null>(null);
+
+  // Detect running workflow on mount and set reconnecting state
+  const backendRunning = statusResult.data?.insightsWorkflowStatus.running ?? false;
+  useEffect(() => {
+    if (backendRunning && !mutationResult.fetching && !reconnecting) {
+      setReconnecting(true);
+      reconnectStartedAt.current = statusResult.data?.insightsWorkflowStatus.startedAt ?? null;
+    }
+  }, [backendRunning, mutationResult.fetching, reconnecting, statusResult.data]);
+
+  const loading = mutationResult.fetching || reconnecting;
   const error = mutationResult.error;
 
   // Subscribe to real-time workflow progress while processing.
@@ -115,10 +135,22 @@ export default function Insights() {
   );
 
   const progressEvents = progressResult.data ?? [];
+  const lastEvent = progressEvents[progressEvents.length - 1];
+
+  // Handle workflow completion via effect (keep subscription reducer pure)
+  useEffect(() => {
+    if (lastEvent?.stage === 'complete' || lastEvent?.stage === 'error') {
+      setReconnecting(false);
+      reexecuteQuery({ requestPolicy: 'network-only' });
+      reexecuteStatusQuery({ requestPolicy: 'network-only' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reexecuteQuery/reexecuteStatusQuery are stable
+  }, [lastEvent?.stage]);
 
   const handleProcess = async () => {
+    setReconnecting(false);
     await processInsights({});
-    reexecuteQuery({ requestPolicy: 'network-only' });
+    // reexecuteQuery is triggered by the subscription 'complete' event
   };
 
   const report = mutationResult.data?.processInsights ?? queryResult.data?.latestInsightReport ?? null;
@@ -229,10 +261,10 @@ function InsightReportView({ report }: { report: InsightReport }) {
         <Card className="p-5">
           <h3 className="text-sm font-semibold text-text-secondary mb-3">Action Items</h3>
           <ul className="space-y-2">
-            {report.portfolio.actionItems.map((item) => (
-              <li key={item} className="flex items-start gap-2.5 text-sm text-text-primary">
+            {report.portfolio.actionItems.map((item, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-sm text-text-primary">
                 <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-accent-primary" />
-                {item}
+                {item.text}
               </li>
             ))}
           </ul>
