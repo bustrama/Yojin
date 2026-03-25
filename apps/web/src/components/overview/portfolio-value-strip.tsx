@@ -60,7 +60,7 @@ export default function PortfolioValueStrip() {
             key={i}
             className="flex items-center justify-center rounded-lg border border-border bg-bg-card px-4 py-5"
           >
-            <Spinner size="sm" />
+            <Spinner size="sm" label="Fetching prices…" />
           </div>
         ))}
       </div>

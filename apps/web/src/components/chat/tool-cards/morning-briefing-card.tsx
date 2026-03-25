@@ -38,7 +38,7 @@ export default function MorningBriefingCard() {
       <RichCard>
         <RichCard.Header icon={Sun} title="Morning Briefing" badge="DAILY" />
         <div className="flex items-center justify-center px-6 py-8">
-          <Spinner size="sm" />
+          <Spinner size="sm" label="Preparing briefing…" />
         </div>
       </RichCard>
     );

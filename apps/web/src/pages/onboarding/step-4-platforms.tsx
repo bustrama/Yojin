@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import { useMutation } from 'urql';
 import { useOnboarding } from '../../lib/onboarding-context';
 import { OnboardingShell } from '../../components/onboarding/onboarding-shell';
 import { PlatformTile, PLATFORMS } from '../../components/onboarding/platform-tile';
@@ -7,6 +8,14 @@ import { EditableTable } from '../../components/onboarding/editable-table';
 import type { ExtractedPosition } from '../../components/onboarding/editable-table';
 import Button from '../../components/common/button';
 import Input from '../../components/common/input';
+import { CONFIRM_POSITIONS_MUTATION } from '../../api/documents';
+import {
+  sanitizeSymbol,
+  sanitizeNumeric,
+  sanitizePlatformName,
+  validateEntries,
+  type ManualEntryErrors,
+} from '../../lib/manual-entry-validation';
 
 type Screen = 'grid' | 'detail' | 'manual' | 'custom' | 'verify';
 
@@ -15,15 +24,24 @@ interface ManualEntry {
   name: string;
   quantity: string;
   avgEntry: string;
+  marketPrice: string;
   marketValue: string;
 }
 
-const EMPTY_MANUAL: ManualEntry = { symbol: '', name: '', quantity: '', avgEntry: '', marketValue: '' };
+const EMPTY_MANUAL: ManualEntry = {
+  symbol: '',
+  name: '',
+  quantity: '',
+  avgEntry: '',
+  marketPrice: '',
+  marketValue: '',
+};
 
 const CRYPTO_PLATFORMS = new Set(['COINBASE', 'BINANCE', 'METAMASK', 'PHANTOM']);
 
-export function Step3Platforms() {
+export function Step4Platforms() {
   const { state, updateState, nextStep, prevStep } = useOnboarding();
+  const [, executeConfirmPositions] = useMutation(CONFIRM_POSITIONS_MUTATION);
 
   const [screen, setScreen] = useState<Screen>('grid');
   const [selectedPlatformId, setSelectedPlatformId] = useState<string | null>(null);
@@ -35,6 +53,7 @@ export function Step3Platforms() {
   // Manual / custom entry state
   const [manualEntries, setManualEntries] = useState<ManualEntry[]>([{ ...EMPTY_MANUAL }]);
   const [customPlatformName, setCustomPlatformName] = useState('');
+  const [entryErrors, setEntryErrors] = useState<ManualEntryErrors[]>([]);
 
   const connectedPlatforms = useMemo(() => state.platforms?.connected ?? [], [state.platforms?.connected]);
   const isConnected = (id: string) => connectedPlatforms.some((p) => p.platform === id);
@@ -73,20 +92,21 @@ export function Step3Platforms() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: `mutation ($input: ScreenshotInput!) { parsePortfolioScreenshot(input: $input) { success positions { symbol name quantity avgEntry marketValue } confidence warnings error } }`,
+            query: `mutation ($input: ScreenshotInput!) { parsePortfolioScreenshot(input: $input) { success positions { symbol name quantity avgEntry marketPrice marketValue } confidence warnings error } }`,
             variables: {
               input: { image: base64, mediaType: file.type, platform: selectedPlatformId },
             },
           }),
         });
         const json = await res.json();
+        const gqlError = json?.errors?.[0]?.message;
         const result = json?.data?.parsePortfolioScreenshot;
         if (result?.success && result.positions?.length) {
           setExtractedPositions(result.positions);
           setScreen('verify');
         } else {
           setUploadError(
-            result?.error || 'Could not extract positions from this screenshot. Try again or add manually.',
+            result?.error || gqlError || 'Could not extract positions from this screenshot. Try again or add manually.',
           );
         }
       } catch {
@@ -99,6 +119,10 @@ export function Step3Platforms() {
   );
 
   const handleManualDone = () => {
+    const { valid, errors } = validateEntries(manualEntries);
+    setEntryErrors(errors);
+    if (!valid) return;
+
     const positions: ExtractedPosition[] = manualEntries
       .filter((e) => e.symbol.trim())
       .map((e) => ({
@@ -106,6 +130,7 @@ export function Step3Platforms() {
         name: e.name.trim(),
         quantity: e.quantity ? parseFloat(e.quantity) : null,
         avgEntry: e.avgEntry ? parseFloat(e.avgEntry) : null,
+        marketPrice: e.marketPrice ? parseFloat(e.marketPrice) : null,
         marketValue: e.marketValue ? parseFloat(e.marketValue) : null,
       }));
     if (positions.length) {
@@ -118,27 +143,21 @@ export function Step3Platforms() {
     if (!selectedPlatformId || extractedPositions.length === 0) return;
     setConfirming(true);
     try {
-      const res = await fetch('/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `mutation ($input: ConfirmPositionsInput!) { confirmPositions(input: $input) }`,
-          variables: {
-            input: {
-              platform: selectedPlatformId,
-              positions: extractedPositions.map((p) => ({
-                symbol: p.symbol,
-                name: p.name,
-                quantity: p.quantity,
-                avgEntry: p.avgEntry,
-                marketValue: p.marketValue,
-              })),
-            },
-          },
-        }),
+      const result = await executeConfirmPositions({
+        input: {
+          platform: selectedPlatformId,
+          positions: extractedPositions.map((p) => ({
+            symbol: p.symbol,
+            name: p.name,
+            quantity: p.quantity,
+            avgEntry: p.avgEntry,
+            marketPrice: p.marketPrice,
+            marketValue:
+              p.marketValue ?? (p.quantity != null && p.marketPrice != null ? p.quantity * p.marketPrice : undefined),
+          })),
+        },
       });
-      const json = await res.json();
-      if (json?.data?.confirmPositions) {
+      if (result.data?.confirmPositions) {
         const updated = [
           ...connectedPlatforms.filter((p) => p.platform !== selectedPlatformId),
           { platform: selectedPlatformId, positionCount: extractedPositions.length },
@@ -146,13 +165,15 @@ export function Step3Platforms() {
         updateState({ platforms: { connected: updated, skipped: false } });
         setScreen('grid');
         setSelectedPlatformId(null);
+      } else if (result.error) {
+        setUploadError(result.error.message || 'Failed to save positions. Please try again.');
       }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Failed to save positions. Please try again.');
     } finally {
       setConfirming(false);
     }
-  }, [selectedPlatformId, extractedPositions, connectedPlatforms, updateState]);
+  }, [selectedPlatformId, extractedPositions, connectedPlatforms, updateState, executeConfirmPositions]);
 
   const handleSkip = () => {
     updateState({ platforms: { connected: connectedPlatforms, skipped: connectedPlatforms.length === 0 } });
@@ -171,7 +192,19 @@ export function Step3Platforms() {
   };
 
   const updateManualEntry = (idx: number, field: keyof ManualEntry, value: string) => {
-    setManualEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, [field]: value } : e)));
+    const sanitized = field === 'symbol' ? sanitizeSymbol(value) : field === 'name' ? value : sanitizeNumeric(value);
+
+    setManualEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, [field]: sanitized } : e)));
+
+    // Clear error for the field being edited
+    setEntryErrors((prev) => {
+      const copy = [...prev];
+      if (copy[idx]) {
+        const { [field]: _, ...rest } = copy[idx];
+        copy[idx] = rest;
+      }
+      return copy;
+    });
   };
 
   const handleCustomPlatformClick = () => {
@@ -182,6 +215,10 @@ export function Step3Platforms() {
   };
 
   const handleCustomDone = () => {
+    const { valid, errors } = validateEntries(manualEntries);
+    setEntryErrors(errors);
+    if (!valid) return;
+
     const platformId = customPlatformName.trim().toUpperCase().replace(/\s+/g, '_');
     const positions: ExtractedPosition[] = manualEntries
       .filter((e) => e.symbol.trim())
@@ -190,6 +227,7 @@ export function Step3Platforms() {
         name: e.name.trim(),
         quantity: e.quantity ? parseFloat(e.quantity) : null,
         avgEntry: e.avgEntry ? parseFloat(e.avgEntry) : null,
+        marketPrice: e.marketPrice ? parseFloat(e.marketPrice) : null,
         marketValue: e.marketValue ? parseFloat(e.marketValue) : null,
       }));
     if (positions.length && platformId) {
@@ -211,7 +249,7 @@ export function Step3Platforms() {
   // Platform Grid
   if (screen === 'grid') {
     return (
-      <OnboardingShell currentStep={3}>
+      <OnboardingShell currentStep={4}>
         <div className="w-full max-w-2xl">
           <div
             className="mb-8 text-center opacity-0 [animation:onboarding-fade-up_0.5s_ease-out_forwards]"
@@ -306,19 +344,13 @@ export function Step3Platforms() {
   // Platform Detail
   if (screen === 'detail' && selectedPlatform) {
     return (
-      <OnboardingShell currentStep={3}>
+      <OnboardingShell currentStep={4}>
         <div className="w-full max-w-lg">
           <div
             className="mb-6 opacity-0 [animation:onboarding-fade-up_0.5s_ease-out_forwards]"
             style={{ animationDelay: '0ms' }}
           >
-            <div className="mb-2 flex items-center gap-3">
-              {selectedPlatform.logo && (
-                <img src={selectedPlatform.logo} alt={selectedPlatform.name} className="h-9 w-9 rounded-lg" />
-              )}
-              <h1 className="font-headline text-2xl text-text-primary">{selectedPlatform.name}</h1>
-            </div>
-            <p className="mb-4 text-sm text-text-secondary">Add with screenshot</p>
+            <h1 className="font-headline text-2xl text-text-primary">{selectedPlatform.name}</h1>
             <ol className="mb-6 space-y-2">
               {selectedPlatform.instructions.map((step, i) => (
                 <li key={i} className="flex gap-3 text-sm text-text-secondary">
@@ -358,7 +390,7 @@ export function Step3Platforms() {
   if (screen === 'manual') {
     const hasValidEntries = manualEntries.some((e) => e.symbol.trim());
     return (
-      <OnboardingShell currentStep={3}>
+      <OnboardingShell currentStep={4}>
         <div className="w-full max-w-2xl">
           <div className="mb-6">
             <h1 className="mb-2 font-headline text-2xl text-text-primary">Add positions — {selectedPlatform?.name}</h1>
@@ -366,61 +398,87 @@ export function Step3Platforms() {
           </div>
 
           <div className="mb-6 space-y-3">
-            {manualEntries.map((entry, idx) => (
-              <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
-                <Input
-                  label={idx === 0 ? 'Symbol' : undefined}
-                  placeholder="AAPL"
-                  value={entry.symbol}
-                  onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Apple Inc."
-                  value={entry.name}
-                  onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
-                  size="sm"
-                  className="flex-1"
-                />
-                <Input
-                  label={idx === 0 ? 'Qty' : undefined}
-                  placeholder="10"
-                  value={entry.quantity}
-                  onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Avg Entry' : undefined}
-                  placeholder="150.00"
-                  value={entry.avgEntry}
-                  onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Value' : undefined}
-                  placeholder="1500.00"
-                  value={entry.marketValue}
-                  onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                {manualEntries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeManualRow(idx)}
-                    className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+            {manualEntries.map((entry, idx) => {
+              const rowErrors = entryErrors[idx] ?? {};
+              return (
+                <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
+                  <Input
+                    label={idx === 0 ? 'Symbol' : undefined}
+                    placeholder="AAPL"
+                    value={entry.symbol}
+                    onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
+                    error={rowErrors.symbol}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Name' : undefined}
+                    placeholder="Apple Inc."
+                    value={entry.name}
+                    onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
+                    size="sm"
+                    className="flex-1"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Qty' : undefined}
+                    placeholder="10"
+                    inputMode="decimal"
+                    value={entry.quantity}
+                    onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
+                    error={rowErrors.quantity}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Avg Entry' : undefined}
+                    placeholder="150.00"
+                    inputMode="decimal"
+                    value={entry.avgEntry}
+                    onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
+                    error={rowErrors.avgEntry}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Mkt Price' : undefined}
+                    placeholder="175.00"
+                    inputMode="decimal"
+                    value={entry.marketPrice}
+                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
+                    error={rowErrors.marketPrice}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Value' : undefined}
+                    placeholder="1500.00"
+                    inputMode="decimal"
+                    value={entry.marketValue}
+                    onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
+                    error={rowErrors.marketValue}
+                    size="sm"
+                    className="w-24"
+                  />
+                  {manualEntries.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeManualRow(idx)}
+                      className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
               onClick={addManualRow}
@@ -457,7 +515,7 @@ export function Step3Platforms() {
     const hasValidEntries = manualEntries.some((e) => e.symbol.trim());
     const hasName = customPlatformName.trim().length > 0;
     return (
-      <OnboardingShell currentStep={3}>
+      <OnboardingShell currentStep={4}>
         <div className="w-full max-w-2xl">
           <div className="mb-6">
             <h1 className="mb-2 font-headline text-2xl text-text-primary">Add custom platform</h1>
@@ -469,7 +527,7 @@ export function Step3Platforms() {
               label="Platform name"
               placeholder="e.g. eToro, Vanguard, My 401k"
               value={customPlatformName}
-              onChange={(e) => setCustomPlatformName(e.target.value)}
+              onChange={(e) => setCustomPlatformName(sanitizePlatformName(e.target.value))}
               size="md"
             />
           </div>
@@ -479,61 +537,87 @@ export function Step3Platforms() {
           </div>
 
           <div className="mb-6 space-y-3">
-            {manualEntries.map((entry, idx) => (
-              <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
-                <Input
-                  label={idx === 0 ? 'Symbol' : undefined}
-                  placeholder="AAPL"
-                  value={entry.symbol}
-                  onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Name' : undefined}
-                  placeholder="Apple Inc."
-                  value={entry.name}
-                  onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
-                  size="sm"
-                  className="flex-1"
-                />
-                <Input
-                  label={idx === 0 ? 'Qty' : undefined}
-                  placeholder="10"
-                  value={entry.quantity}
-                  onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-                <Input
-                  label={idx === 0 ? 'Avg Entry' : undefined}
-                  placeholder="150.00"
-                  value={entry.avgEntry}
-                  onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                <Input
-                  label={idx === 0 ? 'Value' : undefined}
-                  placeholder="1500.00"
-                  value={entry.marketValue}
-                  onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
-                  size="sm"
-                  className="w-24"
-                />
-                {manualEntries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeManualRow(idx)}
-                    className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+            {manualEntries.map((entry, idx) => {
+              const rowErrors = entryErrors[idx] ?? {};
+              return (
+                <div key={idx} className="flex items-end gap-2 rounded-lg border border-border bg-bg-card p-3">
+                  <Input
+                    label={idx === 0 ? 'Symbol' : undefined}
+                    placeholder="AAPL"
+                    value={entry.symbol}
+                    onChange={(e) => updateManualEntry(idx, 'symbol', e.target.value)}
+                    error={rowErrors.symbol}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Name' : undefined}
+                    placeholder="Apple Inc."
+                    value={entry.name}
+                    onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
+                    size="sm"
+                    className="flex-1"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Qty' : undefined}
+                    placeholder="10"
+                    inputMode="decimal"
+                    value={entry.quantity}
+                    onChange={(e) => updateManualEntry(idx, 'quantity', e.target.value)}
+                    error={rowErrors.quantity}
+                    size="sm"
+                    className="w-20"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Avg Entry' : undefined}
+                    placeholder="150.00"
+                    inputMode="decimal"
+                    value={entry.avgEntry}
+                    onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
+                    error={rowErrors.avgEntry}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Mkt Price' : undefined}
+                    placeholder="175.00"
+                    inputMode="decimal"
+                    value={entry.marketPrice}
+                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
+                    error={rowErrors.marketPrice}
+                    size="sm"
+                    className="w-24"
+                  />
+                  <Input
+                    label={idx === 0 ? 'Value' : undefined}
+                    placeholder="1500.00"
+                    inputMode="decimal"
+                    value={entry.marketValue}
+                    onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
+                    error={rowErrors.marketValue}
+                    size="sm"
+                    className="w-24"
+                  />
+                  {manualEntries.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeManualRow(idx)}
+                      className="cursor-pointer mb-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-error/10 hover:text-error"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
               onClick={addManualRow}
@@ -569,7 +653,7 @@ export function Step3Platforms() {
   const verifyPlatformName = selectedPlatform?.name ?? customPlatformName.trim();
   if (screen === 'verify' && (selectedPlatform || verifyPlatformName)) {
     return (
-      <OnboardingShell currentStep={3}>
+      <OnboardingShell currentStep={4}>
         <div className="w-full max-w-2xl">
           <div className="mb-6">
             <h1 className="mb-2 font-headline text-2xl text-text-primary">
