@@ -67,14 +67,16 @@ import {
 } from './resolvers/onboarding.js';
 import {
   addManualPositionMutation,
+  editPositionMutation,
   enrichedSnapshotQuery,
   portfolioHistoryQuery,
   portfolioQuery,
   positionFieldResolvers,
   positionsQuery,
   refreshPositionsMutation,
+  removePositionMutation,
 } from './resolvers/portfolio.js';
-import { deviceInfoResolver } from './resolvers/profile.js';
+import { clearAppDataMutation, deviceInfoResolver } from './resolvers/profile.js';
 import { riskReportQuery } from './resolvers/risk.js';
 import { signalsResolver } from './resolvers/signals.js';
 import {
@@ -128,6 +130,8 @@ const schema = createSchema({
     Mutation: {
       refreshPositions: refreshPositionsMutation,
       addManualPosition: addManualPositionMutation,
+      editPosition: editPositionMutation,
+      removePosition: removePositionMutation,
       createAlert: createAlertMutation,
       dismissAlert: dismissAlertMutation,
       sendMessage: sendMessageMutation,
@@ -161,6 +165,7 @@ const schema = createSchema({
       processInsights: processInsightsMutation,
       addToWatchlist: addToWatchlistMutation,
       removeFromWatchlist: removeFromWatchlistMutation,
+      clearAppData: clearAppDataMutation,
     },
     Subscription: {
       onAlert: onAlertSubscription,

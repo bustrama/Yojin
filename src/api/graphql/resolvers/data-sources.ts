@@ -109,14 +109,28 @@ const healthStatus = new Map<string, { status: 'ACTIVE' | 'ERROR'; lastError?: s
 
 function configToDataSource(config: DataSourceConfig): DataSource {
   const health = healthStatus.get(config.id);
+  let status: 'ACTIVE' | 'ERROR' | 'DISABLED' = health?.status ?? 'ACTIVE';
+  if (!config.enabled) {
+    status = 'DISABLED';
+  } else if (!health) {
+    // No health check result yet — treat API sources with a secretRef as unchecked
+    // rather than optimistically showing ACTIVE
+    if (config.type === 'API' && config.secretRef) {
+      status = 'ERROR';
+    }
+  }
   return {
     id: config.id,
     name: config.name,
     type: config.type,
     capabilities: config.capabilities.map((id) => ({ id })),
     enabled: config.enabled,
-    status: !config.enabled ? 'DISABLED' : (health?.status ?? 'ACTIVE'),
-    lastError: health?.lastError,
+    status,
+    lastError:
+      health?.lastError ??
+      (!health && config.type === 'API' && config.secretRef
+        ? 'Health check pending — restart server or check vault'
+        : undefined),
     priority: config.priority,
   };
 }

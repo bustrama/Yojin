@@ -20,9 +20,18 @@ function makeBrief(overrides?: Partial<DataBrief>): DataBrief {
     marketCap: 3.1e12,
     pe: 31.2,
     eps: 6.13,
+    beta: 1.2,
+    dividendYield: 0.005,
+    debtToEquity: 1.73,
+    fiftyTwoWeekHigh: 199.62,
+    fiftyTwoWeekLow: 164.08,
     enrichmentSector: 'Technology',
+    enrichmentIndustry: 'Consumer Electronics',
     riskScore: 3.5,
     riskSignals: [],
+    recentFilings: [],
+    legalName: 'Apple Inc.',
+    jurisdiction: 'US',
     signalCount: 2,
     signals: [
       {
@@ -70,7 +79,7 @@ describe('formatBriefsForContext', () => {
     expect(result).toContain('Sector: Technology');
     expect(result).toContain('MCap: $3.1T');
     expect(result).toContain('P/E: 31.2');
-    expect(result).toContain('Risk: 3.5/10');
+    expect(result).toContain('Risk: 3.5/100');
     expect(result).toContain('Signals (7d): 2');
     expect(result).toContain('sentiment: BULLISH');
     expect(result).toContain('[EARNINGS] Q4 earnings beat estimates');
