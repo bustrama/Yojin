@@ -532,6 +532,7 @@ export const SIGNALS_QUERY = gql`
     $until: String
     $search: String
     $minConfidence: Float
+    $outputType: SignalOutputType
     $limit: Int
   ) {
     signals(
@@ -542,6 +543,7 @@ export const SIGNALS_QUERY = gql`
       until: $until
       search: $search
       minConfidence: $minConfidence
+      outputType: $outputType
       limit: $limit
     ) {
       id
@@ -551,10 +553,22 @@ export const SIGNALS_QUERY = gql`
       publishedAt
       ingestedAt
       confidence
+      contentHash
       tickers
-      sourceId
-      sourceName
+      sources {
+        id
+        name
+        type
+        reliability
+      }
+      sourceCount
       link
+      tier1
+      tier2
+      sentiment
+      outputType
+      groupId
+      version
     }
   }
 `;
@@ -663,6 +677,9 @@ export const LATEST_INSIGHT_REPORT_QUERY = gql`
           impact
           confidence
           url
+          sourceCount
+          detail
+          outputType
         }
         risks
         opportunities
@@ -753,6 +770,9 @@ export const PROCESS_INSIGHTS_MUTATION = gql`
           impact
           confidence
           url
+          sourceCount
+          detail
+          outputType
         }
         risks
         opportunities

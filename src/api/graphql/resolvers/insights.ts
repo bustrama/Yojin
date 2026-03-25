@@ -35,6 +35,9 @@ interface SignalSummaryGql {
   impact: string;
   confidence: number;
   url: string | null;
+  sourceCount: number;
+  detail: string | null;
+  outputType: string;
 }
 
 interface PositionInsightGql {
@@ -88,7 +91,13 @@ function toGql(report: InsightReport): InsightReportGql {
     snapshotId: report.snapshotId,
     positions: report.positions.map((p) => ({
       ...p,
-      keySignals: p.keySignals.map((s) => ({ ...s, url: s.url ?? null })),
+      keySignals: p.keySignals.map((s) => ({
+        ...s,
+        url: s.url ?? null,
+        sourceCount: s.sourceCount ?? 1,
+        detail: s.detail ?? null,
+        outputType: s.outputType ?? 'INSIGHT',
+      })),
       carriedForward: p.carriedForward ?? false,
     })),
     portfolio: report.portfolio,
