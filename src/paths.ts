@@ -5,7 +5,8 @@
  * Factory defaults: resolved from the package install location via import.meta.url
  */
 
-import { mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { copyFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,11 +40,16 @@ export const DATA_SUBDIRS = [
   'identity',
   'logs',
   'watchlist',
-  'data',
+  'data', // General-purpose data storage for data source outputs and imports
 ] as const;
 
-/** Subdirectories that are wiped by "Clear App Data". Config is preserved. */
-export const CLEARABLE_SUBDIRS = DATA_SUBDIRS.filter((d) => d !== 'config');
+/**
+ * Subdirectories that are wiped by "Clear App Data".
+ * Preserved: config, audit (append-only security log), logs (active logger),
+ * identity (device keypair — changing it breaks signed payloads).
+ */
+const PRESERVED_SUBDIRS = new Set(['config', 'audit', 'logs', 'identity']);
+export const CLEARABLE_SUBDIRS = DATA_SUBDIRS.filter((d) => !PRESERVED_SUBDIRS.has(d));
 
 /**
  * Resolve the runtime data root directory.
@@ -81,5 +87,13 @@ export async function ensureDataDirs(dataRoot: string): Promise<void> {
     await mkdir(join(dataRoot, sub), { recursive: true });
   }
   // Vault directory is separate from app data
-  await mkdir(resolveVaultDir(), { recursive: true });
+  const vaultDir = resolveVaultDir();
+  await mkdir(vaultDir, { recursive: true });
+
+  // One-time migration: copy vault from old location (~/.yojin/vault/) to new (~/.yojin-vault/)
+  const oldVaultPath = join(dataRoot, 'vault', 'secrets.json');
+  const newVaultPath = join(vaultDir, 'secrets.json');
+  if (existsSync(oldVaultPath) && !existsSync(newVaultPath)) {
+    await copyFile(oldVaultPath, newVaultPath);
+  }
 }

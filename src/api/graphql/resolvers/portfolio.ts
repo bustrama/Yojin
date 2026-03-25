@@ -288,21 +288,24 @@ export async function editPositionMutation(
     platform: ((platform as Position['platform']) ?? targetPlatform).toUpperCase(),
   };
 
-  // Replace the matching position, keep everything else
-  const positions = existing.positions.map((p) =>
-    p.symbol.toUpperCase() === targetSymbol && (p.platform ?? '').toUpperCase() === targetPlatform
-      ? updatedPosition
-      : p,
+  // Replace the matching position within the target platform only
+  const targetPlatformPositions = existing.positions.filter((p) => (p.platform ?? '').toUpperCase() === targetPlatform);
+
+  const positionExists = targetPlatformPositions.some((p) => p.symbol.toUpperCase() === targetSymbol);
+  if (!positionExists) {
+    throw new Error(`Position ${targetSymbol} not found on platform ${targetPlatform}`);
+  }
+
+  const updatedPlatformPositions = targetPlatformPositions.map((p) =>
+    p.symbol.toUpperCase() === targetSymbol ? updatedPosition : p,
   );
 
   const snapshot = await snapshotStore.save({
-    positions,
+    positions: updatedPlatformPositions,
     platform: updatedPosition.platform,
     existingSnapshot: {
       ...existing,
-      positions: existing.positions.filter(
-        (p) => (p.platform ?? '').toUpperCase() !== updatedPosition.platform.toUpperCase(),
-      ),
+      positions: existing.positions.filter((p) => (p.platform ?? '').toUpperCase() !== targetPlatform),
     },
   });
   pubsub.publish('portfolioUpdate', snapshot);
