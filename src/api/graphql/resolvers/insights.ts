@@ -44,6 +44,7 @@ interface PositionInsightGql {
   conviction: number;
   thesis: string;
   keySignals: SignalSummaryGql[];
+  allSignalIds: string[];
   risks: string[];
   opportunities: string[];
   memoryContext: string | null;
@@ -89,6 +90,7 @@ function toGql(report: InsightReport): InsightReportGql {
     positions: report.positions.map((p) => ({
       ...p,
       keySignals: p.keySignals.map((s) => ({ ...s, url: s.url ?? null })),
+      allSignalIds: p.allSignalIds ?? [],
       carriedForward: p.carriedForward ?? false,
     })),
     portfolio: report.portfolio,

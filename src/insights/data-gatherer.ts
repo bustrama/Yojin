@@ -150,14 +150,14 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
   // 3. Parallel lookups — quotes, enrichments, memories, previous report
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [quotes, enrichments, memories, previousReport] = await Promise.all([
+  const [quotes, enrichmentByTicker, memories, previousReport] = await Promise.all([
     // Quotes (1 API call)
     jintelClient
       ? jintelClient.quotes(tickers).catch(() => ({ success: false as const, error: 'quotes failed' }))
       : Promise.resolve(null),
     // Unified enrichment + news (1 API call per 20 tickers)
-    // Response structure IS the ticker association — no content parsing needed
-    jintelClient ? batchEnrichAllChunked(jintelClient, tickers) : Promise.resolve([]),
+    // Returns Map<inputTicker, entity> — preserves portfolio ticker → entity association
+    jintelClient ? batchEnrichAllChunked(jintelClient, tickers) : Promise.resolve(new Map<string, EntityWithNews>()),
     // Memories (local, fast)
     recallAllMemories(memoryStores, tickers),
     // Previous report (local, fast)
@@ -166,9 +166,12 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
 
   // 4. Ingest ALL Jintel entity data into the signal archive (fundamentals,
   //    risk, filings, price moves, news — all from the single unified query).
-  //    Each entity's tickers tag every signal derived from it.
-  if (signalIngestor && enrichments.length > 0) {
-    const rawSignals = enrichments.flatMap((entity) => enrichmentToSignals(entity));
+  //    Each signal is tagged with the portfolio ticker that was queried, guaranteeing
+  //    downstream association from signal → position.
+  if (signalIngestor && enrichmentByTicker.size > 0) {
+    const rawSignals = [...enrichmentByTicker.entries()].flatMap(([inputTicker, entity]) =>
+      enrichmentToSignals(entity, inputTicker),
+    );
 
     if (rawSignals.length > 0) {
       try {
@@ -192,7 +195,7 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
   // 6. Index data by ticker for O(1) lookup
   const signalsByTicker = groupSignalsByTicker(signals, tickers);
   const quotesByTicker = indexQuotes(quotes);
-  const enrichmentByTicker = indexEnrichments(enrichments);
+  // enrichmentByTicker is already keyed by portfolio ticker from batchEnrichAllChunked
   const memoriesByTicker = indexMemories(memories, tickers);
 
   // 7. Build compact briefs
@@ -378,10 +381,17 @@ export function formatRiskMetrics(briefs: DataBrief[]): string {
 /**
  * Convert a Jintel Entity enrichment into RawSignalInput items.
  * Extracts ALL signal types: fundamentals, risk, regulatory filings, market data, and news.
- * Tickers come from the entity structure — the response IS the ticker association.
+ *
+ * @param entity  — Jintel enrichment response
+ * @param inputTicker — the portfolio ticker that was queried; always included in
+ *   the signal's tickers so downstream association (signal → position) is guaranteed.
  */
-function enrichmentToSignals(entity: EntityWithNews): RawSignalInput[] {
-  const tickers = entity.tickers ?? [];
+function enrichmentToSignals(entity: EntityWithNews, inputTicker: string): RawSignalInput[] {
+  const entityTickers = entity.tickers ?? [];
+  // Guarantee the portfolio ticker is in the tickers list (case-insensitive dedup)
+  const tickers = entityTickers.some((t) => t.toUpperCase() === inputTicker.toUpperCase())
+    ? entityTickers
+    : [inputTicker, ...entityTickers];
   if (tickers.length === 0) return [];
 
   const now = new Date().toISOString();
@@ -545,12 +555,15 @@ const UNIFIED_ENRICH_QUERY = buildUnifiedEnrichQuery();
 
 /**
  * Batch enrich tickers with ALL fields (market, risk, regulatory, corporate, news)
- * in a single GraphQL call per chunk. The response structure IS the ticker association
- * for every signal type — no content parsing needed.
+ * in a single GraphQL call per chunk.
+ *
+ * Returns a Map keyed by the **input** portfolio ticker → entity. This guarantees
+ * that downstream code always knows which portfolio position an entity belongs to,
+ * even if the entity's own `tickers` field has a different format or ordering.
  */
-async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): Promise<EntityWithNews[]> {
+async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): Promise<Map<string, EntityWithNews>> {
   const CHUNK_SIZE = 20;
-  const entities: EntityWithNews[] = [];
+  const result = new Map<string, EntityWithNews>();
   let newsSupported = true;
 
   for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
@@ -562,7 +575,24 @@ async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): P
         { tickers: chunk },
       );
 
-      entities.push(...data);
+      // Build a case-insensitive lookup: entity ticker → entity
+      const entityByTicker = new Map<string, EntityWithNews>();
+      for (const entity of data) {
+        for (const t of entity.tickers ?? []) {
+          entityByTicker.set(t.toUpperCase(), entity);
+        }
+      }
+
+      // Map each input ticker to its entity — preserves the portfolio ticker as key
+      for (const inputTicker of chunk) {
+        const entity = entityByTicker.get(inputTicker.toUpperCase());
+        if (entity) {
+          result.set(inputTicker, entity);
+        } else {
+          logger.warn('No entity returned for ticker', { ticker: inputTicker });
+        }
+      }
+
       const riskCount = data.reduce((n, e) => n + (e.risk?.signals?.length ?? 0), 0);
       const filingCount = data.reduce((n, e) => n + (e.regulatory?.filings?.length ?? 0), 0);
       const hasMarket = data.filter((e) => e.market?.quote).length;
@@ -571,6 +601,7 @@ async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): P
       logger.info('Unified enrich succeeded', {
         tickers: chunk,
         entities: data.length,
+        mapped: chunk.filter((t) => result.has(t)).length,
         withQuotes: hasMarket,
         withFundamentals: hasFundamentals,
         riskSignals: riskCount,
@@ -591,7 +622,7 @@ async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): P
     }
   }
 
-  return entities;
+  return result;
 }
 
 async function recallAllMemories(
@@ -633,15 +664,6 @@ function indexQuotes(result: { success: boolean; data?: MarketQuote[] } | null):
   if (!result || !('data' in result) || !result.data) return map;
   for (const q of result.data) {
     if (q?.ticker) map.set(q.ticker, q);
-  }
-  return map;
-}
-
-function indexEnrichments(entities: EntityWithNews[]): Map<string, EntityWithNews> {
-  const map = new Map<string, EntityWithNews>();
-  for (const e of entities) {
-    const ticker = e.tickers?.[0];
-    if (ticker) map.set(ticker, e);
   }
   return map;
 }

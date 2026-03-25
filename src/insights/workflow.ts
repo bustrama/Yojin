@@ -29,8 +29,10 @@ export interface ProcessInsightsOptions {
 
 // Tools to disable per agent when data is pre-aggregated.
 // If the tool isn't in the agent's profile, the filter is a no-op.
+//
+// RA and RM are pure analysis stages — ALL tools disabled so the LLM
+// emits text in a single iteration with zero tool-call overhead.
 const RA_DISABLED_TOOLS = [
-  // All data-gathering tools — data is already in context
   'search_entities',
   'enrich_entity',
   'batch_enrich',
@@ -53,7 +55,8 @@ const RA_DISABLED_TOOLS = [
   'resolve_symbol',
   'run_technical',
   'store_signal_memory',
-  // Keep: get_current_time, calculate
+  'get_current_time', // Not needed — data is pre-aggregated with timestamps
+  'calculate', // Not needed — risk metrics are pre-computed
 ];
 
 const RM_DISABLED_TOOLS = [
@@ -65,7 +68,7 @@ const RM_DISABLED_TOOLS = [
   'security_audit_check',
   'analyze_exposure', // Pre-computed in risk metrics
   'calculate', // Pre-computed in risk metrics
-  // Keep: get_current_time
+  'get_current_time', // Not needed — analysis is time-independent
 ];
 
 const STRATEGIST_DISABLED_TOOLS = [
@@ -88,10 +91,10 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
     id: 'process-insights',
     name: 'Process Insights',
     stages: [
-      // Stage 0: Research Analyst — analyzes pre-aggregated data (no tool calls for data)
+      // Stage 0: Research Analyst — pure analysis, no tool calls when data is pre-aggregated
       {
         agentId: 'research-analyst',
-        maxIterations: hasGatherer ? 2 : undefined,
+        maxIterations: hasGatherer ? 1 : undefined,
         disabledTools: hasGatherer ? RA_DISABLED_TOOLS : undefined,
         buildMessage: (prev) => {
           const dataBriefs = prev.get('__data_briefs')?.text;
@@ -152,10 +155,10 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
         },
       },
 
-      // Stage 1: Risk Manager — portfolio risk from research brief
+      // Stage 1: Risk Manager — pure analysis, no tool calls when data is pre-aggregated
       {
         agentId: 'risk-manager',
-        maxIterations: hasGatherer ? 2 : undefined,
+        maxIterations: hasGatherer ? 1 : undefined,
         disabledTools: hasGatherer ? RM_DISABLED_TOOLS : undefined,
         buildMessage: (prev) => {
           const dataBriefs = prev.get('__data_briefs')?.text;
@@ -175,10 +178,10 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
         },
       },
 
-      // Stage 2: Strategist synthesizes and persists
+      // Stage 2: Strategist — 1 iteration to batch all tool calls, 1 to emit final text
       {
         agentId: 'strategist',
-        maxIterations: hasGatherer ? 3 : undefined,
+        maxIterations: hasGatherer ? 2 : undefined,
         maxTokens: hasGatherer ? 16384 : undefined,
         disabledTools: hasGatherer ? STRATEGIST_DISABLED_TOOLS : undefined,
         buildMessage: (prev) => {

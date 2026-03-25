@@ -706,6 +706,7 @@ export const LATEST_INSIGHT_REPORT_QUERY = gql`
           confidence
           url
         }
+        allSignalIds
         risks
         opportunities
         memoryContext
@@ -796,6 +797,7 @@ export const PROCESS_INSIGHTS_MUTATION = gql`
           confidence
           url
         }
+        allSignalIds
         risks
         opportunities
         memoryContext

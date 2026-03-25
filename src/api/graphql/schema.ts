@@ -624,6 +624,10 @@ export const typeDefs = /* GraphQL */ `
     conviction: Float!
     thesis: String!
     keySignals: [SignalSummary!]!
+    """
+    All signal IDs for this ticker (7-day window). Deterministic — not LLM-selected.
+    """
+    allSignalIds: [String!]!
     risks: [String!]!
     opportunities: [String!]!
     memoryContext: String
