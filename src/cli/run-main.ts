@@ -17,7 +17,6 @@ import { VercelAIProvider } from '../ai-providers/vercel-ai.js';
 import { setCurationOrchestrator } from '../api/graphql/resolvers/curated-signals.js';
 import { setInsightsOrchestrator } from '../api/graphql/resolvers/insights.js';
 import { setOnboardingClaudeCodeProvider, setOnboardingProvider } from '../api/graphql/resolvers/onboarding.js';
-import { setAssessmentOrchestrator } from '../api/graphql/resolvers/signal-assessments.js';
 import { buildContext } from '../composition.js';
 import { AgentRuntime } from '../core/agent-runtime.js';
 import { EventLog } from '../core/event-log.js';
@@ -218,9 +217,9 @@ async function startGateway(): Promise<void> {
     snapshotStore: services.snapshotStore,
     curationConfig,
     assessmentConfig,
+    assessmentWorkflowStartMs: services.assessmentWorkflowStartMs,
   });
   setCurationOrchestrator(orchestrator);
-  setAssessmentOrchestrator(orchestrator);
 
   // Broadcast workflow progress events to GraphQL subscribers + persist to log file
   const { pubsub } = await import('../api/graphql/pubsub.js');

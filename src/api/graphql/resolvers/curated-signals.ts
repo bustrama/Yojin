@@ -1,30 +1,23 @@
 /**
  * Curated signal resolvers — query curated signals and manage the curation pipeline.
  *
- * Module-level state: setCuratedSignalStore, setCurationPipeline, and
- * setCurationOrchestrator are called at startup.
+ * Module-level state: setCuratedSignalStore and setCurationOrchestrator are called at startup.
  */
 
 import { toGql } from './signals.js';
 import type { SignalGql } from './signals.js';
 import type { Orchestrator } from '../../../agents/orchestrator.js';
 import type { CuratedSignalStore } from '../../../signals/curation/curated-signal-store.js';
-import type { CurationRunResult } from '../../../signals/curation/types.js';
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 let store: CuratedSignalStore | null = null;
-let runPipeline: (() => Promise<CurationRunResult>) | null = null;
 let curationOrchestrator: Orchestrator | null = null;
 
 export function setCuratedSignalStore(s: CuratedSignalStore): void {
   store = s;
-}
-
-export function setCurationPipeline(fn: () => Promise<CurationRunResult>): void {
-  runPipeline = fn;
 }
 
 export function setCurationOrchestrator(o: Orchestrator): void {
@@ -98,13 +91,6 @@ export async function curationStatusResolver(): Promise<CurationStatusGql> {
     signalsProcessed: watermark.signalsProcessed,
     signalsCurated: watermark.signalsCurated,
   };
-}
-
-export async function runCurationResolver(): Promise<CurationRunResult> {
-  if (!runPipeline) {
-    return { signalsProcessed: 0, signalsCurated: 0, signalsDropped: 0, durationMs: 0 };
-  }
-  return runPipeline();
 }
 
 // ---------------------------------------------------------------------------

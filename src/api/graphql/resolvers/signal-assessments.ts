@@ -1,10 +1,9 @@
 /**
- * Signal assessment resolvers — query assessment reports and trigger the assessment workflow.
+ * Signal assessment resolvers — query assessment reports.
  *
- * Module-level state: setAssessmentStore and setAssessmentOrchestrator are called at startup.
+ * Module-level state: setAssessmentStore is called at startup.
  */
 
-import type { Orchestrator } from '../../../agents/orchestrator.js';
 import type { AssessmentStore } from '../../../signals/curation/assessment-store.js';
 
 // ---------------------------------------------------------------------------
@@ -12,14 +11,9 @@ import type { AssessmentStore } from '../../../signals/curation/assessment-store
 // ---------------------------------------------------------------------------
 
 let store: AssessmentStore | null = null;
-let orchestrator: Orchestrator | null = null;
 
 export function setAssessmentStore(s: AssessmentStore): void {
   store = s;
-}
-
-export function setAssessmentOrchestrator(o: Orchestrator): void {
-  orchestrator = o;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,15 +83,6 @@ export async function assessmentStatusResolver(): Promise<AssessmentStatusGql> {
     signalsAssessed: watermark.signalsAssessed,
     signalsKept: watermark.signalsKept,
   };
-}
-
-export async function runSignalAssessmentResolver(): Promise<boolean> {
-  if (!orchestrator) return false;
-
-  await orchestrator.execute('signal-assessment', {
-    message: 'Manual signal assessment trigger',
-  });
-  return true;
 }
 
 // ---------------------------------------------------------------------------

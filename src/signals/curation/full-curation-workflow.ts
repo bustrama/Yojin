@@ -37,6 +37,8 @@ export interface FullCurationWorkflowOptions {
   snapshotStore: PortfolioSnapshotStore;
   curationConfig: CurationConfig;
   assessmentConfig: AssessmentConfig;
+  /** Mutable ref shared with the assessment tool for accurate durationMs tracking. */
+  assessmentWorkflowStartMs?: { value: number };
 }
 
 // All RA tools disabled — data is pre-aggregated, pure analysis in 1 iteration.
@@ -91,7 +93,15 @@ const STRATEGIST_DISABLED_TOOLS = [
 const WF_ID = 'full-curation';
 
 export function registerFullCurationWorkflow(orchestrator: Orchestrator, options: FullCurationWorkflowOptions): void {
-  const { signalArchive, curatedSignalStore, assessmentStore, insightStore, snapshotStore, curationConfig } = options;
+  const {
+    signalArchive,
+    curatedSignalStore,
+    assessmentStore,
+    insightStore,
+    snapshotStore,
+    curationConfig,
+    assessmentWorkflowStartMs,
+  } = options;
 
   // State shared between beforeWorkflow and afterWorkflow
   let latestCuratedAt = '';
@@ -171,6 +181,11 @@ export function registerFullCurationWorkflow(orchestrator: Orchestrator, options
     ],
 
     beforeWorkflow: async (outputs) => {
+      // Track workflow start time for accurate durationMs in assessment reports
+      if (assessmentWorkflowStartMs) {
+        assessmentWorkflowStartMs.value = Date.now();
+      }
+
       // ------------------------------------------------------------------
       // TIER 1: Run deterministic curation pipeline
       // ------------------------------------------------------------------

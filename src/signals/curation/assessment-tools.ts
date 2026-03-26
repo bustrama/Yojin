@@ -19,10 +19,12 @@ const log = getLogger().sub('assessment-tools');
 
 export interface AssessmentToolsOptions {
   assessmentStore: AssessmentStore;
+  /** Set by the workflow beforeWorkflow to track total pipeline duration. */
+  workflowStartMs?: { value: number };
 }
 
 export function createAssessmentTools(options: AssessmentToolsOptions): ToolDefinition[] {
-  const { assessmentStore } = options;
+  const { assessmentStore, workflowStartMs } = options;
 
   const saveSignalAssessment: ToolDefinition = {
     name: 'save_signal_assessment',
@@ -64,8 +66,6 @@ export function createAssessmentTools(options: AssessmentToolsOptions): ToolDefi
       }>;
       thesisSummary: string;
     }): Promise<ToolResult> {
-      const startMs = Date.now();
-
       const tickers = [...new Set(params.assessments.map((a) => a.ticker))];
       const kept = params.assessments.filter((a) => a.verdict !== 'NOISE');
       const critical = params.assessments.filter((a) => a.verdict === 'CRITICAL');
@@ -86,7 +86,7 @@ export function createAssessmentTools(options: AssessmentToolsOptions): ToolDefi
         signalsInput: params.assessments.length,
         signalsKept: kept.length,
         thesisSummary: params.thesisSummary,
-        durationMs: Date.now() - startMs,
+        durationMs: workflowStartMs ? Date.now() - workflowStartMs.value : 0,
       };
 
       await assessmentStore.save(report);

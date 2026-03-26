@@ -28,7 +28,6 @@ import {
   curatedSignalsResolver,
   curationStatusResolver,
   getCurationWorkflowStatus,
-  runCurationResolver,
   runFullCurationResolver,
 } from './resolvers/curated-signals.js';
 import {
@@ -86,11 +85,7 @@ import {
 } from './resolvers/portfolio.js';
 import { clearAppDataMutation, deviceInfoResolver } from './resolvers/profile.js';
 import { riskReportQuery } from './resolvers/risk.js';
-import {
-  assessmentStatusResolver,
-  runSignalAssessmentResolver,
-  signalAssessmentsResolver,
-} from './resolvers/signal-assessments.js';
+import { assessmentStatusResolver, signalAssessmentsResolver } from './resolvers/signal-assessments.js';
 import { signalGroupFieldResolvers, signalGroupResolver, signalGroupsResolver } from './resolvers/signal-groups.js';
 import { signalsResolver } from './resolvers/signals.js';
 import {
@@ -186,9 +181,7 @@ const schema = createSchema({
       resetOnboarding: resetOnboardingMutation,
       validateJintelKey: validateJintelKeyMutation,
       processInsights: processInsightsMutation,
-      runCuration: runCurationResolver,
       runFullCuration: runFullCurationResolver,
-      runSignalAssessment: runSignalAssessmentResolver,
       addToWatchlist: addToWatchlistMutation,
       removeFromWatchlist: removeFromWatchlistMutation,
       clearAppData: clearAppDataMutation,

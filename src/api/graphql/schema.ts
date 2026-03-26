@@ -772,13 +772,6 @@ export const typeDefs = /* GraphQL */ `
     signalsCurated: Int!
   }
 
-  type CurationRunResult {
-    signalsProcessed: Int!
-    signalsCurated: Int!
-    signalsDropped: Int!
-    durationMs: Float!
-  }
-
   # ---------------------------------------------------------------------------
   # Signal Assessment (Tier 2)
   # ---------------------------------------------------------------------------
@@ -896,9 +889,7 @@ export const typeDefs = /* GraphQL */ `
     resetOnboarding: Boolean!
     validateJintelKey(apiKey: String!): ValidateJintelKeyResult!
     processInsights: InsightReport
-    runCuration: CurationRunResult!
     runFullCuration: Boolean!
-    runSignalAssessment: Boolean!
     addToWatchlist(symbol: String!, name: String!, assetClass: AssetClass!): WatchlistResult!
     removeFromWatchlist(symbol: String!): WatchlistResult!
     clearAppData: Boolean!

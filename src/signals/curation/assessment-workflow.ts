@@ -32,6 +32,8 @@ export interface SignalAssessmentWorkflowOptions {
   insightStore: InsightStore;
   snapshotStore: PortfolioSnapshotStore;
   config: AssessmentConfig;
+  /** Mutable ref shared with the assessment tool for accurate durationMs tracking. */
+  assessmentWorkflowStartMs?: { value: number };
 }
 
 // All RA tools disabled — data is pre-aggregated, pure analysis in 1 iteration.
@@ -87,7 +89,7 @@ export function registerSignalAssessmentWorkflow(
   orchestrator: Orchestrator,
   options: SignalAssessmentWorkflowOptions,
 ): void {
-  const { curatedSignalStore, assessmentStore, insightStore, snapshotStore } = options;
+  const { curatedSignalStore, assessmentStore, insightStore, snapshotStore, assessmentWorkflowStartMs } = options;
 
   // State shared between beforeWorkflow and afterWorkflow
   let latestCuratedAt = '';
@@ -104,6 +106,10 @@ export function registerSignalAssessmentWorkflow(
         disabledTools: RA_DISABLED_TOOLS,
         buildMessage: (prev) => {
           const signalData = prev.get('__assessment_signals')?.text ?? '';
+
+          if (!signalData) {
+            return 'No curated signals to assess. Respond with: "No signals to assess."';
+          }
 
           return (
             `You are evaluating curated portfolio signals for relevance and quality. ` +
@@ -135,6 +141,10 @@ export function registerSignalAssessmentWorkflow(
           const raOutput = prev.get('research-analyst')?.text ?? '';
           const signalData = prev.get('__assessment_signals')?.text ?? '';
 
+          if (!signalData) {
+            return 'No curated signals were available for assessment. Respond with: "No signals to assess."';
+          }
+
           return (
             `The Research Analyst has classified portfolio signals below. ` +
             `Your job: score each signal against your active investment thesis ` +
@@ -160,6 +170,11 @@ export function registerSignalAssessmentWorkflow(
 
     // Pre-aggregate curated signals + thesis context
     beforeWorkflow: async (outputs) => {
+      // Track workflow start time for accurate durationMs in assessment reports
+      if (assessmentWorkflowStartMs) {
+        assessmentWorkflowStartMs.value = Date.now();
+      }
+
       const wfId = 'signal-assessment';
       emitProgress({
         workflowId: wfId,

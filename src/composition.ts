@@ -130,6 +130,8 @@ export interface YojinServices {
   signalIngestor: SignalIngestor;
   curatedSignalStore: CuratedSignalStore;
   assessmentStore: AssessmentStore;
+  /** Mutable ref — workflows set this before agent stages to track pipeline duration. */
+  assessmentWorkflowStartMs: { value: number };
   brain: {
     persona: PersonaManager;
     frontalLobe: FrontalLobe;
@@ -497,7 +499,9 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   setAssessmentStore(assessmentStore);
 
   // Assessment tools (1 tool: save_signal_assessment)
-  for (const tool of createAssessmentTools({ assessmentStore })) {
+  // Mutable ref allows workflows to inject their start time for accurate durationMs
+  const assessmentWorkflowStartMs = { value: 0 };
+  for (const tool of createAssessmentTools({ assessmentStore, workflowStartMs: assessmentWorkflowStartMs })) {
     toolRegistry.register(tool);
   }
 
@@ -564,6 +568,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     signalIngestor,
     curatedSignalStore,
     assessmentStore,
+    assessmentWorkflowStartMs,
     brain: {
       persona,
       frontalLobe,
