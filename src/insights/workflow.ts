@@ -259,8 +259,10 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
 
           // Bull/Bear get a smaller budget — they're supplementary perspectives
           const debateMaxChars = 6000;
-          const bull = truncate(bullOutput.length > debateMaxChars ? bullOutput.slice(0, debateMaxChars) : bullOutput);
-          const bear = truncate(bearOutput.length > debateMaxChars ? bearOutput.slice(0, debateMaxChars) : bearOutput);
+          const debateTruncate = (s: string) =>
+            s.length > debateMaxChars ? s.slice(0, debateMaxChars) + '\n[truncated]' : s;
+          const bull = debateTruncate(bullOutput);
+          const bear = debateTruncate(bearOutput);
 
           let prompt =
             `Synthesize insights and save a report. Be extremely concise in all string fields.\n\n` +
