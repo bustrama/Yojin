@@ -748,6 +748,68 @@ export const typeDefs = /* GraphQL */ `
     error: String
   }
 
+  # ---------------------------------------------------------------------------
+  # Signal Curation
+  # ---------------------------------------------------------------------------
+
+  type PortfolioRelevanceScore {
+    signalId: String!
+    ticker: String!
+    exposureWeight: Float!
+    typeRelevance: Float!
+    compositeScore: Float!
+  }
+
+  type CuratedSignal {
+    signal: Signal!
+    scores: [PortfolioRelevanceScore!]!
+    curatedAt: String!
+  }
+
+  type CurationStatus {
+    lastRunAt: String
+    signalsProcessed: Int!
+    signalsCurated: Int!
+  }
+
+  type CurationRunResult {
+    signalsProcessed: Int!
+    signalsCurated: Int!
+    signalsDropped: Int!
+    durationMs: Float!
+  }
+
+  # ---------------------------------------------------------------------------
+  # Signal Assessment (Tier 2)
+  # ---------------------------------------------------------------------------
+
+  type SignalAssessment {
+    signalId: String!
+    ticker: String!
+    verdict: String!
+    relevanceScore: Float!
+    reasoning: String!
+    thesisAlignment: String!
+    actionability: Float!
+  }
+
+  type AssessmentReport {
+    id: String!
+    assessedAt: String!
+    tickers: [String!]!
+    assessments: [SignalAssessment!]!
+    signalsInput: Int!
+    signalsKept: Int!
+    thesisSummary: String!
+    durationMs: Float!
+  }
+
+  type AssessmentStatus {
+    lastRunAt: String
+    signalsAssessed: Int!
+    signalsKept: Int!
+  }
+
   type Query {
     deviceInfo: DeviceInfo!
     portfolio: PortfolioSnapshot
@@ -776,6 +838,11 @@ export const typeDefs = /* GraphQL */ `
       limit: Int
     ): [Signal!]!
     signalGroups(ticker: String, since: String, limit: Int): [SignalGroup!]!
+    curatedSignals(ticker: String, since: String, limit: Int): [CuratedSignal!]!
+    curationStatus: CurationStatus!
+    curationWorkflowStatus: WorkflowStatus!
+    signalAssessments(ticker: String, since: String, limit: Int): [AssessmentReport!]!
+    assessmentStatus: AssessmentStatus!
     signalGroup(id: ID!): SignalGroup
     vaultStatus: VaultStatus!
     listVaultSecrets: [VaultSecret!]!
@@ -829,6 +896,9 @@ export const typeDefs = /* GraphQL */ `
     resetOnboarding: Boolean!
     validateJintelKey(apiKey: String!): ValidateJintelKeyResult!
     processInsights: InsightReport
+    runCuration: CurationRunResult!
+    runFullCuration: Boolean!
+    runSignalAssessment: Boolean!
     addToWatchlist(symbol: String!, name: String!, assetClass: AssetClass!): WatchlistResult!
     removeFromWatchlist(symbol: String!): WatchlistResult!
     clearAppData: Boolean!

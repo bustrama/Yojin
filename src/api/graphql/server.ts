@@ -25,6 +25,13 @@ import {
   onConnectionStatusSubscription,
 } from './resolvers/connections.js';
 import {
+  curatedSignalsResolver,
+  curationStatusResolver,
+  getCurationWorkflowStatus,
+  runCurationResolver,
+  runFullCurationResolver,
+} from './resolvers/curated-signals.js';
+import {
   addDataSourceResolver,
   checkCliCommandsResolver,
   checkDataSourceHealthResolver,
@@ -79,6 +86,11 @@ import {
 } from './resolvers/portfolio.js';
 import { clearAppDataMutation, deviceInfoResolver } from './resolvers/profile.js';
 import { riskReportQuery } from './resolvers/risk.js';
+import {
+  assessmentStatusResolver,
+  runSignalAssessmentResolver,
+  signalAssessmentsResolver,
+} from './resolvers/signal-assessments.js';
 import { signalGroupFieldResolvers, signalGroupResolver, signalGroupsResolver } from './resolvers/signal-groups.js';
 import { signalsResolver } from './resolvers/signals.js';
 import {
@@ -112,6 +124,11 @@ const schema = createSchema({
       checkCliCommands: checkCliCommandsResolver,
       signals: signalsResolver,
       signalGroups: signalGroupsResolver,
+      curatedSignals: curatedSignalsResolver,
+      curationStatus: curationStatusResolver,
+      curationWorkflowStatus: () => getCurationWorkflowStatus(),
+      signalAssessments: signalAssessmentsResolver,
+      assessmentStatus: assessmentStatusResolver,
       signalGroup: signalGroupResolver,
       listConnections: listConnectionsResolver,
       detectAvailableTiers: detectAvailableTiersResolver,
@@ -169,6 +186,9 @@ const schema = createSchema({
       resetOnboarding: resetOnboardingMutation,
       validateJintelKey: validateJintelKeyMutation,
       processInsights: processInsightsMutation,
+      runCuration: runCurationResolver,
+      runFullCuration: runFullCurationResolver,
+      runSignalAssessment: runSignalAssessmentResolver,
       addToWatchlist: addToWatchlistMutation,
       removeFromWatchlist: removeFromWatchlistMutation,
       clearAppData: clearAppDataMutation,

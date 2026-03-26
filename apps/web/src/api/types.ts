@@ -833,6 +833,21 @@ export interface OnWorkflowProgressVariables {
 }
 
 // ---------------------------------------------------------------------------
+// Curation
+// ---------------------------------------------------------------------------
+
+export interface RunFullCurationMutationResult {
+  runFullCuration: boolean;
+}
+
+export interface CurationWorkflowStatusQueryResult {
+  curationWorkflowStatus: {
+    running: boolean;
+    startedAt: string | null;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Variable types
 // ---------------------------------------------------------------------------
 
