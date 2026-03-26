@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useConnectPlatform, useDetectAvailableTiers } from '../../api/hooks/use-connections';
 import type { Platform } from '../../api/types';
@@ -46,11 +46,14 @@ export function AddPlatformModal({ open, onClose, connectedPlatforms }: AddPlatf
   const apiUnavailable = !tiersFetching && !!tiersData?.detectAvailableTiers && !apiTier;
   const requiredKeys = apiTier?.requiresCredentials ?? [];
 
+  const autoConnectingRef = useRef(false);
+
   function reset() {
     setStep('select-platform');
     setSelectedPlatform(null);
     setCredentials({});
     setConnectError(null);
+    autoConnectingRef.current = false;
   }
 
   function handleClose() {
@@ -92,6 +95,23 @@ export function AddPlatformModal({ open, onClose, connectedPlatforms }: AddPlatf
 
     handleClose();
   }
+
+  // Auto-connect when API tier requires no credentials.
+  // setTimeout defers the setState calls in handleConnect out of the
+  // synchronous effect body, satisfying react-hooks/set-state-in-effect.
+  useEffect(() => {
+    if (
+      step === 'enter-credentials' &&
+      !tiersFetching &&
+      apiTier &&
+      requiredKeys.length === 0 &&
+      !autoConnectingRef.current
+    ) {
+      autoConnectingRef.current = true;
+      const timer = setTimeout(() => void handleConnect(), 0);
+      return () => clearTimeout(timer);
+    }
+  });
 
   function handleBack() {
     setConnectError(null);
