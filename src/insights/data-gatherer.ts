@@ -163,7 +163,7 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
       : Promise.resolve(null),
     // Unified enrichment + news (1 API call per 20 tickers)
     // Returns Map<inputTicker, entity> — preserves portfolio ticker → entity association
-    jintelClient ? batchEnrichAllChunked(jintelClient, tickers) : Promise.resolve(new Map<string, EntityWithNews>()),
+    jintelClient ? batchEnrichAllChunked(jintelClient, tickers) : Promise.resolve(new Map<string, Entity>()),
     // Memories (local, fast)
     recallAllMemories(memoryStores, tickers),
     // Previous report (local, fast)
@@ -395,7 +395,7 @@ export function formatRiskMetrics(briefs: DataBrief[]): string {
  * @param inputTicker — the portfolio ticker that was queried; always included in
  *   the signal's tickers so downstream association (signal → position) is guaranteed.
  */
-function enrichmentToSignals(entity: EntityWithNews, inputTicker: string): RawSignalInput[] {
+function enrichmentToSignals(entity: Entity, inputTicker: string): RawSignalInput[] {
   const entityTickers = entity.tickers ?? [];
   // Guarantee the portfolio ticker is in the tickers list (case-insensitive dedup)
   const tickers = entityTickers.some((t) => t.toUpperCase() === inputTicker.toUpperCase())
@@ -505,14 +505,13 @@ function enrichmentToSignals(entity: EntityWithNews, inputTicker: string): RawSi
       reliability: 0.8,
       title: article.title,
       content: article.snippet ?? undefined,
-      link: article.url,
-      publishedAt: article.publishedAt,
+      link: article.link,
+      publishedAt: article.date ?? now,
       tickers,
       confidence: 0.8,
       metadata: {
         source: article.source,
-        sentiment: article.sentiment,
-        link: article.url,
+        link: article.link,
       },
     });
   }
@@ -524,48 +523,8 @@ function enrichmentToSignals(entity: EntityWithNews, inputTicker: string): RawSi
 // Unified Jintel enrichment — single query for ALL signal types
 // ---------------------------------------------------------------------------
 
-/** News fields appended to the standard enrichment query. */
-const NEWS_FIELDS = `
-  news {
-    title
-    url
-    source
-    publishedAt
-    snippet
-    sentiment
-  }`;
-
-/** Entity with optional news — extends the SDK Entity type. */
-interface EntityWithNews extends Entity {
-  news?: Array<{
-    title: string;
-    url: string;
-    source: string;
-    publishedAt: string;
-    snippet?: string | null;
-    sentiment?: string | null;
-  }> | null;
-}
-
-/**
- * Build a query that fetches all standard enrichment fields PLUS news.
- * Uses the SDK's field fragments so they stay in sync with the client.
- */
-function buildUnifiedEnrichQuery(): string {
-  // Start from the SDK's batch enrich query and inject the news block
-  const base = buildBatchEnrichQuery(ALL_ENRICHMENT_FIELDS);
-  // Insert news fields just before the closing `}` of the entity selection set
-  const result = base.replace(/(\n\s*}\s*}\s*)$/, `${NEWS_FIELDS}\n$1`);
-  if (result === base) {
-    throw new Error(
-      'buildUnifiedEnrichQuery: failed to inject news fields into base query. ' +
-        'The SDK query format may have changed.',
-    );
-  }
-  return result;
-}
-
-const UNIFIED_ENRICH_QUERY = buildUnifiedEnrichQuery();
+/** Batch enrich query including all fields (market, risk, regulatory, corporate, news, etc.) */
+const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(ALL_ENRICHMENT_FIELDS);
 
 /**
  * Batch enrich tickers with ALL fields (market, risk, regulatory, corporate, news)
@@ -575,22 +534,16 @@ const UNIFIED_ENRICH_QUERY = buildUnifiedEnrichQuery();
  * that downstream code always knows which portfolio position an entity belongs to,
  * even if the entity's own `tickers` field has a different format or ordering.
  */
-async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): Promise<Map<string, EntityWithNews>> {
+async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): Promise<Map<string, Entity>> {
   const CHUNK_SIZE = 20;
-  const result = new Map<string, EntityWithNews>();
-  let newsSupported = true;
-
+  const result = new Map<string, Entity>();
   for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
     const chunk = tickers.slice(i, i + CHUNK_SIZE);
     try {
-      // Use the unified query (enrichment + news) via raw request
-      const data = await client.request<EntityWithNews[]>(
-        newsSupported ? UNIFIED_ENRICH_QUERY : buildBatchEnrichQuery(ALL_ENRICHMENT_FIELDS),
-        { tickers: chunk },
-      );
+      const data = await client.request<Entity[]>(BATCH_ENRICH_QUERY, { tickers: chunk });
 
       // Build a case-insensitive lookup: entity ticker → entity
-      const entityByTicker = new Map<string, EntityWithNews>();
+      const entityByTicker = new Map<string, Entity>();
       for (const entity of data) {
         for (const t of entity.tickers ?? []) {
           entityByTicker.set(t.toUpperCase(), entity);
@@ -612,7 +565,7 @@ async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): P
       const hasMarket = data.filter((e) => e.market?.quote).length;
       const hasFundamentals = data.filter((e) => e.market?.fundamentals).length;
       const newsCount = data.reduce((n, e) => n + (e.news?.length ?? 0), 0);
-      logger.info('Unified enrich succeeded', {
+      logger.info('Batch enrich succeeded', {
         tickers: chunk,
         entities: data.length,
         mapped: chunk.filter((t) => result.has(t)).length,
@@ -624,15 +577,7 @@ async function batchEnrichAllChunked(client: JintelClient, tickers: string[]): P
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // If the server doesn't support news field yet, fall back to standard enrichment
-      if (newsSupported && msg.includes('Cannot query field')) {
-        logger.info('Jintel news field not available — falling back to standard enrichment');
-        newsSupported = false;
-        // Retry this chunk without news
-        i -= CHUNK_SIZE;
-        continue;
-      }
-      logger.warn('Unified enrich chunk failed', { chunk: chunk.slice(0, 3), error: msg });
+      logger.warn('Batch enrich chunk failed', { chunk: chunk.slice(0, 3), error: msg });
     }
   }
 
@@ -712,7 +657,7 @@ function buildBrief(
   pos: Position,
   signals: Signal[],
   quote: MarketQuote | undefined,
-  entity: EntityWithNews | undefined,
+  entity: Entity | undefined,
   memories: MemoryBrief[],
 ): DataBrief {
   // Compute sentiment direction from signal-level sentiment (with keyword fallback)
