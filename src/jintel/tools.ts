@@ -1,20 +1,31 @@
 /**
  * Jintel agent tools — search_entities, enrich_entity, market_quotes,
- * sanctions_screen.
+ * sanctions_screen, economy queries (GDP, inflation, rates, S&P 500).
  *
  * Wraps JintelClient for agent use. When the client is not configured,
  * tools return a helpful error guiding the user to set up their API key.
  */
 
 import {
+  type EconomicDataPoint,
   type EnrichmentField,
   type Entity,
   type EntityType,
   EntityTypeSchema,
+  GDP,
+  type GdpType,
+  GdpTypeSchema,
+  INFLATION,
+  INTEREST_RATES,
+  JintelAuthError,
   type JintelClient,
   type JintelResult,
   type MarketQuote,
   type RiskSignal,
+  type SP500DataPoint,
+  type SP500Series,
+  SP500SeriesSchema,
+  SP500_MULTIPLES,
   type SanctionsMatch,
 } from '@yojinhq/jintel-client';
 import { z } from 'zod';
@@ -34,6 +45,9 @@ export interface JintelToolOptions {
 const NOT_CONFIGURED_MSG =
   'Jintel API key not configured. Complete onboarding at Settings → Connections, or add key "jintel-api-key" in Settings → Vault.';
 
+const AUTH_ERROR_MSG =
+  'Jintel rejected the API key (401 Unauthorized). The stored key may be revoked or mistyped — delete and re-add "jintel-api-key" in Settings → Vault.';
+
 const FALLBACK_SUFFIX = '\n\nJintel unavailable. Use query_data_source with configured sources for fallback data.';
 
 const ENRICHMENT_FIELDS = z.enum(['market', 'risk', 'regulatory', 'corporate', 'technicals', 'news', 'research']);
@@ -51,6 +65,10 @@ function notConfigured(): ToolResult {
   return { content: NOT_CONFIGURED_MSG, isError: true };
 }
 
+function authError(): ToolResult {
+  return { content: AUTH_ERROR_MSG, isError: true };
+}
+
 function failureResult(error: string): ToolResult {
   return { content: error + FALLBACK_SUFFIX, isError: true };
 }
@@ -60,6 +78,19 @@ type HandleResult<T> = { ok: true; data: T } | { ok: false; toolResult: ToolResu
 function handleResult<T>(result: JintelResult<T>): HandleResult<T> {
   if (!result.success) return { ok: false, toolResult: failureResult(result.error) };
   return { ok: true, data: result.data };
+}
+
+/** Wraps an async client call with typed error handling. */
+async function safeCall<T>(
+  fn: () => Promise<T>,
+): Promise<{ ok: true; data: T } | { ok: false; toolResult: ToolResult }> {
+  try {
+    return { ok: true, data: await fn() };
+  } catch (err) {
+    if (err instanceof JintelAuthError) return { ok: false, toolResult: authError() };
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, toolResult: failureResult(msg) };
+  }
 }
 
 export function riskSignalsToRaw(signals: RiskSignal[], tickers: string[]): RawSignalInput[] {
@@ -173,6 +204,19 @@ function formatEnrichment(entity: Entity): string {
     if (lines.length) sections.push(`## Corporate\n${lines.join('\n')}`);
   }
 
+  if (entity.news?.length) {
+    const newsLines = entity.news.map((n) => `- [${n.source}] ${n.title} (${n.date})${n.link ? `\n  ${n.link}` : ''}`);
+    sections.push(`## News\n${newsLines.join('\n')}`);
+  }
+
+  if (entity.research?.length) {
+    const resLines = entity.research.map(
+      (r) =>
+        `- ${r.title}${r.author ? ` — ${r.author}` : ''}${r.publishedDate ? ` (${r.publishedDate})` : ''}${r.url ? `\n  ${r.url}` : ''}`,
+    );
+    sections.push(`## Research\n${resLines.join('\n')}`);
+  }
+
   return sections.join('\n\n');
 }
 
@@ -194,6 +238,24 @@ function formatSanctions(matches: SanctionsMatch[]): string {
         `⚠ WARNING: Match on **${m.listName}**\n  Matched name: ${m.matchedName} (score: ${m.score.toFixed(2)})${m.details ? `\n  ${m.details}` : ''}`,
     )
     .join('\n\n');
+}
+
+function formatEconomicData(data: EconomicDataPoint[], label: string): string {
+  if (data.length === 0) return `No ${label} data available.`;
+  const sorted = [...data].sort((a, b) => b.date.localeCompare(a.date));
+  const recent = sorted.slice(0, 20);
+  const lines = recent.map(
+    (d) => `${d.date}: ${d.value != null ? d.value.toFixed(2) : 'N/A'}${d.country ? ` (${d.country})` : ''}`,
+  );
+  return `# ${label}\n${lines.join('\n')}${sorted.length > 20 ? `\n\n... and ${sorted.length - 20} more data points` : ''}`;
+}
+
+function formatSP500Data(data: SP500DataPoint[]): string {
+  if (data.length === 0) return 'No S&P 500 data available.';
+  const sorted = [...data].sort((a, b) => b.date.localeCompare(a.date));
+  const recent = sorted.slice(0, 20);
+  const lines = recent.map((d) => `${d.date}: ${d.value.toFixed(2)}`);
+  return `# S&P 500 — ${sorted[0]?.name ?? 'Multiples'}\n${lines.join('\n')}${sorted.length > 20 ? `\n\n... and ${sorted.length - 20} more data points` : ''}`;
 }
 
 function formatNumber(n: number): string {
@@ -289,14 +351,11 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       if (!options.client) return notConfigured();
       const fields = params.fields ?? ['market', 'risk'];
 
-      // Enrich each ticker individually (parallel)
-      const client = options.client;
-      const fallbackResults: JintelResult<Entity>[] = await Promise.all(
-        params.tickers.map((ticker) => client.enrichEntity(ticker, fields)),
-      );
-      const entities = fallbackResults
-        .filter((r): r is { success: true; data: Entity } => r.success)
-        .map((r) => r.data);
+      const result = await options.client.batchEnrich(params.tickers, fields);
+      const handled = handleResult(result);
+      if (!handled.ok) return handled.toolResult;
+
+      const entities = handled.data;
       if (entities.length === 0) {
         return failureResult(`Batch enrich returned no data for ${params.tickers.join(', ')}`);
       }
@@ -397,5 +456,98 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
-  return [searchEntities, enrichEntity, batchEnrich, marketQuotes, sanctionsScreen, runTechnical];
+  // ── Economy tools ──────────────────────────────────────────────────────
+
+  const getGdp: ToolDefinition = {
+    name: 'get_gdp',
+    description:
+      'Get GDP data for a country. Returns time series of GDP values. ' +
+      'Useful for macro context when analyzing market conditions or country risk.',
+    parameters: z.object({
+      country: z.string().describe('Country name or ISO code (e.g. "United States", "US", "Germany")'),
+      type: GdpTypeSchema.optional().describe('GDP type: REAL, NOMINAL, or FORECAST (default: REAL)'),
+    }),
+    async execute(params: { country: string; type?: GdpType }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const result = await safeCall(() =>
+        client.request<EconomicDataPoint[]>(GDP, {
+          country: params.country,
+          type: params.type,
+        }),
+      );
+      if (!result.ok) return result.toolResult;
+      return { content: formatEconomicData(result.data, `GDP — ${params.country}`) };
+    },
+  };
+
+  const getInflation: ToolDefinition = {
+    name: 'get_inflation',
+    description:
+      'Get inflation (CPI) data for a country. Returns time series of inflation values. ' +
+      'Critical for understanding real returns and central bank policy direction.',
+    parameters: z.object({
+      country: z.string().describe('Country name or ISO code (e.g. "United States", "UK")'),
+    }),
+    async execute(params: { country: string }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const result = await safeCall(() => client.request<EconomicDataPoint[]>(INFLATION, { country: params.country }));
+      if (!result.ok) return result.toolResult;
+      return { content: formatEconomicData(result.data, `Inflation — ${params.country}`) };
+    },
+  };
+
+  const getInterestRates: ToolDefinition = {
+    name: 'get_interest_rates',
+    description:
+      'Get central bank interest rate data for a country. Returns time series of rate decisions. ' +
+      'Key for understanding monetary policy and its impact on equity/bond valuations.',
+    parameters: z.object({
+      country: z.string().describe('Country name or ISO code (e.g. "United States", "EU")'),
+    }),
+    async execute(params: { country: string }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const result = await safeCall(() =>
+        client.request<EconomicDataPoint[]>(INTEREST_RATES, { country: params.country }),
+      );
+      if (!result.ok) return result.toolResult;
+      return { content: formatEconomicData(result.data, `Interest Rates — ${params.country}`) };
+    },
+  };
+
+  const getSP500Multiples: ToolDefinition = {
+    name: 'get_sp500_multiples',
+    description:
+      'Get S&P 500 valuation multiples over time. Available series:\n' +
+      '- PE_MONTH: trailing P/E ratio\n' +
+      '- SHILLER_PE_MONTH: cyclically-adjusted P/E (CAPE/Shiller PE)\n' +
+      '- DIVIDEND_YIELD_MONTH: dividend yield\n' +
+      '- EARNINGS_YIELD_MONTH: earnings yield (inverse of P/E)\n\n' +
+      'Useful for gauging broad market valuation relative to historical norms.',
+    parameters: z.object({
+      series: SP500SeriesSchema.describe('Which valuation series to fetch'),
+    }),
+    async execute(params: { series: SP500Series }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const result = await safeCall(() => client.request<SP500DataPoint[]>(SP500_MULTIPLES, { series: params.series }));
+      if (!result.ok) return result.toolResult;
+      return { content: formatSP500Data(result.data) };
+    },
+  };
+
+  return [
+    searchEntities,
+    enrichEntity,
+    batchEnrich,
+    marketQuotes,
+    sanctionsScreen,
+    runTechnical,
+    getGdp,
+    getInflation,
+    getInterestRates,
+    getSP500Multiples,
+  ];
 }

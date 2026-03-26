@@ -389,7 +389,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     toolRegistry.register(tool);
   }
 
-  // Jintel tools (6 tools — always registered; return config error if client unavailable)
+  // Jintel tools (10 tools — always registered; return config error if client unavailable)
   const jintelToolOptions: JintelToolOptions = { client: jintelClient, ingestor: signalIngestor };
   for (const tool of createJintelTools(jintelToolOptions)) {
     toolRegistry.register(tool);

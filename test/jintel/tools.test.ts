@@ -1,4 +1,5 @@
 import type { Entity, JintelClient, JintelResult, MarketQuote, SanctionsMatch } from '@yojinhq/jintel-client';
+import { JintelAuthError } from '@yojinhq/jintel-client';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createJintelTools } from '../../src/jintel/tools.js';
@@ -112,9 +113,11 @@ function createMockClient(overrides: Partial<JintelClient> = {}): JintelClient {
   return {
     searchEntities: vi.fn().mockResolvedValue(ok(MOCK_ENTITIES)),
     enrichEntity: vi.fn().mockResolvedValue(ok(MOCK_ENRICHED_ENTITY)),
+    batchEnrich: vi.fn().mockResolvedValue(ok([MOCK_ENRICHED_ENTITY])),
     quotes: vi.fn().mockResolvedValue(ok(MOCK_QUOTES)),
     sanctionsScreen: vi.fn().mockResolvedValue(ok(MOCK_SANCTIONS)),
     healthCheck: vi.fn().mockResolvedValue({ healthy: true, latencyMs: 50 }),
+    request: vi.fn().mockResolvedValue([]),
     ...overrides,
   } as unknown as JintelClient;
 }
@@ -197,6 +200,19 @@ describe('jintel tools', () => {
     });
   });
 
+  describe('batch_enrich', () => {
+    it('uses batchEnrich client method (single API call)', async () => {
+      const client = createMockClient();
+      const tool = findTool('batch_enrich', client);
+
+      const result = await tool.execute({ tickers: ['AAPL', 'MSFT'] });
+
+      expect(result.isError).toBeUndefined();
+      expect(client.batchEnrich).toHaveBeenCalledWith(['AAPL', 'MSFT'], ['market', 'risk']);
+      expect(result.content).toContain('Apple Inc.');
+    });
+  });
+
   describe('market_quotes', () => {
     it('returns formatted quote lines', async () => {
       const client = createMockClient();
@@ -227,6 +243,64 @@ describe('jintel tools', () => {
     });
   });
 
+  describe('economy tools', () => {
+    it('get_gdp calls request with GDP query', async () => {
+      const mockData = [
+        { date: '2024-Q4', country: 'US', value: 28.78 },
+        { date: '2024-Q3', country: 'US', value: 28.36 },
+      ];
+      const client = createMockClient({ request: vi.fn().mockResolvedValue(mockData) });
+      const tool = findTool('get_gdp', client);
+
+      const result = await tool.execute({ country: 'United States', type: 'REAL' });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.content).toContain('GDP');
+      expect(result.content).toContain('28.78');
+      expect(result.content).toContain('US');
+      expect(client.request).toHaveBeenCalled();
+    });
+
+    it('get_inflation calls request with INFLATION query', async () => {
+      const mockData = [{ date: '2024-12', country: 'US', value: 2.9 }];
+      const client = createMockClient({ request: vi.fn().mockResolvedValue(mockData) });
+      const tool = findTool('get_inflation', client);
+
+      const result = await tool.execute({ country: 'United States' });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.content).toContain('Inflation');
+      expect(result.content).toContain('2.90');
+    });
+
+    it('get_interest_rates calls request with INTEREST_RATES query', async () => {
+      const mockData = [{ date: '2024-12', country: 'US', value: 4.5 }];
+      const client = createMockClient({ request: vi.fn().mockResolvedValue(mockData) });
+      const tool = findTool('get_interest_rates', client);
+
+      const result = await tool.execute({ country: 'United States' });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.content).toContain('Interest Rates');
+      expect(result.content).toContain('4.50');
+    });
+
+    it('get_sp500_multiples calls request with SP500_MULTIPLES query', async () => {
+      const mockData = [
+        { date: '2024-12', name: 'S&P 500 PE Ratio', value: 24.5 },
+        { date: '2024-11', name: 'S&P 500 PE Ratio', value: 23.8 },
+      ];
+      const client = createMockClient({ request: vi.fn().mockResolvedValue(mockData) });
+      const tool = findTool('get_sp500_multiples', client);
+
+      const result = await tool.execute({ series: 'PE_MONTH' });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.content).toContain('S&P 500');
+      expect(result.content).toContain('24.50');
+    });
+  });
+
   describe('jintel failure', () => {
     it('returns isError with fallback guidance on failure', async () => {
       const client = createMockClient({
@@ -254,6 +328,19 @@ describe('jintel tools', () => {
       expect(result.content).toContain('Rate limit exceeded');
       expect(result.content).toContain('query_data_source');
     });
+
+    it('auth error returns re-onboarding guidance', async () => {
+      const client = createMockClient({
+        request: vi.fn().mockRejectedValue(new JintelAuthError('Invalid API key')),
+      });
+      const tool = findTool('get_gdp', client);
+
+      const result = await tool.execute({ country: 'US' });
+
+      expect(result.isError).toBe(true);
+      expect(result.content).toContain('401 Unauthorized');
+      expect(result.content).toContain('Vault');
+    });
   });
 
   describe('client undefined (not configured)', () => {
@@ -266,6 +353,8 @@ describe('jintel tools', () => {
           ticker: 'AAPL',
           tickers: ['AAPL'],
           name: 'test',
+          country: 'US',
+          series: 'PE_MONTH',
         });
         expect(result.isError).toBe(true);
         expect(result.content).toContain('Jintel API key not configured');
