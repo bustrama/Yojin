@@ -118,10 +118,12 @@ export default function Insights() {
   const hasPositions = positions.length > 0;
 
   // Fetch signals for the primary view (last 7 days, up to 200)
-  const signalVariables: SignalsVariables = {
-    limit: 200,
-    since: new Date(Date.now() - 7 * 86_400_000).toISOString(),
-  };
+  // Memoize so the `since` timestamp doesn't change on every render —
+  // a changing value would make urql treat each render as a new query.
+  const signalVariables = useMemo<SignalsVariables>(
+    () => ({ limit: 200, since: new Date(Date.now() - 7 * 86_400_000).toISOString() }),
+    [],
+  );
   const [signalsResult] = useQuery<SignalsQueryResult, SignalsVariables>({
     query: SIGNALS_QUERY,
     variables: signalVariables,

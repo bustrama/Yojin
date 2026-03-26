@@ -295,10 +295,19 @@ export class SignalIngestor {
     return 'NEWS';
   }
 
-  /** SHA-256 content hash for dedup. Source-agnostic — same event from different sources yields the same hash. */
+  /**
+   * SHA-256 content hash for dedup. Source-agnostic — same event from
+   * different sources yields the same hash.
+   *
+   * Uses day-precision for publishedAt so that the same article/data point
+   * published at different times on the same day is still detected as a
+   * duplicate (e.g. RSS feeds republishing with updated timestamps, or
+   * enrichment signals re-ingested on the same day).
+   */
   private computeHash(title: string, publishedAt: string): string {
     const normalized = title.trim().toLowerCase();
-    return createHash('sha256').update(`${normalized}|${publishedAt}`).digest('hex');
+    const day = publishedAt.slice(0, 10); // YYYY-MM-DD
+    return createHash('sha256').update(`${normalized}|${day}`).digest('hex');
   }
 
   /** Weighted confidence — bonus scales with average reliability so low-quality sources can't inflate score. */

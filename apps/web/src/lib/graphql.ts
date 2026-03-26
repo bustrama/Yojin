@@ -32,6 +32,7 @@ const cache = cacheExchange({
     Concentration: () => null,
     CorrelationCluster: () => null,
     PriceEvent: () => null,
+    SignalSource: () => null, // embedded — same source id appears on many signals
     SessionSummary: (data) => data.id as string,
     SessionDetail: (data) => data.id as string,
   },

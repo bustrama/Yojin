@@ -109,5 +109,18 @@ export async function signalsResolver(
   filter.limit = args.limit ?? 50;
 
   const signals = await archive.query(filter);
-  return signals.map(toGql);
+
+  // Dedup by normalized title — keep the most recent signal per unique title.
+  // This prevents stale copies (e.g. same fundamentals refreshed daily) from
+  // cluttering the feed while preserving the latest version of each data point.
+  const byTitle = new Map<string, Signal>();
+  for (const signal of signals) {
+    const key = signal.title.trim().toLowerCase();
+    const existing = byTitle.get(key);
+    if (!existing || signal.publishedAt > existing.publishedAt) {
+      byTitle.set(key, signal);
+    }
+  }
+
+  return [...byTitle.values()].map(toGql);
 }

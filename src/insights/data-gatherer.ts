@@ -442,7 +442,10 @@ function enrichmentToSignals(entity: ExtendedEntity, inputTicker: string): RawSi
   const tickers = entityTickers.some((t) => t.toUpperCase() === inputTicker.toUpperCase())
     ? entityTickers
     : [inputTicker, ...entityTickers];
-  const now = new Date().toISOString();
+  // Day-precision timestamp for enrichment signals. The content hash is
+  // sha256(title | publishedAt), so using a stable per-day value prevents
+  // duplicate signals when enrichment runs multiple times in the same day.
+  const now = new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z';
   const signals: RawSignalInput[] = [];
 
   // 1. Risk signals (OFAC, adverse media, etc.)
