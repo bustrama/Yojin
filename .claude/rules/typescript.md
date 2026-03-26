@@ -40,6 +40,7 @@ globs: ["**/*.ts"]
 
 ## React
 - **Keep reducers and subscription handlers pure.** urql `useSubscription` reducers and React `useReducer` handlers must not call `setState`, trigger queries, or produce other side effects. Derive state from the accumulated result and handle side effects in a separate `useEffect`.
+- **Check urql mutation results for errors.** `useMutation` execute functions return `Promise<OperationResult>` that **never rejects** — GraphQL and network errors arrive via `result.error`, not thrown exceptions. Always check `result.error` before showing success state.
 - **Extract shared components.** When a UI component (e.g. `SignalChips`) or utility (e.g. `timeAgo`) is duplicated across 2+ sibling files, extract it into a shared module immediately.
 - **Don't derive semantic meaning from CSS class names.** Use explicit data fields (e.g. `variant: 'accent'`) instead of parsing Tailwind utility strings to determine behavior.
 - **Distinguish loading from empty.** When a query result is `undefined`, check `result.fetching` before showing the no-data fallback. Users should see a loading indicator during fetch, not a misleading "no data yet" CTA.
