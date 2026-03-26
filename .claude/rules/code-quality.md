@@ -40,6 +40,11 @@ Extend via interfaces, not modification:
 - In `finally` blocks, wrap cleanup in its own try/catch to avoid suppressing the original exception.
 - When a function has setup + action + cleanup, decide explicitly whether setup failure should abort or be best-effort. Match the error strategy symmetrically.
 
+## Wiring Completeness
+
+- **Wire optional dependencies at every call site.** When adding an optional parameter to an interface (e.g. `memoryStore?: SignalMemoryStore`), TypeScript won't warn if callers omit it. Grep for all call sites of the function/constructor and wire the new dependency at each one — or the feature will be silently dead in production behind an `if (dependency)` guard.
+- **Apply conditional patterns symmetrically.** When multiple agents in a workflow use the same `hasX ? value : fallback` pattern, apply it consistently to all agents — don't hardcode values for some while making others conditional.
+
 ## Refactoring — Ask First
 
 Before making breaking changes to:
