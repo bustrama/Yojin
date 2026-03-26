@@ -53,6 +53,11 @@ Extend via interfaces, not modification:
 - **Don't default missing data to values that satisfy conditions.** Using `?? 0` for a numeric lookup that feeds a threshold comparison (e.g. `value ?? 0` into `value <= threshold`) will fire the condition when data is absent. Skip the check (`return null`) when the input is `undefined` — absent data means "can't evaluate", not "value is zero".
 - **Don't ship mock data as production fallback.** When a resolver or hook depends on an optional backing store (e.g. `EventLog`), return an empty result when the store isn't wired — not fabricated events. Mock data belongs in tests and Storybook, not in runtime code paths.
 
+## Signal & Data Dedup
+
+- **Content hashes must be stable across re-runs.** The ingestor hashes `title | YYYY-MM-DD` (day-precision). When creating `RawSignalInput` for enrichment data (fundamentals, technicals), set `publishedAt` to a stable value (start-of-day), not `new Date().toISOString()`. A ms-precision timestamp produces a new hash on every run, defeating dedup.
+- **Shared data points need title-level dedup.** The signals resolver dedupes by normalized title, keeping the latest `publishedAt`. When adding a new signal source that produces recurring snapshots (like fundamentals), the same data point WILL appear across days — the resolver handles this, don't try to prevent it at the archive level.
+
 ## Refactoring — Ask First
 
 Before making breaking changes to:

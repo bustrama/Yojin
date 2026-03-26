@@ -44,6 +44,8 @@ globs: ["**/*.ts"]
 - **Extract shared components.** When a UI component (e.g. `SignalChips`) or utility (e.g. `timeAgo`) is duplicated across 2+ sibling files, extract it into a shared module immediately.
 - **Don't derive semantic meaning from CSS class names.** Use explicit data fields (e.g. `variant: 'accent'`) instead of parsing Tailwind utility strings to determine behavior.
 - **Distinguish loading from empty.** When a query result is `undefined`, check `result.fetching` before showing the no-data fallback. Users should see a loading indicator during fetch, not a misleading "no data yet" CTA.
+- **Memoize query variables.** `useQuery` variables that contain computed values (e.g. `new Date().toISOString()`) must be wrapped in `useMemo`. An unstable reference makes urql treat every render as a new query, causing an infinite fetch loop. If a variable changes per-millisecond (timestamps, UUIDs), it **will** loop.
+- **Register every GraphQL type in graphcache keys.** When adding a new type to the schema, add a key resolver in `src/lib/graphql.ts`. Types that appear as nested objects on multiple parents (e.g. `SignalSource` shared across many `Signal` entries) must use `() => null` (embedded, not normalized) — otherwise graphcache merges unrelated parents into one cache entry.
 
 ## Imports
 - Group imports: node builtins, external packages, internal modules.
