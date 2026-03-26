@@ -391,7 +391,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
           await adapter.initialize(dsCfg);
           dataSourceRegistry.register(adapter);
         } else if (dsCfg.config.type === 'cli') {
-          const adapter = new CliAdapter(dsCfg, { vault });
+          const adapter = new CliAdapter(dsCfg);
           await adapter.initialize(dsCfg);
           dataSourceRegistry.register(adapter);
         }

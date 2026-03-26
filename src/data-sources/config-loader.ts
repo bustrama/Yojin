@@ -78,7 +78,10 @@ function flatToTyped(flat: FlatDataSource): DataSourceConfig {
           authPrefix: flat.authPrefix ?? 'Bearer',
           rateLimitPerMinute: flat.rateLimitPerMinute ?? 60,
           supportsAsync: flat.supportsAsync ?? false,
-          endpointMapping: {},
+          endpointMapping: (flat.endpointMapping ?? {}) as Record<
+            string,
+            { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; path: string; bodyTemplate?: string }
+          >,
         },
       };
     case 'CLI':

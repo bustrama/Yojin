@@ -9,7 +9,6 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { runCli } from '../../core/run-cli.js';
-import type { EncryptedVault } from '../../trust/vault/vault.js';
 import type {
   DataQuery,
   DataResult,
@@ -21,10 +20,6 @@ import type {
 } from '../types.js';
 
 const which = promisify(execFile);
-
-export interface CliAdapterOptions {
-  vault?: EncryptedVault;
-}
 
 export class CliAdapter implements DataSourcePlugin {
   readonly id: string;
@@ -38,16 +33,13 @@ export class CliAdapter implements DataSourcePlugin {
   private args: string[] = [];
   private timeout = 30_000;
   private envOverrides: Record<string, string> = {};
-  private secretRef?: string;
-  private readonly vault?: EncryptedVault;
 
-  constructor(config: DataSourceConfig, options: CliAdapterOptions = {}) {
+  constructor(config: DataSourceConfig) {
     this.id = config.id;
     this.name = config.name;
     this.capabilities = config.capabilities;
     this.enabled = config.enabled;
     this.priority = config.priority;
-    this.vault = options.vault;
   }
 
   async initialize(config: DataSourceConfig): Promise<void> {
@@ -75,12 +67,6 @@ export class CliAdapter implements DataSourcePlugin {
     }
 
     const env: Record<string, string> = { ...(process.env as Record<string, string>), ...this.envOverrides };
-
-    // Resolve API key from vault if needed
-    if (this.secretRef) {
-      const key = await this.resolveApiKey();
-      if (key) env[this.secretRef] = key;
-    }
 
     const { stdout } = await runCli(this.command, cmdArgs, {
       timeout: this.timeout,
@@ -134,15 +120,5 @@ export class CliAdapter implements DataSourcePlugin {
 
   async shutdown(): Promise<void> {
     // No persistent state to clean up
-  }
-
-  private async resolveApiKey(): Promise<string | undefined> {
-    if (!this.secretRef) return undefined;
-    if (!this.vault?.isUnlocked) return undefined;
-    try {
-      return (await this.vault.get(this.secretRef)) ?? undefined;
-    } catch {
-      return undefined;
-    }
   }
 }
