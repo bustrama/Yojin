@@ -462,6 +462,11 @@ export const typeDefs = /* GraphQL */ `
     version: Int!
   }
 
+  type TickerSignals {
+    ticker: String!
+    signals: [Signal!]!
+  }
+
   type SignalGroup {
     id: String!
     signals: [Signal!]!
@@ -926,6 +931,7 @@ export const typeDefs = /* GraphQL */ `
       outputType: SignalOutputType
       limit: Int
     ): [Signal!]!
+    signalsByTicker(since: String, limit: Int): [TickerSignals!]!
     signalGroups(ticker: String, since: String, limit: Int): [SignalGroup!]!
     curatedSignals(ticker: String, since: String, limit: Int): [CuratedSignal!]!
     curationStatus: CurationStatus!

@@ -638,6 +638,35 @@ export const SIGNALS_QUERY = gql`
   }
 `;
 
+export const SIGNALS_BY_TICKER_QUERY = gql`
+  query SignalsByTicker($since: String, $limit: Int) {
+    signalsByTicker(since: $since, limit: $limit) {
+      ticker
+      signals {
+        id
+        type
+        title
+        content
+        publishedAt
+        ingestedAt
+        confidence
+        tickers
+        sources {
+          id
+          name
+          type
+          reliability
+        }
+        sentiment
+        outputType
+        tier1
+        tier2
+        link
+      }
+    }
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // Queries — Signal Groups
 // ---------------------------------------------------------------------------

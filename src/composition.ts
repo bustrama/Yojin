@@ -39,7 +39,7 @@ import {
 import { setPortfolioConnectionManager, setPortfolioJintelClient } from './api/graphql/resolvers/portfolio.js';
 import { setAssessmentStore } from './api/graphql/resolvers/signal-assessments.js';
 import { setGroupSignalArchive, setSignalGroupArchive } from './api/graphql/resolvers/signal-groups.js';
-import { setSignalArchive } from './api/graphql/resolvers/signals.js';
+import { setSignalArchive, setSignalSnapshotStore } from './api/graphql/resolvers/signals.js';
 import { setSkillStore } from './api/graphql/resolvers/skills.js';
 import { setSnapStore } from './api/graphql/resolvers/snap.js';
 import { setVault, setVaultSecretChangedCallback } from './api/graphql/resolvers/vault.js';
@@ -347,6 +347,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   // Clustering is wired after LLM provider is available (see below)
   const signalIngestor = new SignalIngestor({ archive: signalArchive });
   setSignalArchive(signalArchive);
+  setSignalSnapshotStore(snapshotStore);
   setSignalGroupArchive(signalGroupArchive);
   setGroupSignalArchive(signalArchive);
   setDataSourceConfigPath(dsConfigPath);

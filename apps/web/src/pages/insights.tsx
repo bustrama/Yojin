@@ -7,7 +7,7 @@ import {
   LATEST_INSIGHT_REPORT_QUERY,
   ON_WORKFLOW_PROGRESS_SUBSCRIPTION,
   PROCESS_INSIGHTS_MUTATION,
-  SIGNALS_QUERY,
+  SIGNALS_BY_TICKER_QUERY,
 } from '../api/documents';
 import { usePositions } from '../api/hooks/use-portfolio';
 import type {
@@ -21,8 +21,7 @@ import type {
   PositionInsight,
   ProcessInsightsMutationResult,
   Signal,
-  SignalsQueryResult,
-  SignalsVariables,
+  SignalsByTickerQueryResult,
   SignalSummary,
   WorkflowProgressEvent,
 } from '../api/types';
@@ -117,40 +116,15 @@ export default function Insights() {
   const positions = useMemo(() => positionsResult.data?.positions ?? [], [positionsResult.data]);
   const hasPositions = positions.length > 0;
 
-  // Fetch signals for the primary view (last 7 days, up to 200)
-  // Memoize so the `since` timestamp doesn't change on every render —
-  // a changing value would make urql treat each render as a new query.
-  const signalVariables = useMemo<SignalsVariables>(
-    () => ({ limit: 200, since: new Date(Date.now() - 7 * 86_400_000).toISOString() }),
-    [],
-  );
-  const [signalsResult] = useQuery<SignalsQueryResult, SignalsVariables>({
-    query: SIGNALS_QUERY,
-    variables: signalVariables,
+  // Fetch signals pre-grouped by portfolio ticker from the backend.
+  // Memoize variables so the `since` timestamp doesn't change on every render.
+  const signalVars = useMemo(() => ({ limit: 200, since: new Date(Date.now() - 7 * 86_400_000).toISOString() }), []);
+  const [signalsResult] = useQuery<SignalsByTickerQueryResult>({
+    query: SIGNALS_BY_TICKER_QUERY,
+    variables: signalVars,
   });
-  const signals = useMemo(() => signalsResult.data?.signals ?? [], [signalsResult.data]);
-
-  // Group signals by portfolio position tickers
-  const positionTickers = useMemo(() => new Set(positions.map((p) => p.symbol)), [positions]);
-  const signalsByTicker = useMemo(() => {
-    const grouped = new Map<string, Signal[]>();
-    for (const signal of signals) {
-      for (const ticker of signal.tickers) {
-        if (positionTickers.has(ticker)) {
-          const existing = grouped.get(ticker) ?? [];
-          existing.push(signal);
-          grouped.set(ticker, existing);
-        }
-      }
-    }
-    // Sort by signal count descending
-    return [...grouped.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [signals, positionTickers]);
-
-  // Unrelated signals (not matching any portfolio position)
-  const unrelatedSignals = useMemo(() => {
-    return signals.filter((s) => !s.tickers.some((t) => positionTickers.has(t)));
-  }, [signals, positionTickers]);
+  const signalsByTicker = useMemo(() => signalsResult.data?.signalsByTicker ?? [], [signalsResult.data]);
+  const totalSignals = useMemo(() => signalsByTicker.reduce((sum, g) => sum + g.signals.length, 0), [signalsByTicker]);
 
   // Check if a workflow is already running (e.g. user navigated away and back)
   const [statusResult, reexecuteStatusQuery] = useQuery<InsightsWorkflowStatusQueryResult>({
@@ -226,8 +200,8 @@ export default function Insights() {
           <p className="mt-1 text-sm text-text-muted">
             {signalsResult.fetching
               ? 'Loading signals...'
-              : signals.length > 0
-                ? `${signals.length} signal${signals.length !== 1 ? 's' : ''} in the last 7 days · ${signalsByTicker.length} position${signalsByTicker.length !== 1 ? 's' : ''} with signals`
+              : totalSignals > 0
+                ? `${totalSignals} signal${totalSignals !== 1 ? 's' : ''} in the last 7 days · ${signalsByTicker.length} position${signalsByTicker.length !== 1 ? 's' : ''} with signals`
                 : 'No recent signals'}
           </p>
         </div>
@@ -270,7 +244,7 @@ export default function Insights() {
         )}
 
         {/* Empty state: positions exist but no signals */}
-        {hasPositions && !signalsResult.fetching && signals.length === 0 && (
+        {hasPositions && !signalsResult.fetching && totalSignals === 0 && (
           <div className="flex flex-col items-center justify-center gap-4 py-24">
             <svg
               className="h-14 w-14 text-text-muted"
@@ -295,36 +269,21 @@ export default function Insights() {
         {/* Signal cards grouped by position */}
         {signalsByTicker.length > 0 && (
           <div className="space-y-3">
-            {signalsByTicker.map(([ticker, tickerSignals]) => {
-              const position = positions.find((p) => p.symbol === ticker);
+            {signalsByTicker.map((group) => {
+              const position = positions.find((p) => p.symbol === group.ticker);
               return (
                 <PositionSignalCard
-                  key={ticker}
-                  ticker={ticker}
-                  name={position?.name ?? ticker}
-                  signals={tickerSignals}
+                  key={group.ticker}
+                  ticker={group.ticker}
+                  name={position?.name ?? group.ticker}
+                  signals={group.signals}
                 />
               );
             })}
           </div>
         )}
 
-        {/* Unrelated signals (not matching any position) */}
-        {unrelatedSignals.length > 0 && (
-          <div>
-            <h2 className="mb-3 text-sm font-semibold text-text-secondary">Other Signals</h2>
-            <div className="space-y-2">
-              {unrelatedSignals.slice(0, 10).map((signal) => (
-                <MiniSignalCard key={signal.id} signal={signal} />
-              ))}
-              {unrelatedSignals.length > 10 && (
-                <Link to="/signals" className="block text-center text-sm text-accent-primary hover:underline py-2">
-                  View all {unrelatedSignals.length} other signals
-                </Link>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Link to full signal archive for non-portfolio signals */}
 
         {/* ================================================================= */}
         {/* DEEP ANALYSIS: Collapsible section at bottom                      */}
@@ -573,58 +532,6 @@ function PositionSignalCard({ ticker, name, signals }: { ticker: string; name: s
 }
 
 // ---------------------------------------------------------------------------
-// Mini signal card (for unrelated signals)
-// ---------------------------------------------------------------------------
-
-function MiniSignalCard({ signal }: { signal: Signal }) {
-  return (
-    <Card className="p-3">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <Badge variant={signalTypeVariant[signal.type] ?? 'neutral'} size="xs">
-              {signal.type}
-            </Badge>
-            {signal.tickers.map((t) => (
-              <Link
-                key={t}
-                to={`/signals?ticker=${t}`}
-                className="text-xs font-semibold text-accent-primary hover:underline"
-              >
-                {t}
-              </Link>
-            ))}
-            {signal.sentiment && (
-              <Badge variant={sentimentVariant[signal.sentiment] ?? 'neutral'} size="xs">
-                {signal.sentiment}
-              </Badge>
-            )}
-            <span className="text-2xs text-text-muted">{formatTimeAgo(new Date(signal.publishedAt))}</span>
-          </div>
-          <Link
-            to={`/signals?highlight=${signal.id}`}
-            className="text-sm font-medium text-text-primary hover:text-accent-primary transition-colors"
-          >
-            {signal.title}
-          </Link>
-        </div>
-        <div className="flex items-center gap-1.5 w-16 flex-shrink-0">
-          <div className="flex-1 h-1 rounded-full bg-bg-tertiary">
-            <div
-              className={cn(
-                'h-1 rounded-full transition-all',
-                signal.confidence >= 0.8 ? 'bg-success' : signal.confidence >= 0.5 ? 'bg-warning' : 'bg-error',
-              )}
-              style={{ width: `${Math.round(signal.confidence * 100)}%` }}
-            />
-          </div>
-          <span className="text-2xs text-text-muted w-6 text-right">{Math.round(signal.confidence * 100)}%</span>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Report view
 // ---------------------------------------------------------------------------

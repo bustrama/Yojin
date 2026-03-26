@@ -33,6 +33,7 @@ const cache = cacheExchange({
     CorrelationCluster: () => null,
     PriceEvent: () => null,
     SignalSource: () => null, // embedded — same source id appears on many signals
+    TickerSignals: (data) => data.ticker as string,
     SessionSummary: (data) => data.id as string,
     SessionDetail: (data) => data.id as string,
   },

@@ -572,6 +572,15 @@ export interface SignalsQueryResult {
   signals: Signal[];
 }
 
+export interface TickerSignals {
+  ticker: string;
+  signals: Signal[];
+}
+
+export interface SignalsByTickerQueryResult {
+  signalsByTicker: TickerSignals[];
+}
+
 // ---------------------------------------------------------------------------
 // Signal Groups
 // ---------------------------------------------------------------------------
