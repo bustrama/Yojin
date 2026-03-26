@@ -338,8 +338,8 @@ describe('jintel tools', () => {
       const result = await tool.execute({ country: 'US' });
 
       expect(result.isError).toBe(true);
-      expect(result.content).toContain('invalid or expired');
-      expect(result.content).toContain('Settings');
+      expect(result.content).toContain('401 Unauthorized');
+      expect(result.content).toContain('Vault');
     });
   });
 

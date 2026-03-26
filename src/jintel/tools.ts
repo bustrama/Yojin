@@ -46,7 +46,7 @@ const NOT_CONFIGURED_MSG =
   'Jintel API key not configured. Complete onboarding at Settings → Connections, or add key "jintel-api-key" in Settings → Vault.';
 
 const AUTH_ERROR_MSG =
-  'Jintel API key is invalid or expired. Update it at Settings → Connections, or replace key "jintel-api-key" in Settings → Vault.';
+  'Jintel rejected the API key (401 Unauthorized). The stored key may be revoked or mistyped — delete and re-add "jintel-api-key" in Settings → Vault.';
 
 const FALLBACK_SUFFIX = '\n\nJintel unavailable. Use query_data_source with configured sources for fallback data.';
 
