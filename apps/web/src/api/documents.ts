@@ -335,6 +335,24 @@ export const SAVE_BRIEFING_CONFIG_MUTATION = gql`
   }
 `;
 
+export const AI_CONFIG_QUERY = gql`
+  query AiConfig {
+    aiConfig {
+      defaultModel
+      defaultProvider
+    }
+  }
+`;
+
+export const SAVE_AI_CONFIG_MUTATION = gql`
+  mutation SaveAiConfig($input: AiConfigInput!) {
+    saveAiConfig(input: $input) {
+      defaultModel
+      defaultProvider
+    }
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // Queries — Connections
 // ---------------------------------------------------------------------------

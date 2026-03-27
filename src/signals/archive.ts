@@ -37,10 +37,12 @@ export interface SignalQueryFilter {
   tickers?: string[];
   /** Filter by data source ID. */
   sourceId?: string;
-  /** ISO date string — only signals on or after this date. */
+  /** ISO date string — only signals published on or after this date. */
   since?: string;
-  /** ISO date string — only signals on or before this date. */
+  /** ISO date string — only signals published on or before this date. */
   until?: string;
+  /** ISO date string — only signals ingested on or after this timestamp (uses ingestedAt, not publishedAt). */
+  sinceIngested?: string;
   /** Text search in title + content (case-insensitive). */
   search?: string;
   /** Minimum confidence threshold (0-1). Signals below this are excluded. */
@@ -58,6 +60,7 @@ interface CompiledFilter {
   tickerSet: Set<string> | null;
   sourceId: string | undefined;
   sinceBound: string | null;
+  sinceIngestedBound: string | null;
   untilBound: string | null;
   searchTerm: string | null;
   minConfidence: number | null;
@@ -112,7 +115,15 @@ export class SignalArchive {
 
   /** Query signals across date-partitioned files. */
   async query(filter: SignalQueryFilter = {}): Promise<Signal[]> {
-    const files = (await this.listFiles(filter.since, filter.until)).reverse(); // newest first
+    // sinceIngested uses ingestedAt (not publishedAt) for filtering, but we still need
+    // a date hint for file-level pruning — use the earlier of since and sinceIngested.
+    const fileHintSince =
+      filter.since && filter.sinceIngested
+        ? filter.since < filter.sinceIngested
+          ? filter.since
+          : filter.sinceIngested
+        : (filter.since ?? filter.sinceIngested);
+    const files = (await this.listFiles(fileHintSince, filter.until)).reverse(); // newest first
     const results: Signal[] = [];
     const limit = filter.limit ?? Infinity;
 
@@ -266,6 +277,7 @@ export class SignalArchive {
             : null,
       sourceId: filter.sourceId,
       sinceBound: filter.since ? (filter.since.includes('T') ? filter.since : `${filter.since}T00:00:00.000Z`) : null,
+      sinceIngestedBound: filter.sinceIngested ?? null,
       untilBound: filter.until ? (filter.until.includes('T') ? filter.until : `${filter.until}T23:59:59.999Z`) : null,
       searchTerm: filter.search?.toLowerCase() ?? null,
       minConfidence: filter.minConfidence ?? null,
@@ -282,6 +294,7 @@ export class SignalArchive {
     }
     if (f.sourceId && !signal.sources.some((s) => s.id === f.sourceId)) return false;
     if (f.sinceBound && signal.publishedAt < f.sinceBound) return false;
+    if (f.sinceIngestedBound && signal.ingestedAt < f.sinceIngestedBound) return false;
     if (f.untilBound && signal.publishedAt > f.untilBound) return false;
     if (f.searchTerm) {
       const haystack = `${signal.title} ${signal.content ?? ''}`.toLowerCase();

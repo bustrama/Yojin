@@ -6,7 +6,7 @@
  */
 
 import type { JintelClient } from '@yojinhq/jintel-client';
-import { ALL_ENRICHMENT_FIELDS, buildBatchEnrichQuery } from '@yojinhq/jintel-client';
+import { buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 
 import { riskSignalsToRaw } from './tools.js';
 import type { ExtendedEntity } from './types.js';
@@ -15,7 +15,7 @@ import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
 
 const logger = createSubsystemLogger('jintel-signal-fetcher');
 
-const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(ALL_ENRICHMENT_FIELDS);
+const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(['market', 'risk', 'regulatory', 'technicals']);
 const CHUNK_SIZE = 20;
 
 export interface JintelFetchResult {
@@ -109,31 +109,59 @@ function enrichmentToSignals(entity: ExtendedEntity, tickers: string[]): RawSign
     signals.push(...riskSignalsToRaw(entity.risk.signals, tickers));
   }
 
-  // 2. Fundamentals
+  // 2. Snapshot — current price, RSI, and key fundamentals in one signal
   const fund = entity.market?.fundamentals;
-  if (fund) {
-    const parts: string[] = [];
-    if (fund.sector) parts.push(`Sector: ${fund.sector}`);
-    if (fund.industry) parts.push(`Industry: ${fund.industry}`);
-    if (fund.marketCap) parts.push(`MCap: $${formatLargeNumber(fund.marketCap)}`);
-    if (fund.peRatio != null) parts.push(`P/E: ${fund.peRatio.toFixed(1)}`);
-    if (fund.eps != null) parts.push(`EPS: $${fund.eps.toFixed(2)}`);
-    if (fund.beta != null) parts.push(`Beta: ${fund.beta.toFixed(2)}`);
+  const quote = entity.market?.quote;
+  const tech = entity.technicals;
+  if (quote) {
+    const name = entity.name ?? tickers[0];
+    const contentLines: string[] = [];
+    const titleParts: string[] = [];
 
-    if (parts.length > 0) {
-      signals.push({
-        sourceId: 'jintel-fundamentals',
-        sourceName: 'Jintel Fundamentals',
-        sourceType: 'ENRICHMENT',
-        reliability: 0.9,
-        title: `${entity.name ?? tickers[0]} fundamentals: ${parts.slice(0, 4).join(', ')}`,
-        content: parts.join('\n'),
-        publishedAt: now,
-        type: 'FUNDAMENTAL',
-        tickers,
-        confidence: 0.9,
-      });
+    // Current price + change
+    titleParts.push(`$${quote.price.toFixed(2)}`);
+    const changeDir = quote.changePercent >= 0 ? '+' : '';
+    titleParts.push(`${changeDir}${quote.changePercent.toFixed(1)}%`);
+    contentLines.push(`Price: $${quote.price.toFixed(2)} (${changeDir}${quote.changePercent.toFixed(1)}%)`);
+
+    // RSI — the most useful technical indicator for retail investors
+    if (tech?.rsi != null) {
+      const rsiLabel = tech.rsi >= 70 ? 'Overbought' : tech.rsi <= 30 ? 'Oversold' : 'Neutral';
+      titleParts.push(`RSI ${tech.rsi.toFixed(0)} (${rsiLabel})`);
+      contentLines.push(`RSI: ${tech.rsi.toFixed(1)} — ${rsiLabel}`);
     }
+
+    // 52-week range with position
+    if (fund?.fiftyTwoWeekHigh != null && fund?.fiftyTwoWeekLow != null) {
+      const range = fund.fiftyTwoWeekHigh - fund.fiftyTwoWeekLow;
+      const position = range > 0 ? (((quote.price - fund.fiftyTwoWeekLow) / range) * 100).toFixed(0) : '–';
+      contentLines.push(
+        `52-Week Range: $${fund.fiftyTwoWeekLow.toFixed(2)} – $${fund.fiftyTwoWeekHigh.toFixed(2)} (${position}% from low)`,
+      );
+    }
+
+    // Key fundamentals
+    const marketCap = fund?.marketCap ?? quote.marketCap;
+    if (marketCap) contentLines.push(`Market Cap: $${formatLargeNumber(marketCap)}`);
+    if (fund?.peRatio != null) contentLines.push(`P/E Ratio: ${fund.peRatio.toFixed(1)}`);
+    if (fund?.eps != null) contentLines.push(`EPS: $${fund.eps.toFixed(2)}`);
+    if (fund?.beta != null) contentLines.push(`Beta: ${fund.beta.toFixed(2)}`);
+    if (fund?.dividendYield != null) contentLines.push(`Dividend Yield: ${fund.dividendYield.toFixed(2)}%`);
+    if (fund?.sector) contentLines.push(`Sector: ${fund.sector}`);
+    if (fund?.industry) contentLines.push(`Industry: ${fund.industry}`);
+
+    signals.push({
+      sourceId: 'jintel-snapshot',
+      sourceName: 'Jintel',
+      sourceType: 'ENRICHMENT',
+      reliability: 0.95,
+      title: `${name}: ${titleParts.join(' | ')}`,
+      content: contentLines.join('\n'),
+      publishedAt: quote.timestamp,
+      type: 'FUNDAMENTAL',
+      tickers,
+      confidence: 0.95,
+    });
   }
 
   // 3. SEC filings
@@ -154,7 +182,6 @@ function enrichmentToSignals(entity: ExtendedEntity, tickers: string[]): RawSign
   }
 
   // 4. Significant price moves (>=2%)
-  const quote = entity.market?.quote;
   if (quote && Math.abs(quote.changePercent) >= 2) {
     const direction = quote.changePercent > 0 ? 'up' : 'down';
     signals.push({
@@ -188,22 +215,26 @@ function enrichmentToSignals(entity: ExtendedEntity, tickers: string[]): RawSign
     });
   }
 
-  // 6. Technicals summary
-  const tech = entity.technicals;
+  // 6. Technicals summary — only emit when there's data beyond RSI (RSI is in the snapshot)
   if (tech) {
     const parts: string[] = [];
-    if (tech.rsi != null) parts.push(`RSI: ${tech.rsi.toFixed(1)}`);
-    if (tech.macd) parts.push(`MACD hist: ${tech.macd.histogram.toFixed(3)}`);
-    if (tech.sma != null) parts.push(`SMA: ${tech.sma.toFixed(2)}`);
-    if (tech.ema != null) parts.push(`EMA: ${tech.ema.toFixed(2)}`);
+    if (tech.macd) parts.push(`MACD histogram: ${tech.macd.histogram.toFixed(3)}`);
+    if (tech.sma != null && tech.ema != null) {
+      const crossLabel = tech.ema > tech.sma ? 'EMA above SMA (bullish)' : 'EMA below SMA (bearish)';
+      parts.push(`SMA: $${tech.sma.toFixed(2)}, EMA: $${tech.ema.toFixed(2)} — ${crossLabel}`);
+    }
+    if (tech.bollingerBands) {
+      const bb = tech.bollingerBands;
+      parts.push(`Bollinger Bands: $${bb.lower.toFixed(2)} – $${bb.upper.toFixed(2)}`);
+    }
 
-    if (parts.length > 0) {
+    if (parts.length >= 1) {
       signals.push({
         sourceId: 'jintel-technicals',
         sourceName: 'Jintel Technicals',
         sourceType: 'ENRICHMENT',
         reliability: 0.9,
-        title: `${entity.name ?? tickers[0]} technicals: ${parts.join(', ')}`,
+        title: `${entity.name ?? tickers[0]} Technicals: ${parts[0]}`,
         content: parts.join('\n'),
         publishedAt: now,
         type: 'TECHNICAL',

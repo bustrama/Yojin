@@ -37,6 +37,13 @@ const cache = cacheExchange({
     TickerSignalGroups: (data) => data.ticker as string,
     CuratedSignal: () => null, // embedded — wraps Signal with scores
     PortfolioRelevanceScore: () => null, // embedded
+    AiConfig: () => null, // singleton — no id field
+    WorkflowStatus: () => null, // embedded — singleton status object
+    PositionInsight: () => null, // embedded — nested under InsightReport
+    SignalSummary: () => null, // embedded — nested under PositionInsight
+    PortfolioInsight: () => null, // embedded — nested under InsightReport
+    PortfolioItem: () => null, // embedded — nested under PortfolioInsight
+    EmotionState: () => null, // embedded — nested under InsightReport
     SessionSummary: (data) => data.id as string,
     SessionDetail: (data) => data.id as string,
   },
