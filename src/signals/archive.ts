@@ -115,14 +115,9 @@ export class SignalArchive {
 
   /** Query signals across date-partitioned files. */
   async query(filter: SignalQueryFilter = {}): Promise<Signal[]> {
-    // sinceIngested uses ingestedAt (not publishedAt) for filtering, but we still need
-    // a date hint for file-level pruning — use the earlier of since and sinceIngested.
-    const fileHintSince =
-      filter.since && filter.sinceIngested
-        ? filter.since < filter.sinceIngested
-          ? filter.since
-          : filter.sinceIngested
-        : (filter.since ?? filter.sinceIngested);
+    // Only prune by publishedAt date. sinceIngested is a record-level filter —
+    // don't use it as a file-level hint because files are indexed by publishedAt.
+    const fileHintSince = filter.since;
     const files = (await this.listFiles(fileHintSince, filter.until)).reverse(); // newest first
     const results: Signal[] = [];
     const limit = filter.limit ?? Infinity;

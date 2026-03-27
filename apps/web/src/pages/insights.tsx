@@ -1083,10 +1083,17 @@ function SignalRow({
   return (
     <div ref={rowRef}>
       <Card className={cn('p-4 transition-all', highlighted && 'ring-2 ring-accent-primary/50')}>
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           className="flex w-full items-start justify-between cursor-pointer text-left"
           onClick={() => setExpanded(!expanded)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded(!expanded);
+            }
+          }}
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -1175,7 +1182,7 @@ function SignalRow({
               <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
             </svg>
           </div>
-        </button>
+        </div>
 
         {expanded && (
           <div className="mt-3 border-t border-border pt-3 space-y-3">

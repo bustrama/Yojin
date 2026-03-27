@@ -5,7 +5,7 @@
  * so changes take effect immediately without a restart.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { ProviderRouter } from '../../../ai-providers/router.js';
@@ -79,6 +79,7 @@ export async function saveAiConfigMutation(
   }
 
   const updated = { ...existing, defaultModel };
+  await mkdir(join(resolveDataRoot(), 'config'), { recursive: true });
   await writeFile(configPath, JSON.stringify(updated, null, 2), 'utf-8');
 
   // Hot-reload the router so the new model takes effect immediately
