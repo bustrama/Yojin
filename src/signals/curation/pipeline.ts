@@ -106,11 +106,14 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
   const positionByTicker = new Map(snapshot.positions.map((p) => [p.symbol, p]));
 
   // 1. LOAD — incremental via watermark
-  // First run: 48-hour lookback. Subsequent runs: delta from last watermark (full-precision).
+  // First run: 48-hour lookback (by publishedAt). Subsequent runs: delta from last watermark (by ingestedAt).
+  // Using sinceIngested ensures day-precision signals (e.g. fundamentals with publishedAt=00:00:00)
+  // aren't skipped on re-runs when the watermark advances past midnight.
   const watermark = await curatedStore.getLatestWatermark();
-  const since = watermark ? watermark.lastSignalIngestedAt : new Date(Date.now() - FORTY_EIGHT_HOURS_MS).toISOString();
+  const sinceIngested = watermark ? watermark.lastSignalIngestedAt : undefined;
+  const since = watermark ? undefined : new Date(Date.now() - FORTY_EIGHT_HOURS_MS).toISOString();
 
-  const rawSignals = await signalArchive.query({ tickers: [...portfolioTickers], since });
+  const rawSignals = await signalArchive.query({ tickers: [...portfolioTickers], since, sinceIngested });
 
   if (rawSignals.length === 0) {
     logger.info('No new signals to curate');

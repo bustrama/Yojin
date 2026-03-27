@@ -8,7 +8,6 @@ import {
   useListDataSources,
 } from '../../api/hooks';
 import type { DataSourceInput, DataSourceType } from '../../api/types';
-import { useChatPanel } from '../../lib/chat-panel-context';
 import Badge from '../common/badge';
 import Button from '../common/button';
 import Modal from '../common/modal';
@@ -19,7 +18,7 @@ interface AddDataSourceModalProps {
 }
 
 // ---------------------------------------------------------------------------
-// Known data source catalog — credential key → pre-filled config
+// Known data source catalog
 // ---------------------------------------------------------------------------
 
 interface CatalogEntry {
@@ -28,16 +27,13 @@ interface CatalogEntry {
   type: DataSourceType;
   capabilities: string[];
   description: string;
-  // API-specific
   secretRef?: string;
   baseUrl?: string;
-  // CLI/MCP-specific
   command?: string;
   args?: string[];
 }
 
 const CATALOG: CatalogEntry[] = [
-  // --- CLI tools ---
   {
     id: 'nimble-cli',
     name: 'Nimble',
@@ -56,7 +52,6 @@ const CATALOG: CatalogEntry[] = [
     args: ['-s'],
     description: 'Fetch RSS/Atom feeds via curl — no API key needed',
   },
-  // --- API sources ---
   {
     id: 'exa-search',
     name: 'Exa Search',
@@ -80,31 +75,155 @@ function getMissingReason(entry: CatalogEntry, availableCommands: Set<string>, v
 }
 
 // ---------------------------------------------------------------------------
+// Smart paste auto-detection
+// ---------------------------------------------------------------------------
+
+const MCP_PREFIXES = ['npx', 'node', 'python', 'python3', 'uvx', 'deno'];
+
+interface DetectedSource {
+  type: DataSourceType;
+  name: string;
+  id: string;
+  baseUrl: string;
+  command: string;
+  args: string;
+  label: string; // human-readable detection label
+}
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function nameFromUrl(url: string): string {
+  try {
+    const host = new URL(url).hostname;
+    // strip leading "api." and trailing TLD
+    return host
+      .replace(/^api\./, '')
+      .split('.')[0]
+      .replace(/^./, (c) => c.toUpperCase());
+  } catch {
+    return url;
+  }
+}
+
+function detectSource(raw: string): DetectedSource | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // JSON config — parse and fill everything
+  if (trimmed.startsWith('{')) {
+    try {
+      const obj = JSON.parse(trimmed) as Record<string, unknown>;
+      const t = (obj.type as string)?.toUpperCase();
+      const type: DataSourceType = t === 'CLI' ? 'CLI' : t === 'MCP' ? 'MCP' : 'API';
+      return {
+        type,
+        name: (obj.name as string) ?? '',
+        id: (obj.id as string) ?? slugify((obj.name as string) ?? ''),
+        baseUrl: (obj.baseUrl as string) ?? '',
+        command: (obj.command as string) ?? (obj.serverCommand as string) ?? '',
+        args: Array.isArray(obj.args) ? (obj.args as string[]).join(' ') : '',
+        label: 'Parsed from JSON',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // URL → API source
+  if (/^https?:\/\//i.test(trimmed)) {
+    const n = nameFromUrl(trimmed);
+    return {
+      type: 'API',
+      name: n,
+      id: slugify(n),
+      baseUrl: trimmed,
+      command: '',
+      args: '',
+      label: 'REST API',
+    };
+  }
+
+  // MCP server command
+  const firstWord = trimmed.split(/\s+/)[0];
+  if (MCP_PREFIXES.includes(firstWord) || trimmed.includes('@modelcontextprotocol')) {
+    const parts = trimmed.split(/\s+/);
+    const cmd = parts[0];
+    const rest = parts.slice(1).join(' ');
+    // derive name from the package name if present
+    const pkg = parts.find((p) => p.startsWith('@') || p.includes('/')) ?? cmd;
+    const n =
+      pkg
+        .split('/')
+        .pop()
+        ?.replace(/^server-/, '') ?? cmd;
+    return {
+      type: 'MCP',
+      name: n.replace(/^./, (c) => c.toUpperCase()),
+      id: slugify(n),
+      baseUrl: '',
+      command: cmd,
+      args: rest,
+      label: 'MCP server',
+    };
+  }
+
+  // Fallback → CLI command
+  const parts = trimmed.split(/\s+/);
+  return {
+    type: 'CLI',
+    name: parts[0].replace(/^./, (c) => c.toUpperCase()),
+    id: slugify(parts[0]),
+    baseUrl: '',
+    command: parts[0],
+    args: parts.slice(1).join(' '),
+    label: 'CLI tool',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Type badge colors
+// ---------------------------------------------------------------------------
+
+const TYPE_COLORS: Record<DataSourceType, string> = {
+  API: 'bg-info/10 text-info',
+  MCP: 'bg-accent-primary/10 text-accent-primary',
+  CLI: 'bg-warning/10 text-warning',
+};
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
+type Step = 'catalog' | 'paste' | 'confirm' | 'api-key';
+
 export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
-  const [step, setStep] = useState<'catalog' | 'details' | 'api-key'>('catalog');
+  const [step, setStep] = useState<Step>('catalog');
   const [selectedEntry, setSelectedEntry] = useState<CatalogEntry | null>(null);
-  const [id, setId] = useState('');
+  const [pasteValue, setPasteValue] = useState('');
+  const [detected, setDetected] = useState<DetectedSource | null>(null);
+
+  // confirm-step editable fields
   const [name, setName] = useState('');
   const [sourceType, setSourceType] = useState<DataSourceType>('API');
-  const [capabilities, setCapabilities] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
-  const [secretRef, setSecretRef] = useState('');
   const [command, setCommand] = useState('');
   const [args, setArgs] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [apiKeyValue, setApiKeyValue] = useState('');
-  const [savingKey, setSavingKey] = useState(false);
+  const [secretRefName, setSecretRefName] = useState('');
 
-  const { openChatWith } = useChatPanel();
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
   const [, addDataSource] = useAddDataSource();
   const [, addVaultSecret] = useAddVaultSecret();
   const [{ data: vaultData }, reexecuteVaultQuery] = useListVaultSecrets();
   const [{ data: dsData }] = useListDataSources();
 
-  // Check which CLI commands are actually installed on the system
   const cliCommands = CATALOG.filter((e): e is typeof e & { command: string } => e.type === 'CLI' && !!e.command).map(
     (e) => e.command,
   );
@@ -117,17 +236,17 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
   function reset() {
     setStep('catalog');
     setSelectedEntry(null);
-    setSourceType('API');
-    setId('');
+    setPasteValue('');
+    setDetected(null);
     setName('');
-    setCapabilities('');
+    setSourceType('API');
     setBaseUrl('');
-    setSecretRef('');
     setCommand('');
     setArgs('');
-    setError(null);
     setApiKeyValue('');
-    setSavingKey(false);
+    setSecretRefName('');
+    setError(null);
+    setSaving(false);
   }
 
   function handleClose() {
@@ -135,36 +254,56 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
     onClose();
   }
 
+  // Catalog → api-key step for entries that need a key
   function handleSetUp(entry: CatalogEntry) {
     if (entry.secretRef) {
-      // Needs an API key — show inline input (never goes through the LLM)
       setSelectedEntry(entry);
       setApiKeyValue('');
       setError(null);
       setStep('api-key');
     } else {
-      // No API key needed — ask the LLM for installation help
-      const prompt = `Install and set up "${entry.name}" (${entry.command}) as a data source. It provides: ${entry.capabilities.join(', ')}.`;
-      handleClose();
-      openChatWith(prompt);
+      handleCatalogConnect(entry);
     }
   }
 
+  // One-click connect for catalog entries that are ready
+  async function handleCatalogConnect(entry: CatalogEntry) {
+    setSaving(true);
+    setError(null);
+    const input: DataSourceInput = {
+      id: entry.id,
+      name: entry.name,
+      type: entry.type,
+      capabilities: entry.capabilities,
+      baseUrl: entry.baseUrl,
+      secretRef: entry.secretRef,
+      command: entry.command,
+      args: entry.args,
+    };
+    const result = await addDataSource({ input });
+    if (result.error || !result.data?.addDataSource.success) {
+      setError(result.data?.addDataSource.error ?? result.error?.message ?? 'Failed to add source');
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    handleClose();
+  }
+
+  // Save API key for catalog entry, then add the source
   async function handleSaveApiKey() {
     if (!selectedEntry?.secretRef || !apiKeyValue.trim()) return;
 
-    setSavingKey(true);
+    setSaving(true);
     setError(null);
 
-    // 1. Store the API key in the vault
     const vaultResult = await addVaultSecret({ input: { key: selectedEntry.secretRef, value: apiKeyValue.trim() } });
     if (vaultResult.error || !vaultResult.data?.addVaultSecret.success) {
       setError(vaultResult.data?.addVaultSecret.error ?? vaultResult.error?.message ?? 'Failed to store API key');
-      setSavingKey(false);
+      setSaving(false);
       return;
     }
 
-    // 2. Add the data source
     const input: DataSourceInput = {
       id: selectedEntry.id,
       name: selectedEntry.name,
@@ -176,51 +315,65 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
     const dsResult = await addDataSource({ input });
     if (dsResult.error || !dsResult.data?.addDataSource.success) {
       setError(dsResult.data?.addDataSource.error ?? dsResult.error?.message ?? 'Failed to add data source');
-      setSavingKey(false);
+      setSaving(false);
       return;
     }
 
-    // 3. Refresh vault keys list and close
     reexecuteVaultQuery({ requestPolicy: 'network-only' });
-    setSavingKey(false);
+    setSaving(false);
     handleClose();
   }
 
-  function selectCatalogEntry(entry: CatalogEntry) {
-    setSelectedEntry(entry);
-    setId(entry.id);
-    setName(entry.name);
-    setSourceType(entry.type);
-    setCapabilities(entry.capabilities.join(', '));
-    setBaseUrl(entry.baseUrl ?? '');
-    setSecretRef(entry.secretRef ?? '');
-    setCommand(entry.command ?? '');
-    setArgs(entry.args?.join(' ') ?? '');
-    setStep('details');
+  // Smart paste → detect → move to confirm
+  function handleDetect() {
+    const result = detectSource(pasteValue);
+    if (!result) {
+      setError('Could not detect source type. Try a URL, command, or JSON config.');
+      return;
+    }
+    setDetected(result);
+    setName(result.name);
+    setSourceType(result.type);
+    setBaseUrl(result.baseUrl);
+    setCommand(result.command);
+    setArgs(result.args);
+    setApiKeyValue('');
+    setSecretRefName(result.type === 'API' ? `${slugify(result.name).toUpperCase().replace(/-/g, '_')}_API_KEY` : '');
+    setError(null);
+    setStep('confirm');
   }
 
-  function selectCustom() {
-    handleClose();
-    openChatWith('I want to connect a new data source. What do you need?');
-  }
-
-  async function handleSubmit() {
+  // Submit from confirm step
+  async function handleConfirmSubmit() {
+    setSaving(true);
     setError(null);
 
+    const trimmedName = name.trim();
+    const id = detected?.id || slugify(trimmedName);
+
+    // If user entered an API key, store it in the vault first
+    const keyRef = secretRefName.trim();
+    if (apiKeyValue.trim() && keyRef) {
+      const vaultResult = await addVaultSecret({ input: { key: keyRef, value: apiKeyValue.trim() } });
+      if (vaultResult.error || !vaultResult.data?.addVaultSecret.success) {
+        setError(vaultResult.data?.addVaultSecret.error ?? vaultResult.error?.message ?? 'Failed to store API key');
+        setSaving(false);
+        return;
+      }
+      reexecuteVaultQuery({ requestPolicy: 'network-only' });
+    }
+
     const input: DataSourceInput = {
-      id: id.trim(),
-      name: name.trim(),
+      id,
+      name: trimmedName,
       type: sourceType,
-      capabilities: capabilities
-        .split(',')
-        .map((c) => c.trim())
-        .filter(Boolean),
+      capabilities: sourceType === 'API' ? ['data'] : ['data'],
     };
 
     if (sourceType === 'API') {
       if (baseUrl.trim()) input.baseUrl = baseUrl.trim();
-      if (secretRef.trim()) input.secretRef = secretRef.trim();
-    } else if (sourceType === 'MCP' || sourceType === 'CLI') {
+      if (keyRef && apiKeyValue.trim()) input.secretRef = keyRef;
+    } else {
       if (command.trim()) input.command = command.trim();
       if (args.trim())
         input.args = args
@@ -232,21 +385,15 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
     const result = await addDataSource({ input });
     if (result.error || !result.data?.addDataSource.success) {
       setError(result.data?.addDataSource.error ?? result.error?.message ?? 'Failed to add data source');
+      setSaving(false);
       return;
     }
 
+    setSaving(false);
     handleClose();
   }
 
-  const canSubmit =
-    id.trim() &&
-    name.trim() &&
-    capabilities
-      .split(',')
-      .map((c) => c.trim())
-      .filter(Boolean).length > 0;
-
-  // Partition catalog: ready (command installed + API key if needed), rest, already connected
+  // Partition catalog
   const isReady = (e: CatalogEntry): boolean => {
     const cliOk = e.type !== 'CLI' || (e.command != null && availableCommands.has(e.command));
     const keyOk = !e.secretRef || vaultKeys.has(e.secretRef);
@@ -258,9 +405,9 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
 
   return (
     <Modal open={open} onClose={handleClose} title="Add Data Source">
-      {step === 'catalog' ? (
+      {/* ── Step 1: Catalog ── */}
+      {step === 'catalog' && (
         <div className="space-y-4">
-          {/* Auto-detected sources */}
           {available.length > 0 && (
             <div>
               <p className="text-xs font-medium text-text-secondary mb-2 flex items-center gap-2">
@@ -269,13 +416,18 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
               </p>
               <div className="space-y-2">
                 {available.map((entry) => (
-                  <CatalogButton key={entry.id} entry={entry} hasKey onClick={() => selectCatalogEntry(entry)} />
+                  <CatalogButton
+                    key={entry.id}
+                    entry={entry}
+                    hasKey
+                    onClick={() => handleCatalogConnect(entry)}
+                    disabled={saving}
+                  />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Other known sources — need setup */}
           {rest.length > 0 && (
             <div>
               <p className="text-xs font-medium text-text-secondary mb-2">Needs setup</p>
@@ -287,36 +439,204 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
                     hasKey={false}
                     reason={getMissingReason(entry, availableCommands, vaultKeys)}
                     onSetUp={() => handleSetUp(entry)}
-                    onClick={() => selectCatalogEntry(entry)}
+                    onClick={() => handleSetUp(entry)}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Custom — agentic setup via LLM */}
+          {error && <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{error}</p>}
+
+          {/* Smart paste entry */}
           <button
-            onClick={selectCustom}
+            onClick={() => {
+              setPasteValue('');
+              setError(null);
+              setStep('paste');
+            }}
             className="w-full flex items-center gap-3 rounded-xl border border-dashed border-border p-4 text-left hover:border-accent-primary hover:bg-accent-primary/5 transition-colors"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-primary/10 text-accent-primary shrink-0">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-bg-tertiary text-text-muted shrink-0">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
             </div>
             <div>
-              <p className="text-sm font-medium text-text-primary">Add with AI</p>
-              <p className="text-xs text-text-muted">
-                Describe what you need — the AI will find, install, and configure it
-              </p>
+              <p className="text-sm font-medium text-text-primary">Add Custom Source</p>
+              <p className="text-xs text-text-muted">Paste a URL, command, or JSON config</p>
             </div>
           </button>
         </div>
-      ) : step === 'api-key' ? (
+      )}
+
+      {/* ── Step 2: Smart Paste ── */}
+      {step === 'paste' && (
+        <div className="space-y-4">
+          <Button variant="ghost" size="sm" onClick={() => setStep('catalog')}>
+            &larr; Back
+          </Button>
+
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">
+              Paste a URL, command, or JSON config
+            </label>
+            <textarea
+              value={pasteValue}
+              onChange={(e) => {
+                setPasteValue(e.target.value);
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && pasteValue.trim()) {
+                  e.preventDefault();
+                  handleDetect();
+                }
+              }}
+              placeholder={`https://api.example.com\nnpx @mcp/server-github\ncurl -s -L\n{"type":"API","name":"My Source","baseUrl":"..."}`}
+              rows={3}
+              className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary font-mono placeholder:text-text-muted focus:border-accent-primary focus:outline-none resize-none"
+              autoFocus
+            />
+          </div>
+
+          <div className="flex items-start gap-4 text-2xs text-text-muted">
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-info" />
+              <span>URL = API</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-primary" />
+              <span>npx/node/python = MCP</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />
+              <span>Other = CLI</span>
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{error}</p>}
+
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" size="sm" onClick={handleClose}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleDetect} disabled={!pasteValue.trim()}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Confirm detected source ── */}
+      {step === 'confirm' && detected && (
+        <div className="space-y-4">
+          <Button variant="ghost" size="sm" onClick={() => setStep('paste')}>
+            &larr; Back
+          </Button>
+
+          {/* Detection badge */}
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center rounded-md px-2 py-0.5 text-2xs font-medium ${TYPE_COLORS[sourceType]}`}
+            >
+              {sourceType}
+            </span>
+            <span className="text-xs text-text-muted">{detected.label}</span>
+          </div>
+
+          {/* Name (editable) */}
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
+            />
+          </div>
+
+          {/* Type-specific fields */}
+          {sourceType === 'API' && (
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Base URL</label>
+              <input
+                type="text"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary font-mono placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
+              />
+            </div>
+          )}
+
+          {(sourceType === 'CLI' || sourceType === 'MCP') && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">
+                  {sourceType === 'MCP' ? 'Server Command' : 'Command'}
+                </label>
+                <input
+                  type="text"
+                  value={command}
+                  onChange={(e) => setCommand(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary font-mono placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
+                />
+              </div>
+              {args && (
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Arguments</label>
+                  <input
+                    type="text"
+                    value={args}
+                    onChange={(e) => setArgs(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary font-mono placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Optional API key — inline, no separate step */}
+          {sourceType === 'API' && (
+            <div className="rounded-lg border border-border bg-bg-card p-3 space-y-2">
+              <label className="block text-xs font-medium text-text-secondary">API Key (optional)</label>
+              <input
+                type="password"
+                value={apiKeyValue}
+                onChange={(e) => setApiKeyValue(e.target.value)}
+                placeholder="Paste your API key"
+                className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
+              />
+              {apiKeyValue.trim() && (
+                <div>
+                  <label className="block text-2xs text-text-muted mb-1">Vault key name</label>
+                  <input
+                    type="text"
+                    value={secretRefName}
+                    onChange={(e) => setSecretRefName(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary font-mono placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
+                  />
+                </div>
+              )}
+              <p className="text-2xs text-text-muted">Stored in the encrypted vault. Never sent to the AI.</p>
+            </div>
+          )}
+
+          {error && <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{error}</p>}
+
+          <div className="flex justify-end gap-3 pt-1">
+            <Button variant="secondary" size="sm" onClick={handleClose}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleConfirmSubmit} disabled={!name.trim() || saving} loading={saving}>
+              {saving ? 'Connecting...' : 'Connect'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 4: API key for catalog entries ── */}
+      {step === 'api-key' && selectedEntry && (
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => setStep('catalog')}>
             &larr; Back
@@ -334,13 +654,13 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-medium text-text-primary">{selectedEntry?.name}</p>
-                <p className="text-xs text-text-muted">{selectedEntry?.description}</p>
+                <p className="text-sm font-medium text-text-primary">{selectedEntry.name}</p>
+                <p className="text-xs text-text-muted">{selectedEntry.description}</p>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">{selectedEntry?.secretRef}</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">{selectedEntry.secretRef}</label>
               <input
                 type="password"
                 value={apiKeyValue}
@@ -349,9 +669,7 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
                 className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
                 autoFocus
               />
-              <p className="text-2xs text-text-muted mt-1.5">
-                Stored securely in the encrypted vault. Never sent to the AI.
-              </p>
+              <p className="text-2xs text-text-muted mt-1.5">Stored in the encrypted vault. Never sent to the AI.</p>
             </div>
           </div>
 
@@ -361,170 +679,8 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
             <Button variant="secondary" size="sm" onClick={() => setStep('catalog')}>
               Cancel
             </Button>
-            <Button
-              size="sm"
-              onClick={handleSaveApiKey}
-              disabled={!apiKeyValue.trim() || savingKey}
-              loading={savingKey}
-            >
-              {savingKey ? 'Connecting...' : 'Connect'}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <Button variant="ghost" size="sm" onClick={() => setStep('catalog')}>
-            &larr; Back
-          </Button>
-
-          {/* Type selector — only for custom sources */}
-          {!selectedEntry && (
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Type</label>
-              <div className="flex gap-2">
-                {(['API', 'MCP', 'CLI'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setSourceType(t)}
-                    className={`flex-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      sourceType === t
-                        ? 'border-accent-primary bg-accent-primary/10 text-accent-primary'
-                        : 'border-border text-text-muted hover:border-text-muted'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">ID</label>
-            <input
-              type="text"
-              value={id}
-              onChange={(e) => setId(e.target.value)}
-              placeholder="e.g. exa-search, firecrawl"
-              className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Exa Search, Firecrawl"
-              className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Capabilities</label>
-            <input
-              type="text"
-              value={capabilities}
-              onChange={(e) => setCapabilities(e.target.value)}
-              placeholder="e.g. web-search, news, market-data"
-              className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-            />
-            <p className="text-2xs text-text-muted mt-1">Comma-separated list of capabilities this source provides</p>
-          </div>
-
-          {sourceType === 'API' && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">Base URL</label>
-                <input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://api.example.com"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">Vault Secret Key</label>
-                <input
-                  type="text"
-                  value={secretRef}
-                  onChange={(e) => setSecretRef(e.target.value)}
-                  placeholder="e.g. EXA_API_KEY"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-                />
-                {secretRef && vaultKeys.has(secretRef) ? (
-                  <p className="text-2xs text-success mt-1">Key found in vault</p>
-                ) : secretRef ? (
-                  <p className="text-2xs text-warning mt-1">Key not in vault — add it in the Credential Vault below</p>
-                ) : (
-                  <p className="text-2xs text-text-muted mt-1">
-                    Reference to an API key stored in the credential vault
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-
-          {sourceType === 'MCP' && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">Server Command</label>
-                <input
-                  type="text"
-                  value={command}
-                  onChange={(e) => setCommand(e.target.value)}
-                  placeholder="e.g. npx @modelcontextprotocol/server-filesystem"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">Arguments</label>
-                <input
-                  type="text"
-                  value={args}
-                  onChange={(e) => setArgs(e.target.value)}
-                  placeholder="e.g. /path/to/dir"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-                />
-              </div>
-            </>
-          )}
-
-          {sourceType === 'CLI' && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">Command</label>
-                <input
-                  type="text"
-                  value={command}
-                  onChange={(e) => setCommand(e.target.value)}
-                  placeholder="e.g. curl, python3"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">Arguments</label>
-                <input
-                  type="text"
-                  value={args}
-                  onChange={(e) => setArgs(e.target.value)}
-                  placeholder="e.g. --format json"
-                  className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
-                />
-              </div>
-            </>
-          )}
-
-          {error && <p className="text-sm text-error bg-error/10 rounded-lg px-3 py-2">{error}</p>}
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="secondary" size="sm" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleSubmit} disabled={!canSubmit}>
-              Add Source
+            <Button size="sm" onClick={handleSaveApiKey} disabled={!apiKeyValue.trim() || saving} loading={saving}>
+              {saving ? 'Connecting...' : 'Connect'}
             </Button>
           </div>
         </div>
@@ -543,18 +699,20 @@ function CatalogButton({
   reason,
   onSetUp,
   onClick,
+  disabled,
 }: {
   entry: CatalogEntry;
   hasKey: boolean;
   reason?: string;
   onSetUp?: () => void;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   const isCli = entry.type === 'CLI';
 
   return (
     <div className="flex items-center gap-2 rounded-xl border border-border p-3 hover:border-accent-primary/50 transition-colors">
-      <button onClick={onClick} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+      <button onClick={onClick} disabled={disabled} className="flex items-center gap-3 flex-1 min-w-0 text-left">
         <div
           className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${
             hasKey ? 'bg-success/10 text-success' : 'bg-bg-tertiary text-text-muted'

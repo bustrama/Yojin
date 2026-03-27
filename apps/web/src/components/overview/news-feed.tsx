@@ -317,7 +317,7 @@ export default function NewsFeed() {
           </svg>
         }
         title="No recommendations yet"
-        description="Run Process Insights to see personalized recommendations."
+        description="Fetch Data then Process Insights to see personalized recommendations."
       />
     );
   }

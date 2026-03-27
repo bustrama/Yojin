@@ -62,7 +62,7 @@ export default function YojinActionsCard() {
             </svg>
           }
           title="No action items"
-          description="Run Process Insights to generate recommendations."
+          description="Fetch Data then Process Insights to generate recommendations."
         />
       </DashboardCard>
     );

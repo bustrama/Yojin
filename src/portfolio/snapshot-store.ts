@@ -34,10 +34,12 @@ export class PortfolioSnapshotStore {
   }
 
   /**
-   * Save positions for a single platform. Merges with existing snapshot:
-   * positions from other platforms are preserved, positions for `params.platform`
-   * are replaced wholesale. All incoming positions are stamped with the declared
-   * platform. Returns the merged snapshot with recomputed totals.
+   * Save positions for a single platform. Replaces ALL existing positions for
+   * that platform; positions from other platforms are preserved. Positions with
+   * no platform stamp are also cleared — they originated from an earlier save
+   * and would otherwise accumulate as stale entries (e.g. sold positions that
+   * never get explicitly removed). All incoming positions are stamped with the
+   * declared platform. Returns the merged snapshot with recomputed totals.
    */
   async save(params: SaveSnapshotParams): Promise<PortfolioSnapshot> {
     await mkdir(join(this.filePath, '..'), { recursive: true });
@@ -48,7 +50,11 @@ export class PortfolioSnapshotStore {
     const stamped = positions.map((p) => ({ ...p, platform }));
 
     const existing = params.existingSnapshot !== undefined ? params.existingSnapshot : await this.getLatest();
-    const otherPlatformPositions = (existing?.positions ?? []).filter((p) => p.platform?.toUpperCase() !== platform);
+    // Keep only positions from OTHER known platforms. Drop same-platform entries
+    // (they're being replaced) and drop platform-less entries (stale from old saves).
+    const otherPlatformPositions = (existing?.positions ?? []).filter(
+      (p) => p.platform != null && p.platform.toUpperCase() !== platform,
+    );
     const merged = [...otherPlatformPositions, ...stamped];
 
     const totalValue = merged.reduce((sum, p) => sum + p.marketValue, 0);

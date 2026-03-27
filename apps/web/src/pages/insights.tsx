@@ -1,67 +1,102 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useSubscription } from 'urql';
 import { cn } from '../lib/utils';
 import {
   CURATED_SIGNALS_QUERY,
-  INSIGHTS_WORKFLOW_STATUS_QUERY,
   LATEST_INSIGHT_REPORT_QUERY,
   ON_WORKFLOW_PROGRESS_SUBSCRIPTION,
+  RUN_FULL_CURATION_MUTATION,
+  CURATION_WORKFLOW_STATUS_QUERY,
+  INSIGHTS_WORKFLOW_STATUS_QUERY,
   PROCESS_INSIGHTS_MUTATION,
 } from '../api/documents';
 import { usePositions } from '../api/hooks/use-portfolio';
 import type {
+  CuratedSignal,
   CuratedSignalsQueryResult,
   CuratedSignalsVariables,
-  InsightRating,
-  InsightReport,
-  InsightsWorkflowStatusQueryResult,
   LatestInsightReportQueryResult,
   OnWorkflowProgressSubscriptionResult,
   OnWorkflowProgressVariables,
+  RunFullCurationMutationResult,
+  CurationWorkflowStatusQueryResult,
+  InsightsWorkflowStatusQueryResult,
+  ProcessInsightsMutationResult,
+  WorkflowProgressEvent,
+  InsightRating,
+  InsightReport,
   PortfolioHealth,
   PositionInsight,
-  ProcessInsightsMutationResult,
   Signal,
-  SignalSummary,
-  WorkflowProgressEvent,
 } from '../api/types';
 import Badge from '../components/common/badge';
 import type { BadgeVariant } from '../components/common/badge';
 import Button from '../components/common/button';
 import Card from '../components/common/card';
+import Tabs from '../components/common/tabs';
+import { collectInsightSignalIds } from '../lib/insight-signals';
 
 // ---------------------------------------------------------------------------
-// Pipeline stage definitions
+// Constants
 // ---------------------------------------------------------------------------
 
-interface PipelineStage {
-  title: string;
-  agents: string[];
-  parallel: boolean;
-  tasks: string[];
-}
+const SIGNAL_TYPES = [
+  'ALL',
+  'NEWS',
+  'FUNDAMENTAL',
+  'SENTIMENT',
+  'TECHNICAL',
+  'MACRO',
+  'FILINGS',
+  'SOCIALS',
+  'TRADING_LOGIC_TRIGGER',
+] as const;
 
-const PIPELINE_STAGES: PipelineStage[] = [
-  {
-    title: 'Data Gathering',
-    agents: ['Research Analyst'],
-    parallel: false,
-    tasks: ['Portfolio positions', 'Signal archive (7 days)', 'Market fundamentals & sentiment'],
-  },
-  {
-    title: 'Deep Analysis',
-    agents: ['Research Analyst', 'Risk Manager'],
-    parallel: true,
-    tasks: ['Position-level research', 'Exposure & correlation', 'Earnings proximity'],
-  },
-  {
-    title: 'Synthesis',
-    agents: ['Strategist'],
-    parallel: false,
-    tasks: ['Ratings & conviction scores', 'Thesis generation', 'Action items & memory update'],
-  },
-];
+const DATE_RANGES = [
+  { label: '24h', value: '1' },
+  { label: '7d', value: '7' },
+  { label: '30d', value: '30' },
+  { label: 'All', value: '' },
+] as const;
+
+const CONFIDENCE_PRESETS = [
+  { label: 'All', value: 0 },
+  { label: '>50%', value: 0.5 },
+  { label: '>75%', value: 0.75 },
+  { label: '>90%', value: 0.9 },
+] as const;
+
+const VIEW_TABS = [
+  { label: 'By Position', value: 'position' },
+  { label: 'All Signals', value: 'all' },
+] as const;
+
+type ViewTab = (typeof VIEW_TABS)[number]['value'];
+
+const VALID_TABS: ViewTab[] = ['position', 'all'];
+
+// ---------------------------------------------------------------------------
+// Badge variant maps
+// ---------------------------------------------------------------------------
+
+const typeVariant: Record<string, BadgeVariant> = {
+  NEWS: 'info',
+  FUNDAMENTAL: 'success',
+  SENTIMENT: 'warning',
+  TECHNICAL: 'neutral',
+  MACRO: 'error',
+  FILINGS: 'neutral',
+  SOCIALS: 'info',
+  TRADING_LOGIC_TRIGGER: 'warning',
+};
+
+const sentimentVariant: Record<string, BadgeVariant> = {
+  BULLISH: 'success',
+  BEARISH: 'error',
+  NEUTRAL: 'neutral',
+  MIXED: 'warning',
+};
 
 const ratingVariant: Record<InsightRating, BadgeVariant> = {
   STRONG_BUY: 'success',
@@ -98,39 +133,238 @@ const signalTypeVariant: Record<string, BadgeVariant> = {
   TRADING_LOGIC_TRIGGER: 'warning',
 };
 
-const sentimentVariant: Record<string, BadgeVariant> = {
-  BULLISH: 'success',
-  BEARISH: 'error',
-  NEUTRAL: 'neutral',
-  MIXED: 'warning',
-};
+// ---------------------------------------------------------------------------
+// Pipeline stage definitions
+// ---------------------------------------------------------------------------
+
+interface PipelineStage {
+  title: string;
+  agents: string[];
+  parallel: boolean;
+  tasks: string[];
+}
+
+const PIPELINE_STAGES: PipelineStage[] = [
+  {
+    title: 'Data Gathering',
+    agents: ['Research Analyst'],
+    parallel: false,
+    tasks: ['Portfolio positions', 'Signal archive (7 days)', 'Market fundamentals & sentiment'],
+  },
+  {
+    title: 'Deep Analysis',
+    agents: ['Research Analyst', 'Risk Manager'],
+    parallel: true,
+    tasks: ['Position-level research', 'Exposure & correlation', 'Earnings proximity'],
+  },
+  {
+    title: 'Synthesis',
+    agents: ['Strategist'],
+    parallel: false,
+    tasks: ['Ratings & conviction scores', 'Thesis generation', 'Action items & memory update'],
+  },
+];
+
+const CURATION_STAGES = [
+  {
+    title: 'Tier 1 — Deterministic Filter',
+    agents: [] as string[],
+    tasks: ['Confidence filter', 'Spam detection', 'Portfolio relevance scoring', 'Top-N per position'],
+  },
+  {
+    title: 'Tier 2 — Research Analyst',
+    agents: ['Research Analyst'],
+    tasks: ['Classify CRITICAL / IMPORTANT / NOISE', 'Data quality & redundancy check'],
+  },
+  {
+    title: 'Tier 2 — Strategist',
+    agents: ['Strategist'],
+    tasks: ['Score against active thesis', 'Thesis alignment assessment', 'Save structured assessments'],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export default function Insights() {
-  const [queryResult, reexecuteQuery] = useQuery<LatestInsightReportQueryResult>({
-    query: LATEST_INSIGHT_REPORT_QUERY,
-  });
+  const [searchParams] = useSearchParams();
+  const urlHighlight = searchParams.get('highlight');
+  const initialTicker = searchParams.get('ticker') ?? '';
+  const initialType = searchParams.get('type') ?? 'ALL';
+  const initialSearch = searchParams.get('search') ?? '';
+  const tabParam = searchParams.get('tab') as ViewTab | null;
+  const initialTab: ViewTab = VALID_TABS.includes(tabParam as ViewTab)
+    ? (tabParam as ViewTab)
+    : urlHighlight
+      ? 'all'
+      : 'position';
 
-  const [mutationResult, processInsights] = useMutation<ProcessInsightsMutationResult>(PROCESS_INSIGHTS_MUTATION);
+  const [viewTab, setViewTab] = useState<ViewTab>(initialTab);
+  const [highlightId, setHighlightId] = useState(urlHighlight);
 
-  // Check if the user has positions in their portfolio
+  // All Signals tab filter state
+  const [search, setSearch] = useState(initialSearch);
+  const [typeFilter, setTypeFilter] = useState<string>(initialType);
+  const [tickerFilter, setTickerFilter] = useState(initialTicker);
+  const [minConfidence, setMinConfidence] = useState(0);
+  const [dateRangeLabel, setDateRangeLabel] = useState('');
+  const [since, setSince] = useState<string | undefined>(undefined);
+  const [sourceFilter, setSourceFilter] = useState('');
+
+  const setDateRange = useCallback((days: string) => {
+    setDateRangeLabel(days);
+    setSince(days ? new Date(Date.now() - Number(days) * 86_400_000).toISOString() : undefined);
+  }, []);
+
+  // Intra-page navigation helpers
+  const navigateToSignals = useCallback((ticker: string) => {
+    setTickerFilter(ticker);
+    setHighlightId(null);
+    setViewTab('all');
+  }, []);
+
+  const navigateToAnalysis = useCallback(() => setViewTab('position'), []);
+
+  // Portfolio positions
   const [positionsResult] = usePositions();
   const positions = useMemo(() => positionsResult.data?.positions ?? [], [positionsResult.data]);
   const hasPositions = positions.length > 0;
 
-  // Fetch curated signals and group client-side by ticker.
-  // Memoize variables so the `since` timestamp doesn't change on every render.
-  const signalVars: CuratedSignalsVariables = useMemo(
-    () => ({ limit: 200, since: new Date(Date.now() - 7 * 86_400_000).toISOString() }),
+  // Curated signals — one query, all tickers, 7-day window; filter client-side
+  const curatedVars: CuratedSignalsVariables = useMemo(
+    () => ({ limit: 500, since: new Date(Date.now() - 7 * 86_400_000).toISOString() }),
     [],
   );
-  const [signalsResult] = useQuery<CuratedSignalsQueryResult, CuratedSignalsVariables>({
+  const [curatedResult, reexecuteCurated] = useQuery<CuratedSignalsQueryResult, CuratedSignalsVariables>({
     query: CURATED_SIGNALS_QUERY,
-    variables: signalVars,
+    variables: curatedVars,
   });
+  const allCuratedSignals = useMemo(() => curatedResult.data?.curatedSignals ?? [], [curatedResult.data]);
+
+  // Latest insight report
+  const [insightQueryResult, reexecuteInsights] = useQuery<LatestInsightReportQueryResult>({
+    query: LATEST_INSIGHT_REPORT_QUERY,
+  });
+
+  // Workflow status queries (for reconnection on navigate-back)
+  const [insightsStatusResult, reexecuteInsightsStatus] = useQuery<InsightsWorkflowStatusQueryResult>({
+    query: INSIGHTS_WORKFLOW_STATUS_QUERY,
+    requestPolicy: 'network-only',
+  });
+  const [curationStatusResult, reexecuteCurationStatus] = useQuery<CurationWorkflowStatusQueryResult>({
+    query: CURATION_WORKFLOW_STATUS_QUERY,
+    requestPolicy: 'network-only',
+  });
+
+  // Mutations
+  const [curationMutResult, runFullCuration] = useMutation<RunFullCurationMutationResult>(RUN_FULL_CURATION_MUTATION);
+  const [insightsMutResult, processInsightsMutation] =
+    useMutation<ProcessInsightsMutationResult>(PROCESS_INSIGHTS_MUTATION);
+
+  // Reconnection state
+  const [curationReconnecting, setCurationReconnecting] = useState(false);
+  const [insightsReconnecting, setInsightsReconnecting] = useState(false);
+
+  const backendCurationRunning = curationStatusResult.data?.curationWorkflowStatus.running ?? false;
+  const backendInsightsRunning = insightsStatusResult.data?.insightsWorkflowStatus.running ?? false;
+
+  useEffect(() => {
+    if (backendCurationRunning && !curationMutResult.fetching && !curationReconnecting) {
+      setCurationReconnecting(true);
+    }
+  }, [backendCurationRunning, curationMutResult.fetching, curationReconnecting]);
+
+  useEffect(() => {
+    if (backendInsightsRunning && !insightsMutResult.fetching && !insightsReconnecting) {
+      setInsightsReconnecting(true);
+    }
+  }, [backendInsightsRunning, insightsMutResult.fetching, insightsReconnecting]);
+
+  const curationLoading = curationMutResult.fetching || curationReconnecting;
+  const insightsLoading = insightsMutResult.fetching || insightsReconnecting;
+
+  // Curation progress subscription
+  const [curationProgressResult] = useSubscription<
+    OnWorkflowProgressSubscriptionResult,
+    WorkflowProgressEvent[],
+    OnWorkflowProgressVariables
+  >(
+    { query: ON_WORKFLOW_PROGRESS_SUBSCRIPTION, variables: { workflowId: 'full-curation' }, pause: !curationLoading },
+    (prev = [], data) => [...prev, data.onWorkflowProgress],
+  );
+  const curationEvents = curationProgressResult.data ?? [];
+  const lastCurationEvent = curationEvents[curationEvents.length - 1];
+
+  // Insights progress subscription
+  const [insightsProgressResult] = useSubscription<
+    OnWorkflowProgressSubscriptionResult,
+    WorkflowProgressEvent[],
+    OnWorkflowProgressVariables
+  >(
+    {
+      query: ON_WORKFLOW_PROGRESS_SUBSCRIPTION,
+      variables: { workflowId: 'process-insights' },
+      pause: !insightsLoading,
+    },
+    (prev = [], data) => [...prev, data.onWorkflowProgress],
+  );
+  const insightsEvents = insightsProgressResult.data ?? [];
+  const lastInsightsEvent = insightsEvents[insightsEvents.length - 1];
+
+  // Handle workflow completions
+  useEffect(() => {
+    if (lastCurationEvent?.stage === 'complete' || lastCurationEvent?.stage === 'error') {
+      setCurationReconnecting(false);
+      reexecuteCurated({ requestPolicy: 'network-only' });
+      reexecuteCurationStatus({ requestPolicy: 'network-only' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reexecute functions are stable
+  }, [lastCurationEvent?.stage]);
+
+  useEffect(() => {
+    if (lastInsightsEvent?.stage === 'complete' || lastInsightsEvent?.stage === 'error') {
+      setInsightsReconnecting(false);
+      reexecuteInsights({ requestPolicy: 'network-only' });
+      reexecuteInsightsStatus({ requestPolicy: 'network-only' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reexecute functions are stable
+  }, [lastInsightsEvent?.stage]);
+
+  const handleRunCuration = async () => {
+    setCurationReconnecting(false);
+    await runFullCuration({});
+  };
+
+  const handleProcessInsights = async () => {
+    setInsightsReconnecting(false);
+    await processInsightsMutation({});
+  };
+
+  // Insight report
+  const report = insightsMutResult.data?.processInsights ?? insightQueryResult.data?.latestInsightReport ?? null;
+
+  // Cross-reference: which signals appear in the analysis report
+  const insightSignalIds = useMemo(
+    () => collectInsightSignalIds(insightQueryResult.data?.latestInsightReport),
+    [insightQueryResult.data],
+  );
+  const insightSignalImpact = useMemo(() => {
+    const map = new Map<string, string>();
+    const r = insightQueryResult.data?.latestInsightReport;
+    if (!r) return map;
+    for (const pos of r.positions) {
+      for (const sig of pos.keySignals) {
+        map.set(sig.signalId, sig.impact);
+      }
+    }
+    return map;
+  }, [insightQueryResult.data]);
+
+  // By Position view: signals grouped by ticker
   const signalsByTicker = useMemo(() => {
-    const curated = signalsResult.data?.curatedSignals ?? [];
     const byTicker = new Map<string, Signal[]>();
-    for (const cs of curated) {
+    for (const cs of allCuratedSignals) {
       for (const score of cs.scores) {
         const bucket = byTicker.get(score.ticker);
         if (bucket) {
@@ -143,281 +377,536 @@ export default function Insights() {
     return Array.from(byTicker.entries())
       .map(([ticker, signals]) => ({ ticker, signals }))
       .sort((a, b) => b.signals.length - a.signals.length);
-  }, [signalsResult.data]);
-  const totalSignals = useMemo(() => signalsByTicker.reduce((sum, g) => sum + g.signals.length, 0), [signalsByTicker]);
+  }, [allCuratedSignals]);
 
-  // Check if a workflow is already running (e.g. user navigated away and back)
-  const [statusResult, reexecuteStatusQuery] = useQuery<InsightsWorkflowStatusQueryResult>({
-    query: INSIGHTS_WORKFLOW_STATUS_QUERY,
-    requestPolicy: 'network-only',
-  });
-
-  const [reconnecting, setReconnecting] = useState(false);
-  const reconnectStartedAt = useRef<string | null>(null);
-
-  // Detect running workflow on mount and set reconnecting state
-  const backendRunning = statusResult.data?.insightsWorkflowStatus.running ?? false;
-  useEffect(() => {
-    if (backendRunning && !mutationResult.fetching && !reconnecting) {
-      setReconnecting(true);
-      reconnectStartedAt.current = statusResult.data?.insightsWorkflowStatus.startedAt ?? null;
+  // All Signals view: client-side filtered
+  const filteredSignals = useMemo(() => {
+    let items = allCuratedSignals;
+    if (tickerFilter) {
+      const upper = tickerFilter.toUpperCase();
+      items = items.filter((cs) => cs.scores.some((s) => s.ticker === upper));
     }
-  }, [backendRunning, mutationResult.fetching, reconnecting, statusResult.data]);
-
-  const loading = mutationResult.fetching || reconnecting;
-  const error = mutationResult.error;
-
-  // Subscribe to real-time workflow progress while processing.
-  // The handler accumulates events into an array so WorkflowDiagram
-  // can derive its state during render without effects or refs.
-  const [progressResult] = useSubscription<
-    OnWorkflowProgressSubscriptionResult,
-    WorkflowProgressEvent[],
-    OnWorkflowProgressVariables
-  >(
-    {
-      query: ON_WORKFLOW_PROGRESS_SUBSCRIPTION,
-      variables: { workflowId: 'process-insights' },
-      pause: !loading,
-    },
-    (prev = [], data) => [...prev, data.onWorkflowProgress],
-  );
-
-  const progressEvents = progressResult.data ?? [];
-  const lastEvent = progressEvents[progressEvents.length - 1];
-
-  // Handle workflow completion via effect (keep subscription reducer pure)
-  useEffect(() => {
-    if (lastEvent?.stage === 'complete' || lastEvent?.stage === 'error') {
-      setReconnecting(false);
-      reexecuteQuery({ requestPolicy: 'network-only' });
-      reexecuteStatusQuery({ requestPolicy: 'network-only' });
+    if (typeFilter !== 'ALL') {
+      items = items.filter((cs) => cs.signal.type === typeFilter);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reexecuteQuery/reexecuteStatusQuery are stable
-  }, [lastEvent?.stage]);
+    if (search) {
+      const q = search.toLowerCase();
+      items = items.filter(
+        (cs) => cs.signal.title.toLowerCase().includes(q) || cs.signal.content?.toLowerCase().includes(q),
+      );
+    }
+    if (minConfidence > 0) {
+      items = items.filter((cs) => cs.signal.confidence >= minConfidence);
+    }
+    if (since) {
+      items = items.filter((cs) => cs.signal.publishedAt >= since);
+    }
+    if (sourceFilter) {
+      items = items.filter((cs) => cs.signal.sources.some((src) => src.id === sourceFilter));
+    }
+    return items;
+  }, [allCuratedSignals, tickerFilter, typeFilter, search, minConfidence, since, sourceFilter]);
 
-  const handleProcess = async () => {
-    setReconnecting(false);
-    await processInsights({});
-    // reexecuteQuery is triggered by the subscription 'complete' event
-  };
+  const sources = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const cs of allCuratedSignals) {
+      for (const src of cs.signal.sources) {
+        if (!map.has(src.id)) map.set(src.id, src.name);
+      }
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allCuratedSignals]);
 
-  const report = mutationResult.data?.processInsights ?? queryResult.data?.latestInsightReport ?? null;
+  const totalSignals = allCuratedSignals.length;
+  const usedInAnalysis = allCuratedSignals.filter((cs) => insightSignalIds.has(cs.signal.id)).length;
+  const loading = curatedResult.fetching;
 
-  // Deep analysis collapsible state
-  const [deepAnalysisOpen, setDeepAnalysisOpen] = useState(false);
-
-  // Auto-expand deep analysis section when workflow starts or report exists from mutation
-  useEffect(() => {
-    if (loading) setDeepAnalysisOpen(true);
-  }, [loading]);
+  const subtitle = useMemo(() => {
+    if (loading) return 'Loading...';
+    switch (viewTab) {
+      case 'position':
+        return totalSignals > 0
+          ? `${totalSignals} signal${totalSignals !== 1 ? 's' : ''} · ${signalsByTicker.length} position${signalsByTicker.length !== 1 ? 's' : ''}`
+          : 'No recent signals';
+      case 'all':
+        return `${filteredSignals.length} signal${filteredSignals.length !== 1 ? 's' : ''}${usedInAnalysis > 0 ? ` · ${usedInAnalysis} in analysis` : ''}`;
+    }
+  }, [viewTab, loading, totalSignals, signalsByTicker.length, filteredSignals.length, usedInAnalysis]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-center justify-between px-6 pt-6 pb-4">
-        <div>
-          <h1 className="text-lg font-semibold text-text-primary">Insights</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            {signalsResult.fetching
-              ? 'Loading signals...'
-              : totalSignals > 0
-                ? `${totalSignals} signal${totalSignals !== 1 ? 's' : ''} in the last 7 days · ${signalsByTicker.length} position${signalsByTicker.length !== 1 ? 's' : ''} with signals`
-                : 'No recent signals'}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link to="/signals" className="text-sm text-accent-primary hover:underline flex items-center gap-1">
-            All Signals
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-            </svg>
-          </Link>
+      {/* Header */}
+      <header className="px-6 pt-6 pb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-text-primary">Insights</h1>
+            <p className="mt-1 text-sm text-text-muted">{subtitle}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Tabs tabs={[...VIEW_TABS]} value={viewTab} onChange={(v) => setViewTab(v as ViewTab)} size="sm" />
+            <Button size="lg" onClick={handleRunCuration} loading={curationLoading}>
+              {curationLoading ? 'Fetching...' : 'Fetch Data'}
+            </Button>
+            <Button
+              size="lg"
+              variant="secondary"
+              onClick={handleProcessInsights}
+              loading={insightsLoading}
+              disabled={!hasPositions && !insightsLoading}
+            >
+              {insightsLoading ? 'Processing...' : 'Process Insights'}
+            </Button>
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto px-6 pb-6 space-y-6">
-        {/* ================================================================= */}
-        {/* PRIMARY VIEW: Signals grouped by portfolio position               */}
-        {/* ================================================================= */}
+      {/* Workflow activity logs — visible regardless of active tab */}
+      {curationLoading && <CurationActivityLog events={curationEvents} />}
+      {insightsLoading && (
+        <div className="px-6 pb-4">
+          <WorkflowDiagram events={insightsEvents} />
+        </div>
+      )}
 
-        {/* Empty state: no positions */}
-        {!hasPositions && !positionsResult.fetching && (
-          <div className="flex flex-col items-center justify-center gap-4 py-24">
-            <svg
-              className="h-14 w-14 text-text-muted"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-              />
-            </svg>
-            <p className="text-base text-text-muted">Connect data sources to start receiving signals.</p>
-            <Link to="/portfolio" className="text-sm text-accent-primary hover:underline">
-              Add positions to your portfolio
-            </Link>
-          </div>
-        )}
-
-        {/* Empty state: positions exist but no signals */}
-        {hasPositions && !signalsResult.fetching && totalSignals === 0 && (
-          <div className="flex flex-col items-center justify-center gap-4 py-24">
-            <svg
-              className="h-14 w-14 text-text-muted"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-              />
-            </svg>
-            <p className="text-base text-text-muted">No signals yet. Fetch data sources to ingest signals.</p>
-            <Link to="/settings" className="text-sm text-accent-primary hover:underline">
-              Configure data sources
-            </Link>
-          </div>
-        )}
-
-        {/* Signal cards grouped by position */}
-        {signalsByTicker.length > 0 && (
-          <div className="space-y-3">
-            {signalsByTicker.map((group) => {
-              const position = positions.find((p) => p.symbol === group.ticker);
-              return (
-                <PositionSignalCard
-                  key={group.ticker}
-                  ticker={group.ticker}
-                  name={position?.name ?? group.ticker}
-                  signals={group.signals}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {/* Link to full signal archive for non-portfolio signals */}
-
-        {/* ================================================================= */}
-        {/* DEEP ANALYSIS: Collapsible section at bottom                      */}
-        {/* ================================================================= */}
-
-        <Card className="p-0 overflow-hidden">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between p-5 cursor-pointer"
-            onClick={() => setDeepAnalysisOpen(!deepAnalysisOpen)}
-          >
-            <div>
-              <h2 className="text-base font-semibold text-text-primary">Deep Analysis</h2>
-              <p className="mt-1 text-sm text-text-muted">
-                Run multi-agent analysis to get ratings, thesis, and action items for each position.
-              </p>
+      {/* Errors */}
+      {!curationLoading && curationMutResult.error && (
+        <div className="px-6 pb-4">
+          <Card className="p-4 border border-error/30 bg-error/5">
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-error flex-1">{curationMutResult.error.message}</p>
+              <Button size="sm" onClick={handleRunCuration}>
+                Retry
+              </Button>
             </div>
-            <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-              {report && !loading && (
-                <span className="text-xs text-text-muted">
-                  Last run: {new Date(report.createdAt).toLocaleString()} ({(report.durationMs / 1000).toFixed(1)}s)
-                </span>
-              )}
-              <svg
-                className={cn('h-5 w-5 text-text-muted transition-transform', deepAnalysisOpen && 'rotate-180')}
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
+          </Card>
+        </div>
+      )}
+      {!insightsLoading && insightsMutResult.error && (
+        <div className="px-6 pb-4">
+          <Card className="p-4 border border-error/30 bg-error/5">
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-error flex-1">{insightsMutResult.error.message}</p>
+              <Button size="sm" onClick={handleProcessInsights}>
+                Retry
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* All Signals tab filters */}
+      {viewTab === 'all' && (
+        <div className="px-6 pb-4 space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              type="text"
+              placeholder="Search signals..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 rounded-lg border border-border bg-bg-secondary px-3 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none w-56"
+            />
+            <input
+              type="text"
+              placeholder="Ticker (e.g. AAPL)"
+              value={tickerFilter}
+              onChange={(e) => setTickerFilter(e.target.value)}
+              className="h-8 rounded-lg border border-border bg-bg-secondary px-3 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none w-36"
+            />
+            {sources.length > 1 && (
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-bg-secondary px-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-              </svg>
+                <option value="">All sources</option>
+                {sources.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex gap-1">
+              {SIGNAL_TYPES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFilter(t)}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer',
+                    typeFilter === t
+                      ? 'bg-accent-primary text-white'
+                      : 'bg-bg-tertiary text-text-secondary hover:text-text-primary',
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
             </div>
-          </button>
+            <span className="h-4 w-px bg-border" />
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-text-muted mr-1">Period:</span>
+              {DATE_RANGES.map((d) => (
+                <button
+                  key={d.label}
+                  type="button"
+                  onClick={() => setDateRange(d.value)}
+                  className={cn(
+                    'px-2 py-0.5 text-xs font-medium rounded transition-colors cursor-pointer',
+                    dateRangeLabel === d.value
+                      ? 'bg-accent-primary/10 text-accent-primary'
+                      : 'text-text-muted hover:text-text-primary',
+                  )}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <span className="h-4 w-px bg-border" />
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-text-muted mr-1">Confidence:</span>
+              {CONFIDENCE_PRESETS.map((c) => (
+                <button
+                  key={c.label}
+                  type="button"
+                  onClick={() => setMinConfidence(c.value)}
+                  className={cn(
+                    'px-2 py-0.5 text-xs font-medium rounded transition-colors cursor-pointer',
+                    minConfidence === c.value
+                      ? 'bg-accent-primary/10 text-accent-primary'
+                      : 'text-text-muted hover:text-text-primary',
+                  )}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-          {deepAnalysisOpen && (
-            <div className="border-t border-border px-5 pb-5 pt-4 space-y-5">
-              {/* Action button */}
-              <div className="flex items-center gap-3">
-                <Button size="lg" onClick={handleProcess} loading={loading} disabled={!hasPositions && !loading}>
-                  {loading ? 'Processing...' : 'Run Deep Analysis'}
-                </Button>
-                {!hasPositions && !positionsResult.fetching && (
-                  <p className="text-xs text-text-muted">
-                    <Link to="/portfolio" className="text-accent-primary hover:underline">
-                      Add positions
-                    </Link>{' '}
-                    to your portfolio first
-                  </p>
-                )}
+      {/* Tab content */}
+      <div className="flex-1 overflow-auto px-6 pb-6">
+        {/* By Position */}
+        {viewTab === 'position' && (
+          <>
+            {!hasPositions && !positionsResult.fetching && (
+              <EmptyState icon="signal" message="Connect data sources to start receiving signals.">
+                <Link to="/portfolio" className="text-sm text-accent-primary hover:underline">
+                  Add positions to your portfolio
+                </Link>
+              </EmptyState>
+            )}
+            {hasPositions && !loading && signalsByTicker.length === 0 && (
+              <EmptyState icon="signal" message="No recent signals. Click Fetch Data to pull the latest signals." />
+            )}
+            {/* Portfolio-level analysis summary */}
+            {report && <PortfolioSummaryCard report={report} />}
+
+            {signalsByTicker.length > 0 && (
+              <div className="space-y-3">
+                {signalsByTicker.map(({ ticker, signals }) => {
+                  const position = positions.find((p) => p.symbol === ticker);
+                  const insight = report?.positions.find((p) => p.symbol === ticker);
+                  return (
+                    <PositionSignalCard
+                      key={ticker}
+                      ticker={ticker}
+                      name={position?.name ?? ticker}
+                      signals={signals}
+                      insight={insight}
+                      onViewAll={navigateToSignals}
+                      onViewSignal={(id) => {
+                        setHighlightId(id);
+                        setViewTab('all');
+                      }}
+                    />
+                  );
+                })}
               </div>
+            )}
+          </>
+        )}
 
-              {/* Workflow diagram while loading */}
-              {loading && <WorkflowDiagram events={progressEvents} />}
-
-              {/* Error display */}
-              {!loading && error && (
-                <Card className="p-5 border border-error/30 bg-error/5">
-                  <div className="flex items-start gap-3">
-                    <svg
-                      className="h-5 w-5 text-error flex-shrink-0 mt-0.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"
-                      />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-error">Processing failed</p>
-                      <p className="mt-1 text-sm text-text-secondary break-words">{error.message}</p>
-                    </div>
-                    <Button size="sm" onClick={handleProcess}>
-                      Retry
-                    </Button>
-                  </div>
-                </Card>
-              )}
-
-              {/* Report view */}
-              {!loading && report && <InsightReportView report={report} />}
-
-              {/* No report yet */}
-              {!loading && !report && !error && !queryResult.fetching && (
-                <p className="text-sm text-text-muted py-4 text-center">
-                  No deep analysis report yet. Click "Run Deep Analysis" to generate one.
-                </p>
-              )}
+        {/* All Signals */}
+        {viewTab === 'all' && (
+          <>
+            {!loading && filteredSignals.length === 0 && (
+              <EmptyState icon="signal" message="No signals yet. Click Fetch Data to pull the latest signals." />
+            )}
+            <div className="space-y-2">
+              {filteredSignals.map((cs) => (
+                <SignalRow
+                  key={cs.signal.id}
+                  curated={cs}
+                  highlighted={cs.signal.id === highlightId}
+                  usedInInsight={insightSignalIds.has(cs.signal.id)}
+                  insightImpact={insightSignalImpact.get(cs.signal.id)}
+                  onFilterByTicker={navigateToSignals}
+                  onViewAnalysis={navigateToAnalysis}
+                />
+              ))}
             </div>
-          )}
-        </Card>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Position signal card (primary view — signals grouped by ticker)
+// Empty state
 // ---------------------------------------------------------------------------
 
-function PositionSignalCard({ ticker, name, signals }: { ticker: string; name: string; signals: Signal[] }) {
+function EmptyState({
+  icon,
+  message,
+  children,
+}: {
+  icon: 'signal' | 'groups' | 'analysis';
+  message: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 py-24">
+      {icon === 'signal' && (
+        <svg
+          className="h-14 w-14 text-text-muted"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1}
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+          />
+        </svg>
+      )}
+      {icon === 'groups' && (
+        <svg
+          className="h-14 w-14 text-text-muted"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1}
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+          />
+        </svg>
+      )}
+      {icon === 'analysis' && (
+        <svg
+          className="h-14 w-14 text-text-muted"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1}
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605"
+          />
+        </svg>
+      )}
+      <p className="text-base text-text-muted text-center max-w-sm">{message}</p>
+      {children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio-level summary card (shown above position cards when analysis exists)
+// ---------------------------------------------------------------------------
+
+function PortfolioSummaryCard({ report }: { report: InsightReport }) {
+  return (
+    <div className="space-y-3 mb-4">
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Portfolio Health</h3>
+            <Badge variant={healthVariant[report.portfolio.overallHealth]} size="sm">
+              {report.portfolio.overallHealth}
+            </Badge>
+          </div>
+          <p className="text-sm text-text-primary leading-relaxed">{report.portfolio.summary}</p>
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Agent Confidence</h3>
+          <div className="space-y-3">
+            <ConfidenceBar label="Confidence" value={report.emotionState.confidence} />
+            <ConfidenceBar label="Risk Appetite" value={report.emotionState.riskAppetite} />
+          </div>
+          {report.emotionState.reason && (
+            <p className="mt-3 text-xs text-text-muted leading-relaxed">{report.emotionState.reason}</p>
+          )}
+        </Card>
+      </div>
+
+      {report.portfolio.actionItems.length > 0 && (
+        <Card className="p-4">
+          <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Action Items</h3>
+          <ul className="space-y-1.5">
+            {report.portfolio.actionItems.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-text-primary">
+                <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent-primary" />
+                {item.text}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// By Position view: expandable signal item
+// ---------------------------------------------------------------------------
+
+function PositionSignalItem({ signal, onViewSignal }: { signal: Signal; onViewSignal: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg bg-bg-secondary">
+      <button
+        type="button"
+        className="flex w-full items-start gap-3 p-3 cursor-pointer text-left"
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <Badge variant={signalTypeVariant[signal.type] ?? 'neutral'} size="xs">
+              {signal.type}
+            </Badge>
+            {signal.tier1 && (
+              <Badge
+                variant={signal.tier1 === 'CRITICAL' ? 'error' : signal.tier1 === 'IMPORTANT' ? 'warning' : 'neutral'}
+                size="xs"
+              >
+                {signal.tier1}
+              </Badge>
+            )}
+            {signal.sentiment && (
+              <Badge variant={sentimentVariant[signal.sentiment] ?? 'neutral'} size="xs">
+                {signal.sentiment}
+              </Badge>
+            )}
+            <span className="text-2xs text-text-muted">{formatTimeAgo(new Date(signal.publishedAt))}</span>
+            <span className="text-2xs text-text-muted">
+              · {signal.sources.map((s) => s.name).join(', ')}
+              {signal.sourceCount > 1 && ` (${signal.sourceCount})`}
+            </span>
+          </div>
+          <p className="text-xs font-medium text-text-primary">{signal.title}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 w-16">
+            <div className="flex-1 h-1 rounded-full bg-bg-tertiary">
+              <div
+                className={cn(
+                  'h-1 rounded-full transition-all',
+                  signal.confidence >= 0.8 ? 'bg-success' : signal.confidence >= 0.5 ? 'bg-warning' : 'bg-error',
+                )}
+                style={{ width: `${Math.round(signal.confidence * 100)}%` }}
+              />
+            </div>
+            <span className="text-2xs text-text-muted w-6 text-right">{Math.round(signal.confidence * 100)}%</span>
+          </div>
+          <svg
+            className={cn('h-3.5 w-3.5 text-text-muted transition-transform', open && 'rotate-180')}
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          </svg>
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 space-y-2">
+          <div className="border-t border-border pt-2" />
+          {signal.content && (
+            <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">{signal.content}</p>
+          )}
+          <div className="flex items-center gap-3 text-2xs text-text-muted flex-wrap">
+            <span>Published: {new Date(signal.publishedAt).toLocaleString()}</span>
+            <span>· Source: {signal.sources.map((s) => s.name).join(', ')}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {signal.link ? (
+              <a
+                href={signal.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline"
+              >
+                View source
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                  />
+                </svg>
+              </a>
+            ) : (
+              <span className="text-2xs text-text-muted italic">No external source link</span>
+            )}
+            <button
+              type="button"
+              onClick={() => onViewSignal(signal.id)}
+              className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline cursor-pointer"
+            >
+              View in Signals
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// By Position view: signal card per ticker
+// ---------------------------------------------------------------------------
+
+function PositionSignalCard({
+  ticker,
+  name,
+  signals,
+  insight,
+  onViewAll,
+  onViewSignal,
+}: {
+  ticker: string;
+  name: string;
+  signals: Signal[];
+  insight?: PositionInsight;
+  onViewAll: (ticker: string) => void;
+  onViewSignal: (signalId: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
 
-  // Sort signals by publishedAt descending (most recent first)
   const sorted = useMemo(
     () => [...signals].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()),
     [signals],
   );
 
-  // Count by sentiment
   const sentimentCounts = useMemo(() => {
     const counts = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0, OTHER: 0 };
     for (const s of signals) {
@@ -431,17 +920,29 @@ function PositionSignalCard({ ticker, name, signals }: { ticker: string; name: s
 
   return (
     <Card className="p-4">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         className="flex w-full items-center justify-between cursor-pointer"
         onClick={() => setExpanded(!expanded)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded(!expanded);
+          }
+        }}
       >
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-text-primary">{ticker}</span>
+          {insight && (
+            <Badge variant={ratingVariant[insight.rating]} size="sm">
+              {ratingLabel[insight.rating]}
+            </Badge>
+          )}
           {name !== ticker && <span className="text-sm text-text-muted">{name}</span>}
+          {insight && <ConvictionMeter value={insight.conviction} />}
         </div>
         <div className="flex items-center gap-3">
-          {/* Signal count badge */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bg-tertiary">
             <svg
               className="h-3 w-3 text-text-muted"
@@ -457,7 +958,6 @@ function PositionSignalCard({ ticker, name, signals }: { ticker: string; name: s
               />
             </svg>
             <span className="text-xs font-medium text-text-secondary">{signals.length}</span>
-            {/* Sentiment dots */}
             {sentimentCounts.BULLISH > 0 && (
               <span className="h-1.5 w-1.5 rounded-full bg-success" title={`${sentimentCounts.BULLISH} bullish`} />
             )}
@@ -465,19 +965,19 @@ function PositionSignalCard({ ticker, name, signals }: { ticker: string; name: s
               <span className="h-1.5 w-1.5 rounded-full bg-error" title={`${sentimentCounts.BEARISH} bearish`} />
             )}
           </div>
-
-          {/* Link to signals page filtered by ticker */}
-          <Link
-            to={`/signals?ticker=${ticker}`}
-            onClick={(e) => e.stopPropagation()}
-            className="text-xs font-medium text-accent-primary hover:underline flex items-center gap-1"
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewAll(ticker);
+            }}
+            className="text-xs font-medium text-accent-primary hover:underline flex items-center gap-1 cursor-pointer"
           >
             View all
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
             </svg>
-          </Link>
-
+          </button>
           <svg
             className={cn('h-5 w-5 text-text-muted transition-transform', expanded && 'rotate-180')}
             fill="none"
@@ -488,257 +988,53 @@ function PositionSignalCard({ ticker, name, signals }: { ticker: string; name: s
             <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
           </svg>
         </div>
-      </button>
-
-      {expanded && (
-        <div className="mt-3 border-t border-border pt-3 space-y-2">
-          {sorted.map((signal) => (
-            <div key={signal.id} className="flex items-start gap-3 rounded-lg bg-bg-secondary p-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <Badge variant={signalTypeVariant[signal.type] ?? 'neutral'} size="xs">
-                    {signal.type}
-                  </Badge>
-                  {signal.tier1 && (
-                    <Badge
-                      variant={
-                        signal.tier1 === 'CRITICAL' ? 'error' : signal.tier1 === 'IMPORTANT' ? 'warning' : 'neutral'
-                      }
-                      size="xs"
-                    >
-                      {signal.tier1}
-                    </Badge>
-                  )}
-                  {signal.sentiment && (
-                    <Badge variant={sentimentVariant[signal.sentiment] ?? 'neutral'} size="xs">
-                      {signal.sentiment}
-                    </Badge>
-                  )}
-                  <span className="text-2xs text-text-muted">{formatTimeAgo(new Date(signal.publishedAt))}</span>
-                  <span className="text-2xs text-text-muted">
-                    · {signal.sources.map((s) => s.name).join(', ')}
-                    {signal.sourceCount > 1 && ` (${signal.sourceCount})`}
-                  </span>
-                </div>
-                <Link
-                  to={`/signals?highlight=${signal.id}`}
-                  className="text-xs font-medium text-text-primary hover:text-accent-primary transition-colors"
-                >
-                  {signal.title}
-                </Link>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <div className="flex items-center gap-1.5 w-16">
-                  <div className="flex-1 h-1 rounded-full bg-bg-tertiary">
-                    <div
-                      className={cn(
-                        'h-1 rounded-full transition-all',
-                        signal.confidence >= 0.8 ? 'bg-success' : signal.confidence >= 0.5 ? 'bg-warning' : 'bg-error',
-                      )}
-                      style={{ width: `${Math.round(signal.confidence * 100)}%` }}
-                    />
-                  </div>
-                  <span className="text-2xs text-text-muted w-6 text-right">
-                    {Math.round(signal.confidence * 100)}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Report view
-// ---------------------------------------------------------------------------
-
-function InsightReportView({ report }: { report: InsightReport }) {
-  return (
-    <div className="space-y-6">
-      {/* Health + Confidence row */}
-      <div className="grid grid-cols-2 gap-5">
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-text-secondary">Portfolio Health</h3>
-            <Badge variant={healthVariant[report.portfolio.overallHealth]} size="md">
-              {report.portfolio.overallHealth}
-            </Badge>
-          </div>
-          <p className="text-sm text-text-primary leading-relaxed">{report.portfolio.summary}</p>
-        </Card>
-
-        <Card className="p-5">
-          <h3 className="text-sm font-semibold text-text-secondary mb-4">Agent Confidence</h3>
-          <div className="space-y-4">
-            <ConfidenceBar label="Confidence" value={report.emotionState.confidence} />
-            <ConfidenceBar label="Risk Appetite" value={report.emotionState.riskAppetite} />
-          </div>
-          <p className="mt-4 text-sm text-text-muted leading-relaxed">{report.emotionState.reason}</p>
-        </Card>
       </div>
 
-      {/* Action Items */}
-      {report.portfolio.actionItems.length > 0 && (
-        <Card className="p-5">
-          <h3 className="text-sm font-semibold text-text-secondary mb-3">Action Items</h3>
-          <ul className="space-y-2">
-            {report.portfolio.actionItems.map((item, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-text-primary">
-                <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-accent-primary" />
-                {item.text}
-              </li>
+      {expanded && (
+        <div className="mt-3 border-t border-border pt-3 space-y-3">
+          {/* Analysis thesis */}
+          {insight && <p className="text-sm text-text-secondary leading-relaxed">{insight.thesis}</p>}
+
+          {/* Signals */}
+          <div className="space-y-2">
+            {sorted.map((signal) => (
+              <PositionSignalItem key={signal.id} signal={signal} onViewSignal={onViewSignal} />
             ))}
-          </ul>
-        </Card>
-      )}
-
-      {/* Positions */}
-      <div>
-        <h2 className="mb-3 text-base font-semibold text-text-primary">Positions</h2>
-        <div className="space-y-2">
-          {report.positions.map((pos) => (
-            <PositionInsightCard key={pos.symbol} position={pos} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Position insight card
-// ---------------------------------------------------------------------------
-
-function PositionInsightCard({ position }: { position: PositionInsight }) {
-  const [expanded, setExpanded] = useState(false);
-
-  // Group signals by impact
-  const positiveSignals = position.keySignals.filter((s) => s.impact === 'POSITIVE');
-  const negativeSignals = position.keySignals.filter((s) => s.impact === 'NEGATIVE');
-  const neutralSignals = position.keySignals.filter((s) => s.impact !== 'POSITIVE' && s.impact !== 'NEGATIVE');
-
-  return (
-    <Card className="p-5">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-base font-semibold text-text-primary">{position.symbol}</span>
-          <Badge variant={ratingVariant[position.rating]} size="md">
-            {ratingLabel[position.rating]}
-          </Badge>
-          <span className="text-sm text-text-muted">{position.name}</span>
-        </div>
-        <div className="flex items-center gap-4">
-          {/* Signal count indicator */}
-          {position.keySignals.length > 0 && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-bg-tertiary">
-              <svg
-                className="h-3 w-3 text-text-muted"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546"
-                />
-              </svg>
-              <span className="text-xs text-text-muted">{position.keySignals.length}</span>
-              {/* Mini impact dots */}
-              {positiveSignals.length > 0 && (
-                <span className="h-1.5 w-1.5 rounded-full bg-success" title={`${positiveSignals.length} positive`} />
-              )}
-              {negativeSignals.length > 0 && (
-                <span className="h-1.5 w-1.5 rounded-full bg-error" title={`${negativeSignals.length} negative`} />
-              )}
-            </div>
-          )}
-          <ConvictionMeter value={position.conviction} />
-          {position.priceTarget != null && (
-            <span className="text-sm text-text-muted">Target: ${position.priceTarget}</span>
-          )}
-          <svg
-            className={cn('h-5 w-5 text-text-muted transition-transform', expanded && 'rotate-180')}
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-          </svg>
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="mt-4 border-t border-border pt-4 space-y-4">
-          <p className="text-sm text-text-secondary leading-relaxed">{position.thesis}</p>
-
-          {/* Key Signals — grouped by impact */}
-          {position.keySignals.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Key Signals</h4>
-                <Link
-                  to={`/signals?search=${encodeURIComponent(position.name || position.symbol)}`}
-                  className="text-xs font-medium text-accent-primary hover:underline flex items-center gap-1"
-                >
-                  View all {position.symbol} signals
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                  </svg>
-                </Link>
-              </div>
-
-              {/* Positive signals */}
-              {positiveSignals.length > 0 && <SignalGroup signals={positiveSignals} impact="POSITIVE" />}
-
-              {/* Negative signals */}
-              {negativeSignals.length > 0 && <SignalGroup signals={negativeSignals} impact="NEGATIVE" />}
-
-              {/* Neutral signals */}
-              {neutralSignals.length > 0 && <SignalGroup signals={neutralSignals} impact="NEUTRAL" />}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-6">
-            {position.risks.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Risks</h4>
-                <ul className="space-y-1.5">
-                  {position.risks.map((risk) => (
-                    <li key={risk} className="flex items-start gap-2 text-sm text-text-secondary">
-                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-error" />
-                      {risk}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {position.opportunities.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Opportunities</h4>
-                <ul className="space-y-1.5">
-                  {position.opportunities.map((opp) => (
-                    <li key={opp} className="flex items-start gap-2 text-sm text-text-secondary">
-                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-success" />
-                      {opp}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
 
-          {position.memoryContext && <p className="text-sm italic text-text-muted">{position.memoryContext}</p>}
+          {/* Risks & Opportunities from analysis */}
+          {insight && (insight.risks.length > 0 || insight.opportunities.length > 0) && (
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              {insight.risks.length > 0 && (
+                <div>
+                  <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">Risks</h4>
+                  <ul className="space-y-1">
+                    {insight.risks.map((risk) => (
+                      <li key={risk} className="flex items-start gap-2 text-xs text-text-secondary">
+                        <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-error" />
+                        {risk}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {insight.opportunities.length > 0 && (
+                <div>
+                  <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Opportunities
+                  </h4>
+                  <ul className="space-y-1">
+                    {insight.opportunities.map((opp) => (
+                      <li key={opp} className="flex items-start gap-2 text-xs text-text-secondary">
+                        <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-success" />
+                        {opp}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -746,87 +1042,211 @@ function PositionInsightCard({ position }: { position: PositionInsight }) {
 }
 
 // ---------------------------------------------------------------------------
-// Signal group (positive / negative / neutral)
+// All Signals view: flat signal row
 // ---------------------------------------------------------------------------
 
-function SignalGroup({ signals, impact }: { signals: SignalSummary[]; impact: string }) {
-  const config: Record<string, { icon: string; color: string; borderColor: string; bgColor: string; label: string }> = {
-    POSITIVE: {
-      icon: '\u2191',
-      color: 'text-success',
-      borderColor: 'border-success/20',
-      bgColor: 'bg-success/5',
-      label: 'Bullish',
-    },
-    NEGATIVE: {
-      icon: '\u2193',
-      color: 'text-error',
-      borderColor: 'border-error/20',
-      bgColor: 'bg-error/5',
-      label: 'Bearish',
-    },
-    NEUTRAL: {
-      icon: '\u2192',
-      color: 'text-text-muted',
-      borderColor: 'border-border',
-      bgColor: 'bg-bg-secondary',
-      label: 'Neutral',
-    },
-  };
-  const c = config[impact] ?? config.NEUTRAL;
+function SignalRow({
+  curated,
+  highlighted,
+  usedInInsight,
+  insightImpact,
+  onFilterByTicker,
+  onViewAnalysis,
+}: {
+  curated: CuratedSignal;
+  highlighted: boolean;
+  usedInInsight: boolean;
+  insightImpact?: string;
+  onFilterByTicker: (ticker: string) => void;
+  onViewAnalysis: () => void;
+}) {
+  const signal = curated.signal;
+  const topScore =
+    curated.scores.length > 0
+      ? curated.scores.reduce((best, s) => (s.compositeScore > best.compositeScore ? s : best), curated.scores[0])
+      : null;
+  const relevancePct = topScore ? Math.round(topScore.compositeScore * 100) : 0;
+
+  const [expanded, setExpanded] = useState(highlighted);
+  const variant = typeVariant[signal.type] ?? 'neutral';
+  const date = new Date(signal.publishedAt);
+  const timeAgo = formatTimeAgo(date);
+  const confidencePct = Math.round(signal.confidence * 100);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (highlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlighted]);
 
   return (
-    <div className={cn('rounded-lg border p-3', c.borderColor, c.bgColor)}>
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className={cn('text-sm font-bold', c.color)}>{c.icon}</span>
-        <span className={cn('text-xs font-semibold', c.color)}>{c.label}</span>
-        <span className="text-xs text-text-muted">({signals.length})</span>
-      </div>
-      <div className="space-y-1.5">
-        {signals.map((signal) => (
-          <Link
-            key={signal.signalId}
-            to={`/signals?highlight=${encodeURIComponent(signal.signalId)}`}
-            className="flex items-center gap-2 group"
-          >
-            <Badge variant={signalTypeVariant[signal.type] ?? 'neutral'} size="xs">
-              {signal.type}
-            </Badge>
-            <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors flex-1 min-w-0 truncate">
-              {signal.title}
-            </span>
-            {signal.sourceCount > 1 && (
-              <span className="text-[10px] text-text-muted flex-shrink-0">{signal.sourceCount} sources</span>
-            )}
-            <SignalConfidenceDot confidence={signal.confidence} />
+    <div ref={rowRef}>
+      <Card className={cn('p-4 transition-all', highlighted && 'ring-2 ring-accent-primary/50')}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="flex w-full items-start justify-between cursor-pointer text-left"
+          onClick={() => setExpanded(!expanded)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded(!expanded);
+            }
+          }}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <Badge variant={variant} size="sm">
+                {signal.type}
+              </Badge>
+              {signal.tickers.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFilterByTicker(t);
+                  }}
+                  className="text-xs font-semibold text-accent-primary hover:underline cursor-pointer"
+                >
+                  {t}
+                </button>
+              ))}
+              {topScore && (
+                <span
+                  className={cn(
+                    'text-xs font-medium px-1.5 py-0.5 rounded',
+                    relevancePct >= 60
+                      ? 'bg-success/10 text-success'
+                      : relevancePct >= 30
+                        ? 'bg-warning/10 text-warning'
+                        : 'bg-bg-tertiary text-text-muted',
+                  )}
+                >
+                  {relevancePct}% relevant
+                </span>
+              )}
+              <span className="text-xs text-text-muted">{timeAgo}</span>
+              <span className="text-xs text-text-muted">
+                · {signal.sources.map((s) => s.name).join(', ')}
+                {signal.sourceCount > 1 && ` (${signal.sourceCount})`}
+              </span>
+              {usedInInsight && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewAnalysis();
+                  }}
+                  className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer"
+                >
+                  <Badge variant="accent" size="xs">
+                    {insightImpact === 'POSITIVE' && '↑ '}
+                    {insightImpact === 'NEGATIVE' && '↓ '}
+                    IN ANALYSIS
+                  </Badge>
+                </button>
+              )}
+            </div>
+            <p className="text-sm font-medium text-text-primary truncate">{signal.title}</p>
+          </div>
+
+          <div className="flex items-center gap-3 ml-3 flex-shrink-0">
+            <div className="flex items-center gap-2 w-24">
+              <div className="flex-1 h-1.5 rounded-full bg-bg-tertiary">
+                <div
+                  className={cn(
+                    'h-1.5 rounded-full transition-all',
+                    confidencePct >= 80 ? 'bg-success' : confidencePct >= 50 ? 'bg-warning' : 'bg-error',
+                  )}
+                  style={{ width: `${confidencePct}%` }}
+                />
+              </div>
+              <span
+                className={cn(
+                  'text-xs font-medium w-8 text-right',
+                  confidencePct >= 80 ? 'text-success' : confidencePct >= 50 ? 'text-warning' : 'text-text-muted',
+                )}
+              >
+                {confidencePct}%
+              </span>
+            </div>
             <svg
-              className="h-3 w-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+              className={cn('h-4 w-4 text-text-muted transition-transform', expanded && 'rotate-180')}
               fill="none"
               viewBox="0 0 24 24"
-              strokeWidth={2}
+              strokeWidth={1.5}
               stroke="currentColor"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
             </svg>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
+          </div>
+        </div>
 
-function SignalConfidenceDot({ confidence }: { confidence: number }) {
-  const pct = Math.round(confidence * 100);
-  return (
-    <span
-      className={cn(
-        'text-2xs font-medium flex-shrink-0',
-        pct >= 80 ? 'text-success' : pct >= 50 ? 'text-warning' : 'text-text-muted',
-      )}
-      title={`${pct}% confidence`}
-    >
-      {pct}%
-    </span>
+        {expanded && (
+          <div className="mt-3 border-t border-border pt-3 space-y-3">
+            {signal.content && (
+              <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{signal.content}</p>
+            )}
+
+            {curated.scores.length > 0 && (
+              <div className="flex items-center gap-3 flex-wrap">
+                {curated.scores.map((s) => (
+                  <span key={s.ticker} className="text-xs px-2 py-1 rounded bg-bg-tertiary text-text-secondary">
+                    {s.ticker}: {Math.round(s.compositeScore * 100)}% relevance
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
+              <span>Published: {date.toLocaleString()}</span>
+              <span>· Curated: {new Date(curated.curatedAt).toLocaleString()}</span>
+              <span>· Source: {signal.sources.map((s) => s.name).join(', ')}</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {signal.link ? (
+                <a
+                  href={signal.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-accent-primary hover:underline"
+                >
+                  View original source
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                    />
+                  </svg>
+                </a>
+              ) : (
+                <span className="text-xs text-text-muted italic">No external source link</span>
+              )}
+              {usedInInsight && (
+                <button
+                  type="button"
+                  onClick={onViewAnalysis}
+                  className="inline-flex items-center gap-1.5 text-sm text-accent-primary hover:underline cursor-pointer"
+                >
+                  View analysis
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -870,21 +1290,178 @@ function ConvictionMeter({ value }: { value: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Multi-Agent Workflow Diagram
+// Curation activity log (shown while curation is running)
 // ---------------------------------------------------------------------------
 
-const STAGE_TIMING_SEC = [0, 5, 15]; // fallback simulated stage transitions
-
-function WorkflowDiagram({ events }: { events: WorkflowProgressEvent[] }) {
+function CurationActivityLog({ events }: { events: WorkflowProgressEvent[] }) {
   const [elapsed, setElapsed] = useState(0);
+  const logEndRef = useRef<HTMLDivElement>(null);
 
-  // Timer for elapsed counter (setState in interval callback is fine)
   useEffect(() => {
     const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Derive all diagram state from the accumulated events array during render
+  let activeStage = 0;
+  const completedStages = new Set<number>();
+  let workflowError: string | null = null;
+  const activities: string[] = [];
+
+  for (const evt of events) {
+    if (evt.stage === 'stage_start' && evt.stageIndex != null) {
+      activeStage = evt.stageIndex;
+    } else if (evt.stage === 'stage_complete' && evt.stageIndex != null) {
+      completedStages.add(evt.stageIndex);
+    } else if (evt.stage === 'error') {
+      workflowError = evt.error ?? 'Unknown error';
+    } else if (evt.stage === 'activity' && evt.message) {
+      activities.push(evt.message);
+    }
+  }
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [activities.length]);
+
+  return (
+    <div className="px-6 pb-4">
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-text-secondary">Curation Pipeline</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-muted">{elapsed}s</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" />
+            {events.length > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success">LIVE</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 mb-4">
+          {CURATION_STAGES.map((stage, i) => {
+            const isDone = completedStages.has(i);
+            const isActive = !isDone && i === activeStage;
+            return (
+              <div key={stage.title} className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div
+                    className={cn(
+                      'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
+                      isDone && 'bg-success text-white',
+                      isActive && 'bg-accent-primary text-white',
+                      !isDone && !isActive && 'bg-bg-tertiary text-text-muted',
+                    )}
+                  >
+                    {isDone ? (
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2.5}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                    ) : (
+                      i + 1
+                    )}
+                  </div>
+                  <span
+                    className={cn(
+                      'text-xs font-medium truncate',
+                      isDone ? 'text-success' : isActive ? 'text-text-primary' : 'text-text-muted',
+                    )}
+                  >
+                    {stage.title}
+                  </span>
+                </div>
+                {stage.agents.length > 0 && (
+                  <div className="ml-8 flex flex-wrap gap-1 mb-1">
+                    {stage.agents.map((agent) => (
+                      <span
+                        key={agent}
+                        className={cn(
+                          'text-xs px-1.5 py-0.5 rounded-full',
+                          isActive
+                            ? 'bg-accent-glow text-accent-primary'
+                            : isDone
+                              ? 'bg-success/10 text-success'
+                              : 'bg-bg-tertiary text-text-muted',
+                        )}
+                      >
+                        {agent}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <ul className="ml-8 space-y-0.5">
+                  {stage.tasks.map((task) => (
+                    <li key={task} className="text-xs text-text-muted">
+                      {task}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="h-1 rounded-full bg-bg-tertiary mb-4">
+          <div
+            className="h-1 rounded-full bg-accent-primary transition-all duration-500"
+            style={{
+              width: `${Math.round(((completedStages.size + (events.length > 0 ? 0.5 : 0)) / CURATION_STAGES.length) * 100)}%`,
+            }}
+          />
+        </div>
+
+        {workflowError && (
+          <div className="mb-3 p-3 rounded-lg bg-error/10 border border-error/20">
+            <p className="text-sm text-error">{workflowError}</p>
+          </div>
+        )}
+
+        {activities.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Activity Log</span>
+            </div>
+            <div className="space-y-1 font-mono text-xs text-text-secondary max-h-48 overflow-y-auto">
+              {activities.map((msg, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'px-2 py-1 rounded transition-opacity duration-300',
+                    i === activities.length - 1 ? 'bg-bg-hover text-text-primary' : 'opacity-60',
+                  )}
+                >
+                  {msg}
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Insights workflow diagram (shown while Process Insights is running)
+// ---------------------------------------------------------------------------
+
+const STAGE_TIMING_SEC = [0, 5, 15];
+
+function WorkflowDiagram({ events }: { events: WorkflowProgressEvent[] }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const hasRealEvents = events.length > 0;
   let activeStage = 0;
   const completedStages = new Set<number>();
@@ -904,188 +1481,159 @@ function WorkflowDiagram({ events }: { events: WorkflowProgressEvent[] }) {
       }
     }
   } else {
-    // Fallback: simulated timing when no real events arrive
     if (elapsed >= STAGE_TIMING_SEC[2]) activeStage = 2;
     else if (elapsed >= STAGE_TIMING_SEC[1]) activeStage = 1;
   }
 
-  // Show last N activities (most recent at bottom)
-  const MAX_VISIBLE_ACTIVITIES = 6;
-  const visibleActivities = activities.slice(-MAX_VISIBLE_ACTIVITIES);
+  const visibleActivities = activities.slice(-6);
 
   return (
-    <div className="py-4">
-      <Card className="p-6">
-        <h3 className="text-sm font-semibold text-text-secondary mb-6 text-center">Multi-Agent Pipeline</h3>
+    <Card className="p-6">
+      <h3 className="text-sm font-semibold text-text-secondary mb-6 text-center">Multi-Agent Pipeline</h3>
 
-        {/* Horizontal pipeline */}
-        <div className="flex items-start gap-0">
-          {PIPELINE_STAGES.map((stage, i) => {
-            const isDone = hasRealEvents ? completedStages.has(i) : i < activeStage;
-            const status = isDone ? 'done' : i === activeStage ? 'active' : 'pending';
-            return (
-              <div key={stage.title} className="flex items-start flex-1 min-w-0">
-                {/* Stage node */}
-                <div className="flex flex-col items-center flex-1 min-w-0">
-                  {/* Circle + connector row */}
-                  <div className="flex items-center w-full">
-                    {/* Left connector */}
-                    {i > 0 && (
-                      <div className="flex-1 h-0.5 relative">
-                        <div className="absolute inset-0 bg-bg-tertiary rounded-full" />
-                        <div
-                          className={cn(
-                            'absolute inset-0 rounded-full transition-all duration-700',
-                            status === 'pending' ? 'scale-x-0' : 'scale-x-100',
-                            i <= activeStage ? 'bg-accent-primary' : 'bg-bg-tertiary',
-                          )}
-                          style={{ transformOrigin: 'left' }}
-                        />
-                        {status === 'active' && (
-                          <div
-                            className="absolute inset-0 rounded-full h-0.5"
-                            style={{
-                              background: 'linear-gradient(90deg, transparent, rgba(255,90,94,0.6), transparent)',
-                              backgroundSize: '200% 100%',
-                              animation: 'pipeline-data-flow 2s linear infinite',
-                            }}
-                          />
+      <div className="flex items-start gap-0">
+        {PIPELINE_STAGES.map((stage, i) => {
+          const isDone = hasRealEvents ? completedStages.has(i) : i < activeStage;
+          const status = isDone ? 'done' : i === activeStage ? 'active' : 'pending';
+          return (
+            <div key={stage.title} className="flex items-start flex-1 min-w-0">
+              <div className="flex flex-col items-center flex-1 min-w-0">
+                <div className="flex items-center w-full">
+                  {i > 0 && (
+                    <div className="flex-1 h-0.5 relative">
+                      <div className="absolute inset-0 bg-bg-tertiary rounded-full" />
+                      <div
+                        className={cn(
+                          'absolute inset-0 rounded-full transition-all duration-700',
+                          status === 'pending' ? 'scale-x-0' : 'scale-x-100',
+                          i <= activeStage ? 'bg-accent-primary' : 'bg-bg-tertiary',
                         )}
-                      </div>
-                    )}
-
-                    {/* Circle */}
-                    <div
-                      className={cn(
-                        'relative flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-500',
-                        status === 'done' && 'bg-success',
-                        status === 'active' && 'bg-accent-primary',
-                        status === 'pending' && 'bg-bg-tertiary',
-                      )}
-                      style={status === 'active' ? { animation: 'pipeline-pulse 2s ease-in-out infinite' } : undefined}
-                    >
-                      {status === 'done' ? (
-                        <svg
-                          className="w-5 h-5 text-white"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={2.5}
-                          stroke="currentColor"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                        </svg>
-                      ) : (
-                        <StageIcon index={i} active={status === 'active'} />
-                      )}
+                        style={{ transformOrigin: 'left' }}
+                      />
                     </div>
-
-                    {/* Right connector */}
-                    {i < PIPELINE_STAGES.length - 1 && (
-                      <div className="flex-1 h-0.5 relative">
-                        <div className="absolute inset-0 bg-bg-tertiary rounded-full" />
-                        <div
-                          className={cn(
-                            'absolute inset-0 rounded-full transition-all duration-700',
-                            i < activeStage ? 'scale-x-100 bg-accent-primary' : 'scale-x-0 bg-bg-tertiary',
-                          )}
-                          style={{ transformOrigin: 'left' }}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Stage details */}
+                  )}
                   <div
                     className={cn(
-                      'mt-4 text-center px-2 transition-opacity duration-500',
-                      status === 'pending' ? 'opacity-40' : 'opacity-100',
+                      'relative flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-500',
+                      status === 'done' && 'bg-success',
+                      status === 'active' && 'bg-accent-primary',
+                      status === 'pending' && 'bg-bg-tertiary',
                     )}
+                    style={status === 'active' ? { animation: 'pipeline-pulse 2s ease-in-out infinite' } : undefined}
                   >
-                    <p className="text-sm font-semibold text-text-primary">{stage.title}</p>
-                    <div className="mt-1.5 flex flex-wrap justify-center gap-1">
-                      {stage.agents.map((agent) => (
-                        <span
-                          key={agent}
-                          className={cn(
-                            'inline-block text-xs px-2 py-0.5 rounded-full',
-                            status === 'active'
-                              ? 'bg-accent-glow text-accent-primary'
-                              : status === 'done'
-                                ? 'bg-success/10 text-success'
-                                : 'bg-bg-tertiary text-text-muted',
-                          )}
-                        >
-                          {agent}
-                        </span>
-                      ))}
-                      {stage.parallel && (
-                        <span className="inline-block text-xs px-1.5 py-0.5 text-text-muted">(parallel)</span>
-                      )}
-                    </div>
-                    <ul className="mt-2 space-y-0.5">
-                      {stage.tasks.map((task) => (
-                        <li key={task} className="text-xs text-text-muted">
-                          {task}
-                        </li>
-                      ))}
-                    </ul>
+                    {status === 'done' ? (
+                      <svg
+                        className="w-5 h-5 text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2.5}
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                    ) : (
+                      <StageIcon index={i} active={status === 'active'} />
+                    )}
                   </div>
+                  {i < PIPELINE_STAGES.length - 1 && (
+                    <div className="flex-1 h-0.5 relative">
+                      <div className="absolute inset-0 bg-bg-tertiary rounded-full" />
+                      <div
+                        className={cn(
+                          'absolute inset-0 rounded-full transition-all duration-700',
+                          i < activeStage ? 'scale-x-100 bg-accent-primary' : 'scale-x-0 bg-bg-tertiary',
+                        )}
+                        style={{ transformOrigin: 'left' }}
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Workflow error */}
-        {workflowError && (
-          <div className="mt-4 p-3 rounded-lg bg-error/10 border border-error/20">
-            <p className="text-sm text-error">{workflowError}</p>
-          </div>
-        )}
-
-        {/* Live activity feed */}
-        {visibleActivities.length > 0 && (
-          <div className="mt-5 border-t border-border pt-4">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Live Activity</span>
-            </div>
-            <div className="space-y-1 font-mono text-xs text-text-secondary max-h-40 overflow-y-auto">
-              {visibleActivities.map((msg, i) => (
                 <div
-                  key={i}
                   className={cn(
-                    'px-2 py-1 rounded transition-opacity duration-300',
-                    i === visibleActivities.length - 1 ? 'bg-bg-hover text-text-primary' : 'opacity-60',
+                    'mt-4 text-center px-2 transition-opacity duration-500',
+                    status === 'pending' ? 'opacity-40' : 'opacity-100',
                   )}
                 >
-                  {msg}
+                  <p className="text-sm font-semibold text-text-primary">{stage.title}</p>
+                  <div className="mt-1.5 flex flex-wrap justify-center gap-1">
+                    {stage.agents.map((agent) => (
+                      <span
+                        key={agent}
+                        className={cn(
+                          'inline-block text-xs px-2 py-0.5 rounded-full',
+                          status === 'active'
+                            ? 'bg-accent-glow text-accent-primary'
+                            : status === 'done'
+                              ? 'bg-success/10 text-success'
+                              : 'bg-bg-tertiary text-text-muted',
+                        )}
+                      >
+                        {agent}
+                      </span>
+                    ))}
+                    {stage.parallel && (
+                      <span className="inline-block text-xs px-1.5 py-0.5 text-text-muted">(parallel)</span>
+                    )}
+                  </div>
+                  <ul className="mt-2 space-y-0.5">
+                    {stage.tasks.map((task) => (
+                      <li key={task} className="text-xs text-text-muted">
+                        {task}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })}
+      </div>
 
-        {/* Elapsed time + live indicator */}
-        <div className="mt-4 flex items-center justify-center gap-3">
-          <p className="text-sm text-text-muted">
-            {elapsed}s elapsed
-            <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" />
-          </p>
-          {hasRealEvents && <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success">LIVE</span>}
-          {!hasRealEvents && elapsed > 3 && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted">simulated</span>
-          )}
+      {workflowError && (
+        <div className="mt-4 p-3 rounded-lg bg-error/10 border border-error/20">
+          <p className="text-sm text-error">{workflowError}</p>
         </div>
-      </Card>
-    </div>
+      )}
+
+      {visibleActivities.length > 0 && (
+        <div className="mt-5 border-t border-border pt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Live Activity</span>
+          </div>
+          <div className="space-y-1 font-mono text-xs text-text-secondary max-h-40 overflow-y-auto">
+            {visibleActivities.map((msg, i) => (
+              <div
+                key={i}
+                className={cn(
+                  'px-2 py-1 rounded transition-opacity duration-300',
+                  i === visibleActivities.length - 1 ? 'bg-bg-hover text-text-primary' : 'opacity-60',
+                )}
+              >
+                {msg}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-center gap-3">
+        <p className="text-sm text-text-muted">
+          {elapsed}s elapsed
+          <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" />
+        </p>
+        {hasRealEvents && <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success">LIVE</span>}
+        {!hasRealEvents && elapsed > 3 && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted">simulated</span>
+        )}
+      </div>
+    </Card>
   );
 }
 
 function StageIcon({ index, active }: { index: number; active: boolean }) {
   const cls = cn('w-5 h-5', active ? 'text-white' : 'text-text-muted');
   if (index === 0) {
-    // Magnifying glass — data gathering
     return (
       <svg className={cls} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path
@@ -1097,7 +1645,6 @@ function StageIcon({ index, active }: { index: number; active: boolean }) {
     );
   }
   if (index === 1) {
-    // Two bars — parallel analysis
     return (
       <svg className={cls} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path
@@ -1108,7 +1655,6 @@ function StageIcon({ index, active }: { index: number; active: boolean }) {
       </svg>
     );
   }
-  // Brain — synthesis
   return (
     <svg className={cls} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path

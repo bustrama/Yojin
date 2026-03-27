@@ -54,7 +54,7 @@ const AUTH_ERROR_MSG =
 
 const FALLBACK_SUFFIX = '\n\nJintel unavailable. Use query_data_source with configured sources for fallback data.';
 
-const ENRICHMENT_FIELDS = z.enum(['market', 'risk', 'regulatory', 'corporate', 'technicals', 'news', 'research']);
+const ENRICHMENT_FIELDS = z.enum(['market', 'risk', 'regulatory', 'technicals', 'news', 'research']);
 
 const SEVERITY_CONFIDENCE: Record<string, number> = {
   CRITICAL: 0.95,
@@ -196,18 +196,6 @@ function formatEnrichment(entity: ExtendedEntity): string {
     if (lines.length) sections.push(`## Technicals\n${lines.join('\n')}`);
   }
 
-  if (entity.corporate) {
-    const c = entity.corporate;
-    const lines: string[] = [];
-    if (c.legalName) lines.push(`Legal Name: ${c.legalName}`);
-    if (c.jurisdiction) lines.push(`Jurisdiction: ${c.jurisdiction}`);
-    if (c.status) lines.push(`Status: ${c.status}`);
-    if (c.officers.length) {
-      lines.push(`Officers: ${c.officers.map((o) => `${o.name} (${o.role})`).join(', ')}`);
-    }
-    if (lines.length) sections.push(`## Corporate\n${lines.join('\n')}`);
-  }
-
   if (entity.news?.length) {
     const newsLines = entity.news.map((n) => `- [${n.source}] ${n.title} (${n.date})${n.link ? `\n  ${n.link}` : ''}`);
     sections.push(`## News\n${newsLines.join('\n')}`);
@@ -299,7 +287,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     name: 'enrich_entity',
     description:
       'Get detailed enrichment data for an entity by ticker. Includes market data, ' +
-      'risk profile, regulatory filings, and corporate info. Select specific fields or get all.',
+      'risk profile, and regulatory filings. Select specific fields or get all.',
     parameters: z.object({
       ticker: z.string().describe('Entity ticker or ID (e.g. AAPL, BTC)'),
       fields: z.array(ENRICHMENT_FIELDS).optional().describe('Specific enrichment fields to fetch (default: all)'),

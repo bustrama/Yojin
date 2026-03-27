@@ -57,6 +57,7 @@ Extend via interfaces, not modification:
 
 - **Content hashes must be stable across re-runs.** The ingestor hashes `title | YYYY-MM-DD` (day-precision). When creating `RawSignalInput` for enrichment data (fundamentals, technicals), set `publishedAt` to a stable value (start-of-day), not `new Date().toISOString()`. A ms-precision timestamp produces a new hash on every run, defeating dedup.
 - **Shared data points need title-level dedup.** The signals resolver dedupes by normalized title, keeping the latest `publishedAt`. When adding a new signal source that produces recurring snapshots (like fundamentals), the same data point WILL appear across days — the resolver handles this, don't try to prevent it at the archive level.
+- **Respect the date-partition dimension.** Signal archive files are partitioned by `publishedAt` date. For reads: only use `publishedAt`-based bounds (e.g. `since`) as file-level hints — `sinceIngested` is a record-level filter, not a file-pruning hint. For writes: synthetic enrichment signals (snapshots, price moves) must use ingestion time (`now`), not the upstream data timestamp (e.g. `quote.timestamp`), which can be 1-3 days stale on weekends/after-hours and cause signals to vanish from recent-date UI filters.
 
 ## Refactoring — Ask First
 

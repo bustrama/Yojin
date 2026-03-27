@@ -965,6 +965,16 @@ export const typeDefs = /* GraphQL */ `
     action(id: ID!): Action
     skills(category: SkillCategory, active: Boolean): [Skill!]!
     skill(id: ID!): Skill
+    aiConfig: AiConfig!
+  }
+
+  type AiConfig {
+    defaultModel: String!
+    defaultProvider: String!
+  }
+
+  input AiConfigInput {
+    defaultModel: String!
   }
 
   type Mutation {
@@ -1010,6 +1020,7 @@ export const typeDefs = /* GraphQL */ `
     rejectAction(id: ID!): Action!
     toggleSkill(id: ID!, active: Boolean!): Skill!
     clearAppData: Boolean!
+    saveAiConfig(input: AiConfigInput!): AiConfig!
   }
 
   # ---------------------------------------------------------------------------

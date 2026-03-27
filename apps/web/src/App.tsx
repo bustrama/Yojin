@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router';
+import { Routes, Route, Navigate, useParams, useSearchParams } from 'react-router';
 import { Provider, useQuery } from 'urql';
 import { ChatProvider } from './lib/chat-context';
 import { ChatPanelProvider } from './lib/chat-panel-context';
@@ -20,7 +20,6 @@ import Profile from './pages/profile';
 import Settings from './pages/settings';
 import Dashboard from './pages/dashboard';
 import Insights from './pages/insights';
-import Signals from './pages/signals';
 import Positions from './pages/positions';
 import Watchlist from './pages/watchlist';
 import OnboardingPage from './pages/onboarding';
@@ -47,6 +46,19 @@ function DevFeedbackTool() {
 function RedirectPositionSymbol() {
   const { symbol } = useParams<{ symbol: string }>();
   return <Navigate to={`/portfolio/${symbol}`} replace />;
+}
+
+function SignalsRedirect() {
+  const [searchParams] = useSearchParams();
+  const params = new URLSearchParams();
+  params.set('tab', 'all');
+  const ticker = searchParams.get('ticker');
+  const highlight = searchParams.get('highlight');
+  const search = searchParams.get('search');
+  if (ticker) params.set('ticker', ticker);
+  if (highlight) params.set('highlight', highlight);
+  if (search) params.set('search', search);
+  return <Navigate to={`/insights?${params.toString()}`} replace />;
 }
 
 /**
@@ -174,7 +186,7 @@ export default function App() {
                   <Route path="portfolio/:symbol" element={<Position />} />
                   <Route path="chat" element={<Chat />} />
                   <Route path="insights" element={<Insights />} />
-                  <Route path="signals" element={<Signals />} />
+                  <Route path="signals" element={<SignalsRedirect />} />
                   <Route path="watchlist" element={<Watchlist />} />
                   <Route path="profile" element={<Profile />} />
                   <Route path="settings" element={<Settings />} />

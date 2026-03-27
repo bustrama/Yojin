@@ -10,7 +10,7 @@
  */
 
 import type { JintelClient, MarketQuote } from '@yojinhq/jintel-client';
-import { ALL_ENRICHMENT_FIELDS, buildBatchEnrichQuery } from '@yojinhq/jintel-client';
+import { buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 
 import type { InsightStore } from './insight-store.js';
 import type { InsightReport } from './types.js';
@@ -60,9 +60,6 @@ export interface DataBrief {
   riskSignals: string[];
   // Enrichment — regulatory
   recentFilings: FilingBrief[];
-  // Enrichment — corporate
-  legalName: string | null;
-  jurisdiction: string | null;
   // Enrichment — technicals
   technicals: TechnicalsBrief | null;
   // Signals
@@ -391,11 +388,11 @@ export function formatRiskMetrics(briefs: DataBrief[]): string {
 // Unified Jintel enrichment — single query for ALL signal types
 // ---------------------------------------------------------------------------
 
-/** Batch enrich query including all fields (market, risk, regulatory, corporate, news, etc.) */
-const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(ALL_ENRICHMENT_FIELDS);
+/** Batch enrich query including all fields (market, risk, regulatory, news, etc.) */
+const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(['market', 'risk', 'regulatory']);
 
 /**
- * Batch enrich tickers with ALL fields (market, risk, regulatory, corporate, news)
+ * Batch enrich tickers with ALL fields (market, risk, regulatory, news)
  * in a single GraphQL call per chunk.
  *
  * Returns a Map keyed by the **input** portfolio ticker → entity. This guarantees
@@ -599,8 +596,6 @@ function buildBrief(
       description: f.description ?? null,
       url: f.url,
     })),
-    legalName: entity?.corporate?.legalName ?? null,
-    jurisdiction: entity?.corporate?.jurisdiction ?? null,
     technicals: entity?.technicals
       ? {
           rsi: entity.technicals.rsi ?? null,

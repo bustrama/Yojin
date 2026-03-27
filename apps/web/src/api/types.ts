@@ -1058,3 +1058,24 @@ export interface OnPriceMoveVariables {
   symbol: string;
   threshold: number;
 }
+
+// ---------------------------------------------------------------------------
+// AI Config
+// ---------------------------------------------------------------------------
+
+export interface AiConfig {
+  defaultModel: string;
+  defaultProvider: string;
+}
+
+export interface AiConfigQueryResult {
+  aiConfig: AiConfig;
+}
+
+export interface SaveAiConfigMutationResult {
+  saveAiConfig: AiConfig;
+}
+
+export interface SaveAiConfigVariables {
+  input: { defaultModel: string };
+}

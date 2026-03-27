@@ -325,20 +325,27 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     // Ensure Jintel entry exists in existing configs (added in later version)
     try {
       const raw = JSON.parse(await readFile(dsConfigPath, 'utf-8')) as Record<string, unknown>[];
-      if (Array.isArray(raw) && !raw.some((ds) => ds.id === 'jintel')) {
-        raw.unshift({
-          id: 'jintel',
-          name: 'Jintel Intelligence',
-          type: 'API',
-          capabilities: ['enrichment', 'news', 'quotes', 'sanctions', 'search'],
-          enabled: true,
-          priority: 1,
-          builtin: true,
-          baseUrl: 'https://api.jintel.ai/api',
-          secretRef: 'jintel-api-key',
-        });
-        await writeFile(dsConfigPath, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-        log.info('Added Jintel to data-sources.json');
+      if (Array.isArray(raw)) {
+        const jintelEntry = raw.find((ds) => ds.id === 'jintel');
+        if (!jintelEntry) {
+          raw.unshift({
+            id: 'jintel',
+            name: 'Jintel Intelligence',
+            type: 'API',
+            capabilities: ['enrichment', 'news', 'quotes', 'sanctions', 'search'],
+            enabled: true,
+            priority: 1,
+            builtin: true,
+            baseUrl: 'https://api.jintel.ai/api',
+            secretRef: 'jintel-api-key',
+          });
+          await writeFile(dsConfigPath, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+          log.info('Added Jintel to data-sources.json');
+        } else if (!jintelEntry.builtin) {
+          jintelEntry.builtin = true;
+          await writeFile(dsConfigPath, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+          log.info('Patched Jintel entry with builtin flag');
+        }
       }
     } catch (err) {
       log.warn('Failed to seed Jintel data source entry', { error: String(err) });
