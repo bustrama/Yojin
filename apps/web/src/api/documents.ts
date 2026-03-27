@@ -289,6 +289,68 @@ export const VALIDATE_JINTEL_KEY_MUTATION = gql`
   }
 `;
 
+export const DETECT_AI_CREDENTIAL_QUERY = gql`
+  query DetectAiCredential {
+    detectAiCredential {
+      method
+      model
+    }
+  }
+`;
+
+export const DETECT_KEYCHAIN_TOKEN_QUERY = gql`
+  query DetectKeychainToken {
+    detectKeychainToken {
+      found
+      model
+      error
+    }
+  }
+`;
+
+export const VALIDATE_AI_CREDENTIAL_MUTATION = gql`
+  mutation ValidateAiCredential($input: ValidateCredentialInput!) {
+    validateAiCredential(input: $input) {
+      success
+      model
+      error
+    }
+  }
+`;
+
+export const GENERATE_PERSONA_MUTATION = gql`
+  mutation GeneratePersona($input: PersonaInput!) {
+    generatePersona(input: $input) {
+      markdown
+    }
+  }
+`;
+
+export const CONFIRM_PERSONA_MUTATION = gql`
+  mutation ConfirmPersona($markdown: String!) {
+    confirmPersona(markdown: $markdown)
+  }
+`;
+
+export const PARSE_PORTFOLIO_SCREENSHOT_MUTATION = gql`
+  mutation ParsePortfolioScreenshot($input: ScreenshotInput!) {
+    parsePortfolioScreenshot(input: $input) {
+      success
+      positions {
+        symbol
+        name
+        quantity
+        avgEntry
+        marketPrice
+        marketValue
+      }
+      confidence
+      warnings
+      error
+    }
+  }
+`;
+
 export const CONFIRM_POSITIONS_MUTATION = gql`
   mutation ConfirmPositions($input: ConfirmPositionsInput!) {
     confirmPositions(input: $input)
