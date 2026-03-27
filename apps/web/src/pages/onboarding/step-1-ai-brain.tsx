@@ -44,6 +44,7 @@ export function Step1AiBrain() {
   const skipDetect = isReset || validated;
   const [envResult] = useQuery({
     query: DETECT_AI_CREDENTIAL_QUERY,
+    requestPolicy: 'network-only',
     pause: skipDetect,
   });
 
@@ -51,6 +52,7 @@ export function Step1AiBrain() {
   const skipKeychain = skipDetect || envResult.fetching || !!envResult.data?.detectAiCredential;
   const [keychainResult] = useQuery({
     query: DETECT_KEYCHAIN_TOKEN_QUERY,
+    requestPolicy: 'network-only',
     pause: skipKeychain,
   });
 
@@ -78,6 +80,13 @@ export function Step1AiBrain() {
       updateState({ aiProvider: { method: 'keychain', model, validated: true } });
     }
   }, [keychainResult.data, updateState]);
+
+  // Surface auto-detection errors as a non-blocking hint
+  useEffect(() => {
+    if (envResult.error || keychainResult.error) {
+      setError('Could not auto-detect credentials — enter an API key manually.');
+    }
+  }, [envResult.error, keychainResult.error]);
 
   const handleSelectProvider = (p: Provider) => {
     if (p === provider) return;
