@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { useParams, Link } from 'react-router';
 import { useQuery } from 'urql';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
@@ -14,15 +14,15 @@ import type {
   PriceHistoryQueryResult,
   PriceHistoryQueryVariables,
 } from '../api/types';
-/** Stable 7-day lookback for signal queries (computed once at module load). */
-const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
 import Card from '../components/common/card';
 import Badge from '../components/common/badge';
 import type { BadgeVariant } from '../components/common/badge';
 import Spinner from '../components/common/spinner';
 import { SymbolLogo } from '../components/common/symbol-logo';
 import { timeAgo } from '../lib/utils';
+
+/** Stable 7-day lookback for signal queries (computed once at module load). */
+const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -143,6 +143,7 @@ function DayRange({ low, high, current }: { low: number; high: number; current: 
 // ---------------------------------------------------------------------------
 
 function PriceChart({ data }: { data: { date: string; close: number }[] }) {
+  const gradId = useId();
   const isUp = data.length >= 2 && data[data.length - 1].close >= data[0].close;
   const color = isUp ? 'var(--color-success)' : 'var(--color-error)';
 
@@ -150,7 +151,7 @@ function PriceChart({ data }: { data: { date: string; close: number }[] }) {
     <ResponsiveContainer width="100%" height={240}>
       <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
         <defs>
-          <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity={0.2} />
             <stop offset="100%" stopColor={color} stopOpacity={0} />
           </linearGradient>
@@ -187,7 +188,7 @@ function PriceChart({ data }: { data: { date: string; close: number }[] }) {
           }
           formatter={(v) => [fmtCurrency(Number(v)), 'Close']}
         />
-        <Area type="monotone" dataKey="close" stroke={color} strokeWidth={1.5} fill="url(#priceGrad)" />
+        <Area type="monotone" dataKey="close" stroke={color} strokeWidth={1.5} fill={`url(#${gradId})`} />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -226,7 +227,7 @@ export default function Position() {
   // Real-time price stream
   const [priceMoveSub] = useOnPriceMove(upperSymbol, 0);
   const latestTick = priceMoveSub.data?.[0];
-  const isLive = !!latestTick;
+  const isLive = priceMoveSub.fetching && !!latestTick;
 
   const [insightResult] = useQuery<LatestInsightReportQueryResult>({ query: LATEST_INSIGHT_REPORT_QUERY });
   const positionInsight = useMemo<PositionInsight | undefined>(
