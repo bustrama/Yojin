@@ -5,7 +5,7 @@
  * empty state when no snapshots have been imported yet.
  */
 
-import type { JintelClient, MarketQuote } from '@yojinhq/jintel-client';
+import type { JintelClient, MarketQuote, TickerPriceHistory } from '@yojinhq/jintel-client';
 
 import { getLogger } from '../../../logging/index.js';
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
@@ -34,27 +34,11 @@ export function setPortfolioJintelClient(c: JintelClient | undefined): void {
 // Live quote enrichment — batch-fetch from Jintel and merge onto positions
 // ---------------------------------------------------------------------------
 
-/** Build a synthetic sparkline (~20 points) from OHLC quote data. */
-function buildSyntheticSparkline(quote: MarketQuote): number[] {
-  const price = quote.price;
-  const o = quote.open ?? price;
-  const h = quote.high ?? Math.max(price, o);
-  const l = quote.low ?? Math.min(price, o);
-  const start = quote.previousClose ?? o;
-
-  // If price rose, show dip-then-rise; if fell, rise-then-dip
-  const anchors = price >= o ? [start, o, l, h, price] : [start, o, h, l, price];
-
-  const points: number[] = [];
-  const perSegment = 5;
-  for (let s = 0; s < anchors.length - 1; s++) {
-    const from = anchors[s];
-    const to = anchors[s + 1];
-    for (let i = 0; i < perSegment; i++) {
-      points.push(from + (to - from) * (i / perSegment));
-    }
-  }
-  points.push(anchors[anchors.length - 1]);
+/** Build a sparkline from real price history closing prices, appending the live price. */
+function buildSparkline(history: TickerPriceHistory, livePrice: number): number[] {
+  const points = history.history.map((p) => p.close);
+  // Append today's live price so the sparkline extends to "now"
+  points.push(livePrice);
   return points;
 }
 
@@ -76,10 +60,17 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
   const symbols = [...new Set(snapshot.positions.map((p) => p.symbol))];
   log.debug('Fetching live quotes', { symbols });
 
-  const result = await jintelClient.quotes(symbols).catch((err: unknown) => {
-    log.warn('Jintel quotes call failed', { error: String(err) });
-    return undefined;
-  });
+  // Fetch quotes and 5-day price history in parallel
+  const [result, historyResult] = await Promise.all([
+    jintelClient.quotes(symbols).catch((err: unknown) => {
+      log.warn('Jintel quotes call failed', { error: String(err) });
+      return undefined;
+    }),
+    jintelClient.priceHistory(symbols, '5d').catch((err: unknown) => {
+      log.warn('Jintel priceHistory call failed', { error: String(err) });
+      return undefined;
+    }),
+  ]);
 
   if (!result?.success) {
     log.warn('Jintel quotes returned non-success', {
@@ -99,6 +90,15 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
 
   const quoteMap = new Map<string, MarketQuote>(validQuotes.map((q) => [q.ticker, q]));
 
+  // Build price history map for sparklines
+  const historyMap = new Map<string, TickerPriceHistory>();
+  if (historyResult?.success) {
+    for (const h of historyResult.data) {
+      historyMap.set(h.ticker, h);
+    }
+    log.debug('Jintel priceHistory received', { tickers: [...historyMap.keys()] });
+  }
+
   const positions: Position[] = snapshot.positions.map((pos) => {
     const quote = quoteMap.get(pos.symbol);
     if (!quote) {
@@ -111,6 +111,10 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
     const hasCostBasis = pos.costBasis > 0;
     const totalCost = hasCostBasis ? pos.costBasis * pos.quantity : 0;
 
+    // Real sparkline from price history; undefined if no history available
+    const priceHist = historyMap.get(pos.symbol);
+    const sparkline = priceHist && priceHist.history.length > 0 ? buildSparkline(priceHist, currentPrice) : undefined;
+
     return {
       ...pos,
       currentPrice,
@@ -119,7 +123,7 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
       dayChangePercent: quote.changePercent,
       unrealizedPnl: hasCostBasis ? marketValue - totalCost : 0,
       unrealizedPnlPercent: hasCostBasis ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
-      sparkline: buildSyntheticSparkline(quote),
+      sparkline,
     };
   });
 

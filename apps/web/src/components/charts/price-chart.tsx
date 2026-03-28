@@ -1,5 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type CandlestickData, type Time, ColorType } from 'lightweight-charts';
+import {
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+  type CandlestickData,
+  type Time,
+  ColorType,
+} from 'lightweight-charts';
 
 export interface PriceChartDatum {
   date: string;
@@ -49,10 +56,13 @@ function toVolumeData(data: PriceChartDatum[]) {
 export function PriceChart({ data }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
+  // Create chart once on mount
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || data.length === 0) return;
+    if (!container) return;
 
     const { width, height } = container.getBoundingClientRect();
     if (width === 0 || height === 0) return;
@@ -88,8 +98,7 @@ export function PriceChart({ data }: PriceChartProps) {
 
     chartRef.current = chart;
 
-    // Candlestick series
-    const candleSeries = chart.addCandlestickSeries({
+    candleSeriesRef.current = chart.addCandlestickSeries({
       upColor: COLORS.up,
       downColor: COLORS.down,
       borderDownColor: COLORS.down,
@@ -97,22 +106,16 @@ export function PriceChart({ data }: PriceChartProps) {
       wickDownColor: COLORS.downWick,
       wickUpColor: COLORS.upWick,
     });
-    candleSeries.setData(toChartData(data));
 
-    // Volume histogram
-    const volumeSeries = chart.addHistogramSeries({
+    volumeSeriesRef.current = chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
     });
-    volumeSeries.setData(toVolumeData(data));
 
     chart.priceScale('volume').applyOptions({
       scaleMargins: { top: 0.8, bottom: 0 },
     });
 
-    chart.timeScale().fitContent();
-
-    // Resize observer
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
@@ -125,7 +128,21 @@ export function PriceChart({ data }: PriceChartProps) {
       observer.disconnect();
       chart.remove();
       chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
     };
+  }, []);
+
+  // Update series data when data changes
+  useEffect(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    if (!chart || !candleSeries || !volumeSeries || data.length === 0) return;
+
+    candleSeries.setData(toChartData(data));
+    volumeSeries.setData(toVolumeData(data));
+    chart.timeScale().fitContent();
   }, [data]);
 
   return <div ref={containerRef} className="w-full h-[360px]" />;

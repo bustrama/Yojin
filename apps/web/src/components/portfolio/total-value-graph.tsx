@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { createChart, type IChartApi, type Time, ColorType } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type Time, ColorType } from 'lightweight-charts';
 import { CardEmptyState } from '../common/card-empty-state';
 import type { PortfolioHistoryPoint } from '../../api/types';
 
@@ -7,25 +7,24 @@ interface TotalValueGraphProps {
   history: PortfolioHistoryPoint[];
 }
 
-/** Convert history points to chart-ready { date, value } with YYYY-MM-DD keys. */
+/** Convert history points to chart-ready { date, value } using UTC dates (matches BE day-dedup). */
 function toChartData(history: PortfolioHistoryPoint[]): { date: string; value: number }[] {
-  return history.map((p) => {
-    const ts = new Date(p.timestamp);
-    const y = ts.getFullYear();
-    const m = String(ts.getMonth() + 1).padStart(2, '0');
-    const d = String(ts.getDate()).padStart(2, '0');
-    return { date: `${y}-${m}-${d}`, value: p.totalValue };
-  });
+  return history.map((p) => ({
+    date: new Date(p.timestamp).toISOString().slice(0, 10),
+    value: p.totalValue,
+  }));
 }
 
 export function TotalValueGraph({ history }: TotalValueGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
   const chartData = useMemo(() => toChartData(history), [history]);
 
+  // Create chart once on mount
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || chartData.length === 0) return;
+    if (!container) return;
 
     const { width, height } = container.getBoundingClientRect();
     if (width === 0 || height === 0) return;
@@ -47,42 +46,21 @@ export function TotalValueGraph({ history }: TotalValueGraphProps) {
         vertLine: { color: '#737373', labelBackgroundColor: '#737373' },
         horzLine: { color: '#737373', labelBackgroundColor: '#737373' },
       },
-      rightPriceScale: {
-        borderVisible: false,
-      },
-      timeScale: {
-        borderVisible: false,
-        fixLeftEdge: true,
-        fixRightEdge: true,
-      },
+      rightPriceScale: { borderVisible: false },
+      timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
       handleScroll: { vertTouchDrag: false },
     });
 
     chartRef.current = chart;
 
-    const isUp = chartData.length >= 2 && chartData[chartData.length - 1].value >= chartData[0].value;
-    const lineColor = isUp ? '#5bb98c' : '#ff5a5e';
-
-    const series = chart.addAreaSeries({
-      lineColor,
+    seriesRef.current = chart.addAreaSeries({
       lineWidth: 2,
-      topColor: isUp ? 'rgba(91, 185, 140, 0.3)' : 'rgba(255, 90, 94, 0.3)',
-      bottomColor: isUp ? 'rgba(91, 185, 140, 0)' : 'rgba(255, 90, 94, 0)',
       crosshairMarkerRadius: 4,
       priceFormat: {
         type: 'custom',
         formatter: (p: number) => `$${p.toLocaleString('en-US', { minimumFractionDigits: 0 })}`,
       },
     });
-
-    series.setData(
-      chartData.map((d) => ({
-        time: d.date as Time,
-        value: d.value,
-      })),
-    );
-
-    chart.timeScale().fitContent();
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -96,7 +74,27 @@ export function TotalValueGraph({ history }: TotalValueGraphProps) {
       observer.disconnect();
       chart.remove();
       chartRef.current = null;
+      seriesRef.current = null;
     };
+  }, []);
+
+  // Update series data when chartData changes
+  useEffect(() => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (!series || !chart || chartData.length === 0) return;
+
+    const isUp = chartData.length >= 2 && chartData[chartData.length - 1].value >= chartData[0].value;
+    const lineColor = isUp ? '#5bb98c' : '#ff5a5e';
+
+    series.applyOptions({
+      lineColor,
+      topColor: isUp ? 'rgba(91, 185, 140, 0.3)' : 'rgba(255, 90, 94, 0.3)',
+      bottomColor: isUp ? 'rgba(91, 185, 140, 0)' : 'rgba(255, 90, 94, 0)',
+    });
+
+    series.setData(chartData.map((d) => ({ time: d.date as Time, value: d.value })));
+    chart.timeScale().fitContent();
   }, [chartData]);
 
   if (chartData.length === 0) {

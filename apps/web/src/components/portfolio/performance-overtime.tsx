@@ -1,30 +1,29 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { createChart, type IChartApi, type Time, ColorType } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type Time, ColorType } from 'lightweight-charts';
 import type { PortfolioHistoryPoint } from '../../api/types';
 
 interface PerformanceOvertimeProps {
   history: PortfolioHistoryPoint[];
 }
 
-/** Convert history points to chart-ready { date, pnl } with YYYY-MM-DD keys. */
+/** Convert history points to chart-ready { date, pnl } using UTC dates (matches BE day-dedup). */
 function toChartData(history: PortfolioHistoryPoint[]): { date: string; pnl: number }[] {
-  return history.map((h) => {
-    const ts = new Date(h.timestamp);
-    const y = ts.getFullYear();
-    const m = String(ts.getMonth() + 1).padStart(2, '0');
-    const d = String(ts.getDate()).padStart(2, '0');
-    return { date: `${y}-${m}-${d}`, pnl: h.totalPnl };
-  });
+  return history.map((h) => ({
+    date: new Date(h.timestamp).toISOString().slice(0, 10),
+    pnl: h.totalPnl,
+  }));
 }
 
 export function PerformanceOvertime({ history }: PerformanceOvertimeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const data = useMemo(() => toChartData(history), [history]);
 
+  // Create chart once on mount
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || data.length === 0) return;
+    if (!container) return;
 
     const { width, height } = container.getBoundingClientRect();
     if (width === 0 || height === 0) return;
@@ -59,7 +58,7 @@ export function PerformanceOvertime({ history }: PerformanceOvertimeProps) {
 
     chartRef.current = chart;
 
-    const series = chart.addHistogramSeries({
+    seriesRef.current = chart.addHistogramSeries({
       priceFormat: {
         type: 'custom',
         formatter: (p: number) => {
@@ -68,16 +67,6 @@ export function PerformanceOvertime({ history }: PerformanceOvertimeProps) {
         },
       },
     });
-
-    series.setData(
-      data.map((d) => ({
-        time: d.date as Time,
-        value: d.pnl,
-        color: d.pnl >= 0 ? 'rgba(91, 185, 140, 0.85)' : 'rgba(255, 90, 94, 0.85)',
-      })),
-    );
-
-    chart.timeScale().fitContent();
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -91,7 +80,25 @@ export function PerformanceOvertime({ history }: PerformanceOvertimeProps) {
       observer.disconnect();
       chart.remove();
       chartRef.current = null;
+      seriesRef.current = null;
     };
+  }, []);
+
+  // Update series data when data changes
+  useEffect(() => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (!series || !chart || data.length === 0) return;
+
+    series.setData(
+      data.map((d) => ({
+        time: d.date as Time,
+        value: d.pnl,
+        color: d.pnl >= 0 ? 'rgba(91, 185, 140, 0.85)' : 'rgba(255, 90, 94, 0.85)',
+      })),
+    );
+
+    chart.timeScale().fitContent();
   }, [data]);
 
   if (data.length === 0) {
