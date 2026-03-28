@@ -111,7 +111,11 @@ export function createAssessmentTools(options: AssessmentToolsOptions): ToolDefi
             try {
               const signal = await signalArchive.getById(a.signalId);
               if (signal && signal.type !== a.signalType) {
-                await signalArchive.appendUpdate({ ...signal, type: a.signalType as SignalType });
+                await signalArchive.appendUpdate({
+                  ...signal,
+                  type: a.signalType as SignalType,
+                  version: signal.version + 1,
+                });
                 updated++;
               }
             } catch (err) {
