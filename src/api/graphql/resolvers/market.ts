@@ -152,15 +152,6 @@ interface TickerPriceHistory {
   history: PricePoint[];
 }
 
-const PRICE_HISTORY_QUERY = `
-  query PriceHistory($tickers: [String!]!, $range: String) {
-    priceHistory(tickers: $tickers, range: $range) {
-      ticker
-      history { date open high low close volume }
-    }
-  }
-`;
-
 export async function priceHistoryQuery(
   _parent: unknown,
   args: { tickers: string[]; range?: string },
@@ -168,11 +159,11 @@ export async function priceHistoryQuery(
   if (!jintelClient) return [];
 
   try {
-    const data = await jintelClient.request<{ priceHistory: TickerPriceHistory[] }>(PRICE_HISTORY_QUERY, {
-      tickers: args.tickers.map((t) => t.toUpperCase()),
-      range: args.range ?? '1y',
-    });
-    return data?.priceHistory ?? [];
+    const result = await jintelClient.priceHistory(
+      args.tickers.map((t) => t.toUpperCase()),
+      args.range ?? '1y',
+    );
+    return result.success ? result.data : [];
   } catch (err) {
     log.warn('Jintel priceHistory failed', { tickers: args.tickers, error: String(err) });
     return [];
