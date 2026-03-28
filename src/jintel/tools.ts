@@ -248,22 +248,24 @@ function formatSanctions(matches: SanctionsMatch[]): string {
     .join('\n\n');
 }
 
-/** Jintel returns newest-first — no client-side sort needed. */
+/** Macro queries are standalone constants — sort defensively to ensure newest-first. */
 function formatEconomicData(data: EconomicDataPoint[], label: string): string {
   if (data.length === 0) return `No ${label} data available.`;
-  const recent = data.slice(0, 20);
+  const sorted = [...data].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const recent = sorted.slice(0, 20);
   const lines = recent.map(
     (d) => `${d.date}: ${d.value != null ? d.value.toFixed(2) : 'N/A'}${d.country ? ` (${d.country})` : ''}`,
   );
-  return `# ${label}\n${lines.join('\n')}${data.length > 20 ? `\n\n... and ${data.length - 20} more data points` : ''}`;
+  return `# ${label}\n${lines.join('\n')}${sorted.length > 20 ? `\n\n... and ${sorted.length - 20} more data points` : ''}`;
 }
 
-/** Jintel returns newest-first — no client-side sort needed. */
+/** Macro queries are standalone constants — sort defensively to ensure newest-first. */
 function formatSP500Data(data: SP500DataPoint[]): string {
   if (data.length === 0) return 'No S&P 500 data available.';
-  const recent = data.slice(0, 20);
+  const sorted = [...data].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const recent = sorted.slice(0, 20);
   const lines = recent.map((d) => `${d.date}: ${d.value.toFixed(2)}`);
-  return `# S&P 500 — ${data[0]?.name ?? 'Multiples'}\n${lines.join('\n')}${data.length > 20 ? `\n\n... and ${data.length - 20} more data points` : ''}`;
+  return `# S&P 500 — ${sorted[0]?.name ?? 'Multiples'}\n${lines.join('\n')}${sorted.length > 20 ? `\n\n... and ${sorted.length - 20} more data points` : ''}`;
 }
 
 function formatNumber(n: number): string {

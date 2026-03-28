@@ -243,7 +243,7 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
       link: article.url,
       publishedAt: article.publishedDate ?? now,
       tickers,
-      confidence: Math.min(0.95, article.score),
+      confidence: Math.min(0.95, article.score ?? 0.7),
       metadata: { author: article.author, score: article.score },
     });
   }
@@ -437,14 +437,17 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
   return { ingested: result.ingested, duplicates: result.duplicates };
 }
 
-/** Jintel returns newest-first — first element is the latest. */
+/** Return the most recent data point. Macro queries (GDP, INFLATION, etc.) are
+ *  standalone constants without ArraySubGraphOptions, so we sort defensively. */
 function latestEconomic(data: EconomicDataPoint[]): EconomicDataPoint | undefined {
-  return data[0];
+  if (data.length <= 1) return data[0];
+  return data.reduce((a, b) => (a.date >= b.date ? a : b));
 }
 
-/** Jintel returns newest-first — first element is the latest. */
+/** Return the most recent data point (defensive sort — see latestEconomic). */
 function latestSP500(data: SP500DataPoint[]): SP500DataPoint | undefined {
-  return data[0];
+  if (data.length <= 1) return data[0];
+  return data.reduce((a, b) => (a.date >= b.date ? a : b));
 }
 
 /** Convert a YYYY-MM-DD date string to a stable publishedAt timestamp for dedup. */
