@@ -443,7 +443,8 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
           // 4. Extract per-asset knowledge into ticker profiles
           if (latestReport && profileStore) {
             try {
-              const previousReport = await insightStore.getLatest();
+              const recentReports = await insightStore.getRecent(2);
+              const previousReport = recentReports.length >= 2 ? recentReports[0] : null;
               const entries = extractProfileEntries(latestReport, previousReport);
               if (entries.length > 0) {
                 const stored = await profileStore.storeBatch(entries);
