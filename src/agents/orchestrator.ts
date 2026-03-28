@@ -6,6 +6,7 @@ import { registerProcessInsightsWorkflow } from '../insights/workflow.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
 import type { ReflectionEngine } from '../memory/reflection.js';
+import type { TickerProfileStore } from '../profiles/profile-store.js';
 import type { SnapStore } from '../snap/snap-store.js';
 
 const logger = createSubsystemLogger('orchestrator');
@@ -239,6 +240,7 @@ export function registerBuiltinWorkflows(
     gathererOptions?: DataGathererOptions;
     memoryStore?: SignalMemoryStore;
     snapStore?: SnapStore;
+    profileStore?: TickerProfileStore;
   },
 ): void {
   const afterStageHooks = new Map<number, () => Promise<void>>();
@@ -336,6 +338,7 @@ export function registerBuiltinWorkflows(
       gathererOptions: options.gathererOptions,
       memoryStore: options.memoryStore,
       snapStore: options.snapStore,
+      profileStore: options.profileStore,
     });
   }
 }

@@ -19,6 +19,8 @@ import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
 import type { MemoryEntry } from '../memory/types.js';
 import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
+import type { TickerProfileStore } from '../profiles/profile-store.js';
+import type { TickerProfileBrief } from '../profiles/types.js';
 import type { CuratedSignalStore } from '../signals/curation/curated-signal-store.js';
 import type { Signal, SignalOutputType, SignalSentiment } from '../signals/types.js';
 
@@ -69,6 +71,8 @@ export interface DataBrief {
   sentimentDirection: SignalSentiment;
   // Memory
   memories: MemoryBrief[];
+  // Ticker profile (per-asset institutional knowledge)
+  profile: TickerProfileBrief | null;
 }
 
 export interface FilingBrief {
@@ -136,6 +140,8 @@ export interface DataGathererOptions {
   /** Getter to resolve the current Jintel client (may be hot-swapped after vault unlock). */
   getJintelClient?: () => JintelClient | undefined;
   memoryStores: Map<string, SignalMemoryStore>;
+  /** Per-asset persistent knowledge store — provides historical context per ticker. */
+  profileStore?: TickerProfileStore;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +150,7 @@ export interface DataGathererOptions {
 
 export async function gatherDataBriefs(options: DataGathererOptions): Promise<GatherResult> {
   const start = Date.now();
-  const { snapshotStore, curatedSignalStore, insightStore, getJintelClient, memoryStores } = options;
+  const { snapshotStore, curatedSignalStore, insightStore, getJintelClient, memoryStores, profileStore } = options;
   const jintelClient = getJintelClient?.();
   if (!jintelClient) {
     logger.warn('Jintel client not available — skipping enrichment and quotes');
@@ -187,14 +193,18 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
   // enrichmentByTicker is already keyed by portfolio ticker from batchEnrichAllChunked
   const memoriesByTicker = indexMemories(memories, tickers);
 
+  // 4. Build profile briefs (local, fast — no I/O beyond initial load)
+  const profileBriefs = buildAllProfileBriefs(profileStore, tickers);
+
   // 7. Build compact briefs
   const briefs: DataBrief[] = snapshot.positions.map((pos) => {
     const tickerSignals = signalsByTicker.get(pos.symbol) ?? [];
     const quote = quotesByTicker.get(pos.symbol);
     const entity = enrichmentByTicker.get(pos.symbol);
     const mems = memoriesByTicker.get(pos.symbol) ?? [];
+    const profile = profileBriefs.get(pos.symbol) ?? null;
 
-    return buildBrief(pos, tickerSignals, quote, entity, mems);
+    return buildBrief(pos, tickerSignals, quote, entity, mems, profile);
   });
 
   const durationMs = Date.now() - start;
@@ -311,6 +321,24 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
         } else {
           lines.push(`  - ${m.date}: ${m.recommendation.slice(0, 100)}`);
         }
+      }
+    }
+
+    // Ticker profile (accumulated per-asset knowledge)
+    if (b.profile && b.profile.entryCount > 0) {
+      lines.push(`Asset profile (${b.profile.entryCount} observations):`);
+      if (b.profile.recentPatterns.length > 0) {
+        lines.push(`  Patterns: ${b.profile.recentPatterns.join('; ')}`);
+      }
+      if (b.profile.recentLessons.length > 0) {
+        lines.push(`  Lessons: ${b.profile.recentLessons.join('; ')}`);
+      }
+      if (b.profile.correlations.length > 0) {
+        lines.push(`  Correlations: ${b.profile.correlations.join('; ')}`);
+      }
+      if (b.profile.sentimentHistory.length > 0) {
+        const hist = b.profile.sentimentHistory.map((s) => `${s.rating}(${s.conviction.toFixed(1)})`).join(' → ');
+        lines.push(`  Sentiment trend: ${hist}`);
       }
     }
 
@@ -548,6 +576,7 @@ function buildBrief(
   quote: MarketQuote | undefined,
   entity: Entity | undefined,
   memories: MemoryBrief[],
+  profile: TickerProfileBrief | null,
 ): DataBrief {
   // Compute sentiment direction from signal-level sentiment (with keyword fallback)
   let positive = 0;
@@ -654,7 +683,23 @@ function buildBrief(
     })),
     sentimentDirection,
     memories,
+    profile,
   };
+}
+
+function buildAllProfileBriefs(
+  store: TickerProfileStore | undefined,
+  tickers: string[],
+): Map<string, TickerProfileBrief> {
+  const map = new Map<string, TickerProfileBrief>();
+  if (!store) return map;
+  for (const ticker of tickers) {
+    const brief = store.buildBrief(ticker);
+    if (brief.entryCount > 0) {
+      map.set(ticker, brief);
+    }
+  }
+  return map;
 }
 
 function formatLargeNumber(n: number): string {

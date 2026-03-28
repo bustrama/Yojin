@@ -22,6 +22,8 @@ import type { Orchestrator } from '../agents/orchestrator.js';
 import { emitProgress } from '../agents/orchestrator.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
+import { extractProfileEntries } from '../profiles/profile-bridge.js';
+import type { TickerProfileStore } from '../profiles/profile-store.js';
 import { snapFromInsight } from '../snap/snap-from-insight.js';
 import type { SnapStore } from '../snap/snap-store.js';
 
@@ -34,6 +36,8 @@ export interface ProcessInsightsOptions {
   memoryStore?: SignalMemoryStore;
   /** Snap store — when provided, a snap brief is derived from the insight report. */
   snapStore?: SnapStore;
+  /** Ticker profile store — when provided, per-asset knowledge is extracted from insight reports. */
+  profileStore?: TickerProfileStore;
 }
 
 // Tools to disable per agent when data is pre-aggregated.
@@ -95,7 +99,7 @@ const STRATEGIST_DISABLED_TOOLS = [
 ];
 
 export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, options: ProcessInsightsOptions): void {
-  const { insightStore, gathererOptions, memoryStore, snapStore } = options;
+  const { insightStore, gathererOptions, memoryStore, snapStore, profileStore } = options;
   const hasGatherer = !!gathererOptions;
 
   // Shared state between beforeWorkflow and afterWorkflow hooks
@@ -431,6 +435,22 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
               logger.info('Snap brief derived from insight report', { snapId: snap.id });
             } catch (err) {
               logger.warn('Failed to derive snap from insight report', {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
+          // 4. Extract per-asset knowledge into ticker profiles
+          if (latestReport && profileStore) {
+            try {
+              const previousReport = await insightStore.getLatest();
+              const entries = extractProfileEntries(latestReport, previousReport);
+              if (entries.length > 0) {
+                const stored = await profileStore.storeBatch(entries);
+                logger.info('Ticker profile entries stored', { stored });
+              }
+            } catch (err) {
+              logger.warn('Failed to store ticker profile entries', {
                 error: err instanceof Error ? err.message : String(err),
               });
             }

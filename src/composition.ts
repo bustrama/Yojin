@@ -38,6 +38,7 @@ import {
 } from './api/graphql/resolvers/onboarding.js';
 import { setPortfolioConnectionManager, setPortfolioJintelClient } from './api/graphql/resolvers/portfolio.js';
 import { onAppDataCleared } from './api/graphql/resolvers/profile.js';
+import { setProfileStore } from './api/graphql/resolvers/profiles.js';
 import { setAssessmentStore } from './api/graphql/resolvers/signal-assessments.js';
 import { setGroupSignalArchive, setSignalGroupArchive } from './api/graphql/resolvers/signal-groups.js';
 import { setSignalArchive, setSignalSnapshotStore } from './api/graphql/resolvers/signals.js';
@@ -75,6 +76,7 @@ import type { MemoryAgentRole } from './memory/types.js';
 import { ensureDataDirs, resolveDataRoot, resolveDefaultsRoot } from './paths.js';
 import { PluginRegistry } from './plugins/registry.js';
 import { PortfolioSnapshotStore } from './portfolio/snapshot-store.js';
+import { TickerProfileStore } from './profiles/profile-store.js';
 import { createPlatformTools } from './scraper/adapter.js';
 import { ConnectionManager } from './scraper/connection-manager.js';
 import { loadCredentialLookup } from './scraper/platform-credentials.js';
@@ -138,6 +140,7 @@ export interface YojinServices {
   reflectionEngine?: ReflectionEngine;
   insightStore: InsightStore;
   snapStore: SnapStore;
+  profileStore: TickerProfileStore;
   signalArchive: SignalArchive;
   signalGroupArchive: SignalGroupArchive;
   signalIngestor: SignalIngestor;
@@ -585,6 +588,11 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   const snapStore = new SnapStore(dataRoot);
   setSnapStore(snapStore);
 
+  // Ticker profile store (per-asset persistent knowledge)
+  const profileStore = new TickerProfileStore({ dataDir: `${dataRoot}/profiles` });
+  await profileStore.initialize();
+  setProfileStore(profileStore);
+
   // Assessment tools (1 tool: save_signal_assessment)
   // Mutable ref allows workflows to inject their start time for accurate durationMs
   const assessmentWorkflowStartMs = { value: 0 };
@@ -673,6 +681,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     reflectionEngine: memoryResult.reflectionEngine,
     insightStore,
     snapStore,
+    profileStore,
     signalArchive,
     signalGroupArchive,
     signalIngestor,

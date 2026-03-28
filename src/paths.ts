@@ -43,6 +43,7 @@ export const DATA_SUBDIRS = [
   'actions',
   'skills',
   'snap',
+  'profiles', // Per-ticker persistent knowledge profiles
   'data', // General-purpose data storage for data source outputs and imports
 ] as const;
 

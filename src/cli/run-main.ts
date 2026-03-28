@@ -115,6 +115,13 @@ async function buildFullRuntime(): Promise<{
     providerRouter,
     priceProvider,
     piiRedactor: services.piiRedactor,
+    onReflected: async (entry, grade, lesson, actualReturn) => {
+      const { buildLessonEntry } = await import('../profiles/profile-bridge.js');
+      for (const ticker of entry.tickers) {
+        const lessonEntry = buildLessonEntry(ticker, lesson, grade, actualReturn, entry.id, entry.createdAt);
+        await services.profileStore.store(lessonEntry);
+      }
+    },
   });
 
   const sessionStore = new JsonlSessionStore(`${dataRoot}/sessions`);
@@ -148,12 +155,14 @@ async function startGateway(): Promise<void> {
     insightStore: services.insightStore,
     memoryStore: services.memoryStores.get('analyst'),
     snapStore: services.snapStore,
+    profileStore: services.profileStore,
     gathererOptions: {
       snapshotStore: services.snapshotStore,
       curatedSignalStore: services.curatedSignalStore,
       insightStore: services.insightStore,
       getJintelClient: () => services.jintelToolOptions.client,
       memoryStores: services.memoryStores,
+      profileStore: services.profileStore,
     },
   });
   setInsightsOrchestrator(orchestrator);
@@ -279,12 +288,14 @@ async function runInsights(): Promise<void> {
     insightStore: services.insightStore,
     memoryStore: services.memoryStores.get('analyst'),
     snapStore: services.snapStore,
+    profileStore: services.profileStore,
     gathererOptions: {
       snapshotStore: services.snapshotStore,
       curatedSignalStore: services.curatedSignalStore,
       insightStore: services.insightStore,
       getJintelClient: () => services.jintelToolOptions.client,
       memoryStores: services.memoryStores,
+      profileStore: services.profileStore,
     },
   });
 

@@ -771,6 +771,47 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
+  # Ticker Profiles (per-asset institutional knowledge)
+  # ---------------------------------------------------------------------------
+
+  type TickerProfileEntry {
+    id: ID!
+    ticker: String!
+    category: String!
+    observation: String!
+    evidence: String!
+    insightReportId: String!
+    insightDate: String!
+    rating: String
+    conviction: Float
+    priceAtObservation: Float
+    grade: String
+    actualReturn: Float
+    createdAt: String!
+  }
+
+  type TickerProfileBrief {
+    entryCount: Int!
+    recentPatterns: [String!]!
+    recentLessons: [String!]!
+    correlations: [String!]!
+    sentimentHistory: [SentimentPoint!]!
+  }
+
+  type SentimentPoint {
+    date: String!
+    rating: String!
+    conviction: Float!
+  }
+
+  type TickerProfile {
+    ticker: String!
+    entryCount: Int!
+    entries: [TickerProfileEntry!]!
+    brief: TickerProfileBrief!
+  }
+
+  # ---------------------------------------------------------------------------
   # Root types
   # ---------------------------------------------------------------------------
 
@@ -968,6 +1009,8 @@ export const typeDefs = /* GraphQL */ `
     action(id: ID!): Action
     skills(category: SkillCategory, active: Boolean): [Skill!]!
     skill(id: ID!): Skill
+    tickerProfile(ticker: String!): TickerProfile
+    tickerProfiles(tickers: [String!]!): [TickerProfile!]!
     aiConfig: AiConfig!
   }
 

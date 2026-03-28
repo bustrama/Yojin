@@ -23,6 +23,14 @@ const REFLECTION_SYSTEM_PROMPT = `You are reviewing a past financial analysis. G
 3. What should this agent do differently in a similar future situation?
 Be specific and actionable. Reference the actual market data provided.`;
 
+/** Callback fired after a memory entry is successfully reflected (graded with a lesson). */
+export type OnReflectedCallback = (
+  entry: MemoryEntry,
+  grade: Grade,
+  lesson: string,
+  actualReturn: number,
+) => Promise<void>;
+
 interface ReflectionEngineOptions {
   providerRouter: LlmProvider;
   memoryStores: Map<MemoryAgentRole, SignalMemoryStore>;
@@ -30,6 +38,8 @@ interface ReflectionEngineOptions {
   piiRedactor: PiiRedactor;
   /** Model to use for lesson generation (default: provider's default). */
   model?: string;
+  /** Called after each successful reflection — use for ticker profile LESSON entries. */
+  onReflected?: OnReflectedCallback;
 }
 
 export class ReflectionEngine {
@@ -38,6 +48,7 @@ export class ReflectionEngine {
   private readonly priceProvider: PriceProvider;
   private readonly piiRedactor: PiiRedactor;
   private readonly model: string;
+  private readonly onReflected?: OnReflectedCallback;
 
   constructor(options: ReflectionEngineOptions) {
     this.provider = options.providerRouter;
@@ -45,6 +56,7 @@ export class ReflectionEngine {
     this.priceProvider = options.priceProvider;
     this.piiRedactor = options.piiRedactor;
     this.model = options.model ?? 'claude-sonnet-4-6';
+    this.onReflected = options.onReflected;
   }
 
   async reflectOnEntry(entry: MemoryEntry): Promise<ReflectionResult> {
@@ -118,6 +130,16 @@ export class ReflectionEngine {
     }
 
     log.info('Reflection complete', { entryId: entry.id, grade, returnPct: price.returnPct });
+
+    // Notify listeners (e.g. TickerProfileStore for LESSON entries)
+    if (this.onReflected) {
+      try {
+        await this.onReflected(entry, grade, redacted.lesson, price.returnPct);
+      } catch (err) {
+        log.warn('onReflected callback failed', { entryId: entry.id, error: err });
+      }
+    }
+
     return { success: true };
   }
 
