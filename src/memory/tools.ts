@@ -22,12 +22,12 @@ export function createMemoryTools(options: MemoryToolsOptions): ToolDefinition[]
 
   const storeSignalMemory: ToolDefinition = {
     name: 'store_signal_memory',
-    description: 'Save a memory of the current analysis situation and recommendation for future reference.',
+    description: 'Save a memory of the current analysis situation and assessment for future reference.',
     parameters: z.object({
       agentRole: MemoryAgentRoleSchema.describe('The agent role storing this memory'),
       tickers: z.array(z.string().min(1)).min(1).describe('Tickers analyzed'),
       situation: z.string().min(1).describe('Current market context description'),
-      recommendation: z.string().min(1).describe('The analysis or recommendation'),
+      recommendation: z.string().min(1).describe('The analysis or sentiment assessment'),
       confidence: z.number().min(0).max(1).describe('Confidence level (0-1)'),
     }),
     execute: async (params): Promise<ToolResult> => {
@@ -91,7 +91,7 @@ function formatMemory(entry: MemoryEntry, score: number, rank: number): string {
   const lines = [
     `### Memory ${rank} (${entry.createdAt.slice(0, 10)}, ${entry.tickers.join('/')}, confidence: ${entry.confidence}, score: ${score.toFixed(2)})`,
     `**Situation:** ${entry.situation}`,
-    `**Recommendation:** ${entry.recommendation}`,
+    `**Assessment:** ${entry.recommendation}`,
   ];
 
   if (entry.grade) {

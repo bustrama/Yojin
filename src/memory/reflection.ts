@@ -14,10 +14,10 @@ import type { PiiRedactor } from '../trust/pii/types.js';
 
 const log = getLogger().sub('reflection-engine');
 
-const BULLISH = /\b(bullish|buy|long|upside|positive|growth|rally)\b/i;
-const BEARISH = /\b(bearish|sell|short|downside|negative|decline|drop)\b/i;
+const BULLISH = /\b(bullish|very_bullish|upside|positive|growth|rally)\b/i;
+const BEARISH = /\b(bearish|very_bearish|downside|negative|decline|drop)\b/i;
 
-const REFLECTION_SYSTEM_PROMPT = `You are reviewing a past financial analysis. Given the original situation, recommendation, and actual outcome, provide a concise lesson in 2-3 sentences:
+const REFLECTION_SYSTEM_PROMPT = `You are reviewing a past financial analysis. Given the original situation, sentiment assessment, and actual outcome, provide a concise lesson in 2-3 sentences:
 1. What did the analysis get right or wrong?
 2. What signal or factor was missed or overweighted?
 3. What should this agent do differently in a similar future situation?
@@ -75,7 +75,7 @@ export class ReflectionEngine {
         messages: [
           {
             role: 'user',
-            content: `## Original Analysis\nSituation: ${entry.situation}\nRecommendation: ${entry.recommendation}\nConfidence: ${entry.confidence}\n\n## Actual Outcome\nReturn: ${price.returnPct.toFixed(1)}% (${price.priceAtAnalysis.toFixed(2)} → ${price.priceNow.toFixed(2)})\nPeriod high: ${price.highInPeriod.toFixed(2)}, low: ${price.lowInPeriod.toFixed(2)}\nGrade: ${grade}`,
+            content: `## Original Analysis\nSituation: ${entry.situation}\nAssessment: ${entry.recommendation}\nConfidence: ${entry.confidence}\n\n## Actual Outcome\nReturn: ${price.returnPct.toFixed(1)}% (${price.priceAtAnalysis.toFixed(2)} → ${price.priceNow.toFixed(2)})\nPeriod high: ${price.highInPeriod.toFixed(2)}, low: ${price.lowInPeriod.toFixed(2)}\nGrade: ${grade}`,
           },
         ],
       });

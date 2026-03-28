@@ -38,7 +38,7 @@ export async function storeInsightMemories(
       `sentiment ${position.keySignals.map((s) => s.impact).join('/')}.`;
 
     const recommendation =
-      `${position.rating} (conviction: ${position.conviction.toFixed(2)}). ` + `Thesis: ${position.thesis}`;
+      `Sentiment: ${position.rating} (conviction: ${position.conviction.toFixed(2)}). ` + `Outlook: ${position.thesis}`;
 
     try {
       await store.store({

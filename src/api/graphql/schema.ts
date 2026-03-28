@@ -670,11 +670,11 @@ export const typeDefs = /* GraphQL */ `
   # ---------------------------------------------------------------------------
 
   enum InsightRating {
-    STRONG_BUY
-    BUY
-    HOLD
-    SELL
-    STRONG_SELL
+    VERY_BULLISH
+    BULLISH
+    NEUTRAL
+    BEARISH
+    VERY_BEARISH
   }
 
   enum PortfolioHealth {

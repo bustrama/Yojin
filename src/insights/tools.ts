@@ -37,7 +37,7 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
     description:
       'Save a structured insight report after analyzing the portfolio. ' +
       'Call this at the end of the ProcessInsights workflow with per-position ' +
-      'ratings, portfolio-level synthesis, and your current emotional state. ' +
+      'sentiment assessments, portfolio-level synthesis, and your current emotional state. ' +
       'IMPORTANT: Include the source URL for each key signal so users can verify the data.',
     parameters: z.object({
       snapshotId: z.string().min(1).describe('ID of the portfolio snapshot this analysis is based on'),
@@ -46,9 +46,9 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
           z.object({
             symbol: z.string().min(1).describe('Ticker symbol'),
             name: z.string().describe('Asset name'),
-            rating: InsightRatingSchema.describe('Rating: STRONG_BUY, BUY, HOLD, SELL, or STRONG_SELL'),
+            rating: InsightRatingSchema.describe('Sentiment: VERY_BULLISH, BULLISH, NEUTRAL, BEARISH, or VERY_BEARISH'),
             conviction: z.number().min(0).max(1).describe('Conviction level 0-1'),
-            thesis: z.string().min(1).describe('2-3 sentence investment thesis'),
+            thesis: z.string().min(1).describe('2-3 sentence market outlook summary'),
             keySignals: z
               .array(
                 z.object({
@@ -68,7 +68,7 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
                   outputType: z.enum(['INSIGHT', 'ALERT']).optional().describe('Feed classification'),
                 }),
               )
-              .describe('Key signals that informed this rating'),
+              .describe('Key signals that informed this sentiment assessment'),
             risks: z.array(z.string().min(1)).describe('Risk factors'),
             opportunities: z.array(z.string().min(1)).describe('Opportunity factors'),
             memoryContext: z.string().nullable().describe('Summary of relevant past memories'),

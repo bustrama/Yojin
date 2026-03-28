@@ -101,6 +101,12 @@ export class SignalIngestor {
     this.clustering = clustering;
   }
 
+  /** Reset cached state after external data wipe (clearAppData). */
+  reset(): void {
+    this.knownHashes.clear();
+    this.initialized = false;
+  }
+
   /** Load existing content hashes from archive for dedup. */
   async initialize(): Promise<void> {
     if (this.initialized) return;

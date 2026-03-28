@@ -32,6 +32,14 @@ export function deviceInfoResolver(): DeviceInfo {
   return cachedIdentity;
 }
 
+// Callbacks invoked after data wipe to reset in-memory caches (archive dirCreated, ingestor hashes, etc.)
+const postClearHooks: Array<() => void> = [];
+
+/** Register a callback to reset in-memory state after clearAppData. */
+export function onAppDataCleared(hook: () => void): void {
+  postClearHooks.push(hook);
+}
+
 /** Wipe all runtime data except config, audit, logs, and identity. Returns true on success. */
 export async function clearAppDataMutation(): Promise<boolean> {
   const dataRoot = resolveDataRoot();
@@ -49,6 +57,15 @@ export async function clearAppDataMutation(): Promise<boolean> {
 
   // Reset cached identity so it regenerates on next access
   cachedIdentity = null;
+
+  // Reset in-memory caches so stale dirCreated flags / hash maps don't cause ENOENT
+  for (const hook of postClearHooks) {
+    try {
+      hook();
+    } catch (err) {
+      logger.warn('Post-clear hook failed', { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
 
   if (errors.length > 0) {
     logger.warn('App data clear completed with errors', { dataRoot, errors });
