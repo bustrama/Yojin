@@ -46,6 +46,7 @@ export interface DataBrief {
   changePercent: number | null;
   volume: number | null;
   // Enrichment — fundamentals
+  description: string | null;
   marketCap: number | null;
   pe: number | null;
   eps: number | null;
@@ -228,6 +229,7 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
   const sections = briefs.map((b) => {
     const lines: string[] = [];
     lines.push(`## ${b.symbol} — ${b.name}`);
+    if (b.description) lines.push(b.description);
 
     // Position
     const price = b.quotePrice ?? b.currentPrice;
@@ -327,6 +329,9 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
     // Ticker profile (accumulated per-asset knowledge)
     if (b.profile && b.profile.entryCount > 0) {
       lines.push(`Asset profile (${b.profile.entryCount} observations):`);
+      if (b.profile.summary) {
+        lines.push(`  Summary: ${b.profile.summary}`);
+      }
       if (b.profile.recentPatterns.length > 0) {
         lines.push(`  Patterns: ${b.profile.recentPatterns.join('; ')}`);
       }
@@ -628,6 +633,7 @@ function buildBrief(
     quotePrice: quote?.price ?? null,
     changePercent: quote?.changePercent ?? null,
     volume: quote?.volume ?? null,
+    description: entity?.market?.fundamentals?.description ?? null,
     marketCap: entity?.market?.fundamentals?.marketCap ?? null,
     pe: entity?.market?.fundamentals?.peRatio ?? null,
     eps: entity?.market?.fundamentals?.eps ?? null,

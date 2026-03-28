@@ -148,6 +148,7 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
     if (fund?.dividendYield != null) contentLines.push(`Dividend Yield: ${fund.dividendYield.toFixed(2)}%`);
     if (fund?.sector) contentLines.push(`Sector: ${fund.sector}`);
     if (fund?.industry) contentLines.push(`Industry: ${fund.industry}`);
+    if (fund?.description) contentLines.push(`Description: ${fund.description}`);
 
     signals.push({
       sourceId: 'jintel-snapshot',
