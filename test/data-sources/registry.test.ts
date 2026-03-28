@@ -468,13 +468,13 @@ describe('DataSourceConfigSchema', () => {
 
   it('validates an MCP config', () => {
     const config = {
-      id: 'exa-mcp',
-      name: 'Exa MCP',
+      id: 'search-mcp',
+      name: 'Search MCP',
       capabilities: [{ id: 'web-search' }],
       config: {
         type: 'mcp',
-        serverCommand: 'npx -y exa-mcp-server',
-        capabilityMapping: { 'web-search': 'web_search_exa' },
+        serverCommand: 'npx -y search-mcp-server',
+        capabilityMapping: { 'web-search': 'web_search' },
       },
     };
     const result = DataSourceConfigSchema.safeParse(config);
@@ -483,8 +483,8 @@ describe('DataSourceConfigSchema', () => {
 
   it('validates an API config with async support', () => {
     const config = {
-      id: 'firecrawl',
-      name: 'Firecrawl',
+      id: 'web-scraper',
+      name: 'Web Scraper',
       capabilities: [{ id: 'web-scrape' }, { id: 'web-crawl' }],
       config: {
         type: 'api',

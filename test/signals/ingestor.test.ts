@@ -141,8 +141,8 @@ describe('SignalIngestor', () => {
   it('stores source provenance on the signal', async () => {
     await ingestor.ingest([
       makeInput({
-        sourceId: 'exa-search',
-        sourceName: 'Exa',
+        sourceId: 'web-search',
+        sourceName: 'Web Search',
         sourceType: 'API',
         reliability: 0.95,
       }),
@@ -150,8 +150,8 @@ describe('SignalIngestor', () => {
 
     const signals = await archive.query({});
     expect(signals[0].sources).toHaveLength(1);
-    expect(signals[0].sources[0].id).toBe('exa-search');
-    expect(signals[0].sources[0].name).toBe('Exa');
+    expect(signals[0].sources[0].id).toBe('web-search');
+    expect(signals[0].sources[0].name).toBe('Web Search');
     expect(signals[0].sources[0].reliability).toBe(0.95);
   });
 

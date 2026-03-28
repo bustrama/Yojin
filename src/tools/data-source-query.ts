@@ -39,7 +39,7 @@ export interface DataSourceQueryOptions {
 function outputToSignals(output: string, config: DataSourceConfig): RawSignalInput[] {
   try {
     const data = JSON.parse(output);
-    // Unwrap common response wrappers (e.g. Nimble's { results: [...] })
+    // Unwrap common response wrappers (e.g. { results: [...] })
     const items: Record<string, unknown>[] = Array.isArray(data)
       ? data
       : Array.isArray(data.results)
@@ -180,7 +180,7 @@ export function createDataSourceQueryTools(options: DataSourceQueryOptions): Too
     if ('error' in keyResult) return { content: keyResult.error, isError: true };
 
     try {
-      // POST to /search endpoint with Bearer auth (works for Exa, Firecrawl, etc.)
+      // POST to /search endpoint with Bearer auth
       const endpoint = `${config.baseUrl}/search`;
       const body: Record<string, unknown> = {};
       if (params.query) body.query = params.query;
@@ -228,12 +228,12 @@ export function createDataSourceQueryTools(options: DataSourceQueryOptions): Too
     name: 'query_data_source',
     description:
       'Query a connected data source (CLI tool or REST API). ' +
-      'Supports search sources (Nimble, Exa), RSS feeds (curl), and more. ' +
+      'Supports search sources, RSS feeds (curl), and more. ' +
       'For search-capable sources, provide a search query. ' +
       'For URL-based sources, provide a URL. ' +
       'Results are automatically ingested as signals.',
     parameters: z.object({
-      sourceId: z.string().describe('The data source ID (e.g. "nimble-cli", "exa-search", "curl-rss")'),
+      sourceId: z.string().describe('The data source ID (e.g. "web-search", "curl-rss")'),
       query: z.string().optional().describe('Search query for search-capable sources'),
       url: z.string().optional().describe('URL to fetch for URL-based sources'),
     }),

@@ -27,7 +27,7 @@ const logger = createSubsystemLogger('signal-ingestor');
 
 /** Raw data item from a data source, before classification. */
 export interface RawSignalInput {
-  /** Source plugin ID (e.g. 'exa-search', 'firecrawl', 'rss-reuters'). */
+  /** Source plugin ID (e.g. 'web-search', 'rss-reuters'). */
   sourceId: string;
   /** Human-readable source name. */
   sourceName: string;

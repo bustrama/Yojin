@@ -163,7 +163,7 @@ function jsonToSignals(stdout: string, config: DataSourceConfig): RawSignalInput
   const data: unknown = JSON.parse(stdout);
   if (data == null || typeof data !== 'object') return [];
 
-  // Unwrap common response wrappers (e.g. Nimble's { results: [...] })
+  // Unwrap common response wrappers (e.g. { results: [...] })
   const unwrapped = Array.isArray(data)
     ? data
     : Array.isArray((data as Record<string, unknown>).results)
@@ -358,7 +358,7 @@ export async function fetchDataSourceResolver(
   // Build the command args
   const cmdArgs = [...(config.args ?? [])];
 
-  // For Nimble-style sources: if args include "search" subcommand, pass url as --query
+  // For CLI sources: if args include "search" subcommand, pass url as --query
   if (args.url) {
     if (cmdArgs.includes('search')) {
       cmdArgs.push('--query', args.url);

@@ -95,12 +95,15 @@ describe('SignalArchive', () => {
 
   it('filters by source ID', async () => {
     await archive.appendBatch([
-      makeSignal({ id: 's1', sources: [{ id: 'exa', name: 'Exa', type: 'API', reliability: 0.9 }] }),
-      makeSignal({ id: 's2', sources: [{ id: 'firecrawl', name: 'Firecrawl', type: 'SCRAPER', reliability: 0.8 }] }),
+      makeSignal({ id: 's1', sources: [{ id: 'web-search', name: 'Web Search', type: 'API', reliability: 0.9 }] }),
+      makeSignal({
+        id: 's2',
+        sources: [{ id: 'web-scraper', name: 'Web Scraper', type: 'SCRAPER', reliability: 0.8 }],
+      }),
     ]);
-    const results = await archive.query({ sourceId: 'exa' });
+    const results = await archive.query({ sourceId: 'web-search' });
     expect(results).toHaveLength(1);
-    expect(results[0].sources[0].id).toBe('exa');
+    expect(results[0].sources[0].id).toBe('web-search');
   });
 
   it('filters by date range', async () => {

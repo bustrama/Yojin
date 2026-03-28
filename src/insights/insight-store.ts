@@ -77,10 +77,10 @@ export class InsightStore {
     return all.filter((r) => r.snapshotId === snapshotId);
   }
 
-  /** Read the most recent N reports. */
+  /** Read the most recent N reports, newest first. */
   async getRecent(limit: number): Promise<InsightReport[]> {
     const all = await this.getAll();
-    return all.slice(-limit);
+    return all.slice(-limit).reverse();
   }
 
   private async readLines(): Promise<string[]> {
