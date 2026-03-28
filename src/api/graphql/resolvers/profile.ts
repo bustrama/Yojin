@@ -37,7 +37,9 @@ const postClearHooks: Array<() => void> = [];
 
 /** Register a callback to reset in-memory state after clearAppData. */
 export function onAppDataCleared(hook: () => void): void {
-  postClearHooks.push(hook);
+  if (!postClearHooks.includes(hook)) {
+    postClearHooks.push(hook);
+  }
 }
 
 /** Wipe all runtime data except config, audit, logs, and identity. Returns true on success. */

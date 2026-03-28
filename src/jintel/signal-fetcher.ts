@@ -262,7 +262,6 @@ export interface MacroFetchResult {
  * These are broad-market signals with no specific ticker.
  */
 export async function fetchMacroIndicators(client: JintelClient, ingestor: SignalIngestor): Promise<MacroFetchResult> {
-  const now = new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z';
   const signals: RawSignalInput[] = [];
 
   // Fire all macro queries in parallel
@@ -285,7 +284,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
         reliability: 0.95,
         title: `US Real GDP: ${latest.value.toFixed(1)}% (${latest.date})`,
         content: `US Real GDP growth rate: ${latest.value.toFixed(2)}% as of ${latest.date}`,
-        publishedAt: now,
+        publishedAt: toPublishedAt(latest.date),
         type: 'MACRO',
         confidence: 0.95,
       });
@@ -305,7 +304,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
         reliability: 0.95,
         title: `US Inflation (CPI): ${latest.value.toFixed(1)}% (${latest.date})`,
         content: `US Consumer Price Index: ${latest.value.toFixed(2)}% year-over-year as of ${latest.date}`,
-        publishedAt: now,
+        publishedAt: toPublishedAt(latest.date),
         type: 'MACRO',
         confidence: 0.95,
       });
@@ -325,7 +324,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
         reliability: 0.95,
         title: `US Interest Rate: ${latest.value.toFixed(2)}% (${latest.date})`,
         content: `US Federal Funds Rate: ${latest.value.toFixed(2)}% as of ${latest.date}`,
-        publishedAt: now,
+        publishedAt: toPublishedAt(latest.date),
         type: 'MACRO',
         confidence: 0.95,
       });
@@ -345,7 +344,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
         reliability: 0.95,
         title: `S&P 500 P/E Ratio: ${latest.value.toFixed(1)} (${latest.date})`,
         content: `S&P 500 trailing P/E ratio: ${latest.value.toFixed(2)} as of ${latest.date}`,
-        publishedAt: now,
+        publishedAt: toPublishedAt(latest.date),
         type: 'MACRO',
         confidence: 0.95,
       });
@@ -365,7 +364,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
         reliability: 0.95,
         title: `S&P 500 Shiller P/E (CAPE): ${latest.value.toFixed(1)} (${latest.date})`,
         content: `S&P 500 cyclically-adjusted P/E ratio (Shiller CAPE): ${latest.value.toFixed(2)} as of ${latest.date}`,
-        publishedAt: now,
+        publishedAt: toPublishedAt(latest.date),
         type: 'MACRO',
         confidence: 0.95,
       });
@@ -390,4 +389,10 @@ function latestEconomic(data: EconomicDataPoint[]): EconomicDataPoint | undefine
 
 function latestSP500(data: SP500DataPoint[]): SP500DataPoint | undefined {
   return [...data].sort((a, b) => b.date.localeCompare(a.date))[0];
+}
+
+/** Convert a YYYY-MM-DD date string to a stable publishedAt timestamp for dedup. */
+function toPublishedAt(dateStr: string): string {
+  const ms = new Date(dateStr).getTime();
+  return ms ? new Date(dateStr).toISOString() : `${dateStr}T00:00:00.000Z`;
 }
