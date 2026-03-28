@@ -75,7 +75,7 @@ describe('Jintel Zod schemas', () => {
         {
           title: 'Apple Q1 Beat',
           link: 'https://example.com/1',
-          source: 'Serper',
+          source: 'News API',
           date: '2026-03-23T10:00:00Z',
           snippet: 'Beat expectations...',
         },

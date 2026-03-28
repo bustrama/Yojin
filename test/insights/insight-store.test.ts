@@ -151,7 +151,7 @@ describe('InsightStore', () => {
 
     const recent = await store.getRecent(3);
     expect(recent).toHaveLength(3);
-    expect(recent.map((r) => r.id)).toEqual(['insight-2', 'insight-3', 'insight-4']);
+    expect(recent.map((r) => r.id)).toEqual(['insight-4', 'insight-3', 'insight-2']);
   });
 
   it('rejects invalid report data', async () => {

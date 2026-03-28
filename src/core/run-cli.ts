@@ -1,7 +1,7 @@
 /**
  * Spawn a CLI command with stdin detached.
  *
- * Some CLI tools (notably Go binaries like Nimble) detect piped stdin
+ * Some CLI tools (notably Go binaries) detect piped stdin
  * and try to read a JSON body from it. When spawned from Node.js the
  * pipe is open but empty, causing a "Cannot merge flags with body: <nil>"
  * crash. Setting stdin to 'ignore' prevents this.

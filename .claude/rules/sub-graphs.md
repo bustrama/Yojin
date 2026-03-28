@@ -6,20 +6,32 @@ When a client (Yojin or any consumer) needs data from multiple domains for the s
 
 ### Available sub-graphs
 
-| Parent Type | Sub-graph | Data |
-|---|---|---|
-| `Entity` | `market` | Quote, fundamentals, history |
-| `Entity` | `risk` | OFAC sanctions, risk signals |
-| `Entity` | `regulatory` | Sanctions, SEC filings |
-| `Entity` | `corporate` | Legal name, officers, jurisdiction |
-| `Entity` | `technicals` | RSI, MACD, BB, EMA, SMA, ATR, VWMA, MFI |
-| `Entity` | `derivatives` | Futures curve, options chain (crypto only) |
-| `Entity` | `news` | News articles via Serper |
-| `Entity` | `research` | Web research via Exa |
-| `MarketQuote` | `technicals` | Technical indicators |
-| `MarketQuote` | `derivatives` | Derivatives data (crypto only) |
-| `CryptoQuote` | `technicals` | Technical indicators |
-| `CryptoQuote` | `derivatives` | Derivatives data |
+| Parent Type | Sub-graph | Data | Ordered | Filterable |
+|---|---|---|---|---|
+| `Entity` | `market` | Quote, fundamentals, history | — | — |
+| `Entity` | `risk` | OFAC sanctions, risk signals | newest first | `since`, `until`, `limit` |
+| `Entity` | `regulatory` | Sanctions, SEC filings | newest first | `since`, `until`, `limit` |
+| `Entity` | `corporate` | Legal name, officers, jurisdiction | — | — |
+| `Entity` | `technicals` | RSI, MACD, BB, EMA, SMA, ATR, VWMA, MFI | — | — |
+| `Entity` | `derivatives` | Futures curve, options chain (crypto only) | — | — |
+| `Entity` | `news` | News articles | newest first | `since`, `until`, `limit` |
+| `Entity` | `research` | Web research articles | newest first | `since`, `until`, `limit` |
+| `Entity` | `sentiment` | Social rank, mentions, upvotes, 24h momentum | — | — |
+| `MarketQuote` | `technicals` | Technical indicators | — | — |
+| `MarketQuote` | `derivatives` | Derivatives data (crypto only) | — | — |
+| `CryptoQuote` | `technicals` | Technical indicators | — | — |
+| `CryptoQuote` | `derivatives` | Derivatives data | — | — |
+
+### Ordering & filtering contract
+
+Array sub-graphs (`news`, `research`, `risk.signals`, `regulatory.filings`) **must return newest first**. Yojin relies on this — do not re-sort client-side.
+
+Filterable sub-graphs accept these params on the enrichment query:
+- `since: DateTime` — only items published after this timestamp
+- `until: DateTime` — only items published before this timestamp
+- `limit: Int` — max items to return (default 20)
+
+Scalar sub-graphs (`market`, `technicals`, `sentiment`, `corporate`) return a single snapshot — no ordering or date filtering needed.
 
 ### Do
 

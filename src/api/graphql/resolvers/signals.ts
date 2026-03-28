@@ -135,5 +135,7 @@ export async function signalsResolver(
     }
   }
 
-  return [...byTitle.values()].map(toGql);
+  const deduped = [...byTitle.values()];
+  deduped.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+  return deduped.map(toGql);
 }

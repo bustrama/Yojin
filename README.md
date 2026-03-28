@@ -117,7 +117,7 @@ Jintel is the intelligence layer that powers Yojin's market awareness. Accessed 
 - **Regulatory filings** — SEC filings (10-K, 10-Q, 8-K) indexed by ticker
 - **Technical indicators** — RSI, MACD, Bollinger Bands, EMA, SMA, ATR, VWMA, MFI
 - **News** — real-time news from multiple sources, ingested and indexed by ticker
-- **Research** — web research results via Exa, scored by relevance
+- **Research** — web research results, scored by relevance
 - **Social sentiment** — social media rank, mention count, upvote trends, and 24h momentum per ticker
 - **Macro indicators** — GDP, inflation, interest rates, S&P 500 P/E and CAPE ratios
 - **Portfolio-aware processing** — signals are scored and ranked against your actual positions via the curation pipeline, so you only see intelligence relevant to what you hold

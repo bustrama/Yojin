@@ -5,7 +5,13 @@
  * (news, risk, fundamentals, technicals, filings) into the signal pipeline.
  */
 
-import type { EconomicDataPoint, Entity, JintelClient, SP500DataPoint } from '@yojinhq/jintel-client';
+import type {
+  ArraySubGraphOptions,
+  EconomicDataPoint,
+  Entity,
+  JintelClient,
+  SP500DataPoint,
+} from '@yojinhq/jintel-client';
 import { GDP, INFLATION, INTEREST_RATES, SP500_MULTIPLES, buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 
 import { riskSignalsToRaw } from './tools.js';
@@ -14,13 +20,18 @@ import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
 
 const logger = createSubsystemLogger('jintel-signal-fetcher');
 
-const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(['market', 'risk', 'regulatory', 'technicals', 'news', 'sentiment']);
+const ENRICHMENT_FIELDS = ['market', 'risk', 'regulatory', 'technicals', 'news', 'research', 'sentiment'] as const;
 const CHUNK_SIZE = 20;
 
 export interface JintelFetchResult {
   ingested: number;
   duplicates: number;
   tickers: number;
+}
+
+export interface JintelFetchOptions {
+  /** Only fetch array sub-graph items (news, research) published after this ISO timestamp. */
+  since?: string;
 }
 
 /**
@@ -31,8 +42,12 @@ export async function fetchJintelSignals(
   client: JintelClient,
   ingestor: SignalIngestor,
   tickers: string[],
+  options?: JintelFetchOptions,
 ): Promise<JintelFetchResult> {
   if (tickers.length === 0) return { ingested: 0, duplicates: 0, tickers: 0 };
+
+  const subGraphOpts: ArraySubGraphOptions = { sort: 'DESC', ...(options?.since ? { since: options.since } : {}) };
+  const query = buildBatchEnrichQuery([...ENRICHMENT_FIELDS], subGraphOpts);
 
   let totalIngested = 0;
   let totalDuplicates = 0;
@@ -40,7 +55,7 @@ export async function fetchJintelSignals(
   for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
     const chunk = tickers.slice(i, i + CHUNK_SIZE);
     try {
-      const entities = await client.request<Entity[]>(BATCH_ENRICH_QUERY, { tickers: chunk });
+      const entities = await client.request<Entity[]>(query, { tickers: chunk });
 
       // Build ticker → entity map
       const entityByTicker = new Map<string, Entity>();
@@ -215,7 +230,25 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
     });
   }
 
-  // 6. Technicals summary — only emit when there's data beyond RSI (RSI is in the snapshot)
+  // 6. Research articles
+  for (const article of entity.research ?? []) {
+    if (!article.title) continue;
+    signals.push({
+      sourceId: 'jintel-research',
+      sourceName: 'Jintel Research',
+      sourceType: 'API',
+      reliability: 0.85,
+      title: article.title,
+      content: article.text ?? undefined,
+      link: article.url,
+      publishedAt: article.publishedDate ?? now,
+      tickers,
+      confidence: Math.min(0.95, article.score),
+      metadata: { author: article.author, score: article.score },
+    });
+  }
+
+  // 7. Technicals summary — only emit when there's data beyond RSI (RSI is in the snapshot)
   if (tech) {
     const parts: string[] = [];
     if (tech.macd) parts.push(`MACD histogram: ${tech.macd.histogram.toFixed(3)}`);
@@ -244,7 +277,7 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
     }
   }
 
-  // 7. Social sentiment
+  // 8. Social sentiment
   if (entity.sentiment) {
     const s = entity.sentiment;
     const rankDelta = s.rank24hAgo - s.rank;

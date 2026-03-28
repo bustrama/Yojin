@@ -10,8 +10,7 @@
  *   - Synchronous: query() → immediate DataResult
  *   - Async job: startJob() → poll getJobStatus() → getJobResult()
  *
- * Designed to work with: Apify, Exa, Bright Data, StableEnrich, Nimble,
- * Firecrawl, OpenBB, and any future data source.
+ * Designed to work with any data source — CLI tools, REST APIs, or custom plugins.
  */
 
 import { z } from 'zod';
