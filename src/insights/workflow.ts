@@ -23,7 +23,6 @@ import { emitProgress } from '../agents/orchestrator.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
 import { extractProfileEntries } from '../profiles/profile-bridge.js';
-import { seedProfileSummaries } from '../profiles/profile-seeder.js';
 import type { TickerProfileStore } from '../profiles/profile-store.js';
 import { snapFromInsight } from '../snap/snap-from-insight.js';
 import type { SnapStore } from '../snap/snap-store.js';
@@ -454,22 +453,6 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
               logger.warn('Failed to store ticker profile entries', {
                 error: err instanceof Error ? err.message : String(err),
               });
-            }
-
-            // 4b. Seed AI summaries for tickers that don't have one yet
-            const jintelClient = gathererOptions?.getJintelClient?.();
-            if (jintelClient) {
-              try {
-                const tickers = latestReport.positions.map((p) => p.symbol);
-                const seeded = await seedProfileSummaries(tickers, jintelClient, profileStore);
-                if (seeded > 0) {
-                  logger.info('AI summaries seeded', { seeded });
-                }
-              } catch (err) {
-                logger.warn('Failed to seed profile summaries', {
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              }
             }
           }
         }

@@ -792,7 +792,6 @@ export const typeDefs = /* GraphQL */ `
 
   type TickerProfileBrief {
     entryCount: Int!
-    summary: String
     recentPatterns: [String!]!
     recentLessons: [String!]!
     correlations: [String!]!

@@ -329,9 +329,6 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
     // Ticker profile (accumulated per-asset knowledge)
     if (b.profile && b.profile.entryCount > 0) {
       lines.push(`Asset profile (${b.profile.entryCount} observations):`);
-      if (b.profile.summary) {
-        lines.push(`  Summary: ${b.profile.summary}`);
-      }
       if (b.profile.recentPatterns.length > 0) {
         lines.push(`  Patterns: ${b.profile.recentPatterns.join('; ')}`);
       }

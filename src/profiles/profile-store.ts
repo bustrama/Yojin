@@ -19,7 +19,6 @@ const log = getLogger().sub('ticker-profile-store');
 
 /** Retention priority for compaction — higher = keep longer. */
 const CATEGORY_PRIORITY: Record<ProfileEntryCategory, number> = {
-  SUMMARY: 5,
   LESSON: 4,
   CORRELATION: 3,
   SENTIMENT_SHIFT: 2,
@@ -138,7 +137,6 @@ export class TickerProfileStore {
     if (entries.length === 0) {
       return {
         entryCount: 0,
-        summary: null,
         recentPatterns: [],
         recentLessons: [],
         correlations: [],
@@ -153,10 +151,6 @@ export class TickerProfileStore {
       group.push(entry);
       byCategory.set(entry.category, group);
     }
-
-    // AI summary — latest SUMMARY entry (only one kept per ticker)
-    const summaryEntries = byCategory.get('SUMMARY') ?? [];
-    const summary = summaryEntries.length > 0 ? summaryEntries[summaryEntries.length - 1].observation : null;
 
     // Recent patterns (dedup similar observations)
     const patterns = byCategory.get('PATTERN') ?? [];
@@ -195,7 +189,6 @@ export class TickerProfileStore {
 
     return {
       entryCount: entries.length,
-      summary,
       recentPatterns,
       recentLessons,
       correlations,

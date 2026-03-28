@@ -23,7 +23,6 @@ export const ProfileEntryCategorySchema = z.enum([
   'CORRELATION', // Cross-asset correlation discovered
   'CONTEXT', // Sector/industry/macro context that proved relevant
   'SENTIMENT_SHIFT', // Shift in sentiment direction between runs
-  'SUMMARY', // AI-generated asset overview (what it is, sector, key characteristics)
 ]);
 export type ProfileEntryCategory = z.infer<typeof ProfileEntryCategorySchema>;
 
@@ -58,7 +57,6 @@ export type TickerProfileEntry = z.infer<typeof TickerProfileEntrySchema>;
 
 export const TickerProfileBriefSchema = z.object({
   entryCount: z.number(),
-  summary: z.string().nullable(),
   recentPatterns: z.array(z.string()),
   recentLessons: z.array(z.string()),
   correlations: z.array(z.string()),
