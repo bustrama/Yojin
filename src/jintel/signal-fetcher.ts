@@ -179,8 +179,8 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
     });
   }
 
-  // 3. SEC filings
-  for (const filing of (entity.regulatory?.filings ?? []).slice(0, 5)) {
+  // 3. SEC filings (Jintel returns newest-first, limited by ArraySubGraphOptions)
+  for (const filing of entity.regulatory?.filings ?? []) {
     signals.push({
       sourceId: 'jintel-sec',
       sourceName: 'Jintel SEC',
@@ -437,12 +437,14 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
   return { ingested: result.ingested, duplicates: result.duplicates };
 }
 
+/** Jintel returns newest-first — first element is the latest. */
 function latestEconomic(data: EconomicDataPoint[]): EconomicDataPoint | undefined {
-  return [...data].sort((a, b) => b.date.localeCompare(a.date))[0];
+  return data[0];
 }
 
+/** Jintel returns newest-first — first element is the latest. */
 function latestSP500(data: SP500DataPoint[]): SP500DataPoint | undefined {
-  return [...data].sort((a, b) => b.date.localeCompare(a.date))[0];
+  return data[0];
 }
 
 /** Convert a YYYY-MM-DD date string to a stable publishedAt timestamp for dedup. */
