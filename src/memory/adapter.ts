@@ -2,6 +2,7 @@ import { join } from 'node:path';
 
 import { SignalMemoryStore } from './memory-store.js';
 import { ReflectionEngine } from './reflection.js';
+import type { OnReflectedCallback } from './reflection.js';
 import { createMemoryTools } from './tools.js';
 import type { LlmProvider, MemoryAgentRole, PriceProvider } from './types.js';
 import type { ToolDefinition } from '../core/types.js';
@@ -68,11 +69,13 @@ export function createReflectionEngine(options: {
   providerRouter: LlmProvider;
   priceProvider: PriceProvider;
   piiRedactor: PiiRedactor;
+  onReflected?: OnReflectedCallback;
 }): ReflectionEngine {
   return new ReflectionEngine({
     providerRouter: options.providerRouter,
     memoryStores: options.stores,
     priceProvider: options.priceProvider,
     piiRedactor: options.piiRedactor,
+    onReflected: options.onReflected,
   });
 }

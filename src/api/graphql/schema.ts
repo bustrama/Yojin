@@ -437,6 +437,12 @@ export const typeDefs = /* GraphQL */ `
     error: String
   }
 
+  type RefreshIntelFeedResult {
+    signalsFetched: Int!
+    signalsCurated: Int!
+    error: String
+  }
+
   # ---------------------------------------------------------------------------
   # Signals
   # ---------------------------------------------------------------------------
@@ -765,6 +771,47 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
+  # Ticker Profiles (per-asset institutional knowledge)
+  # ---------------------------------------------------------------------------
+
+  type TickerProfileEntry {
+    id: ID!
+    ticker: String!
+    category: String!
+    observation: String!
+    evidence: String!
+    insightReportId: String!
+    insightDate: String!
+    rating: String
+    conviction: Float
+    priceAtObservation: Float
+    grade: String
+    actualReturn: Float
+    createdAt: String!
+  }
+
+  type TickerProfileBrief {
+    entryCount: Int!
+    recentPatterns: [String!]!
+    recentLessons: [String!]!
+    correlations: [String!]!
+    sentimentHistory: [SentimentPoint!]!
+  }
+
+  type SentimentPoint {
+    date: String!
+    rating: String!
+    conviction: Float!
+  }
+
+  type TickerProfile {
+    ticker: String!
+    entryCount: Int!
+    entries: [TickerProfileEntry!]!
+    brief: TickerProfileBrief!
+  }
+
+  # ---------------------------------------------------------------------------
   # Root types
   # ---------------------------------------------------------------------------
 
@@ -962,6 +1009,8 @@ export const typeDefs = /* GraphQL */ `
     action(id: ID!): Action
     skills(category: SkillCategory, active: Boolean): [Skill!]!
     skill(id: ID!): Skill
+    tickerProfile(ticker: String!): TickerProfile
+    tickerProfiles(tickers: [String!]!): [TickerProfile!]!
     aiConfig: AiConfig!
   }
 
@@ -981,6 +1030,7 @@ export const typeDefs = /* GraphQL */ `
     removePosition(symbol: String!, platform: String!): PortfolioSnapshot!
     createAlert(rule: AlertRuleInput!): Alert!
     dismissAlert(id: ID!): Alert!
+    dismissSignal(signalId: ID!): Boolean!
     sendMessage(threadId: String!, message: String!, imageBase64: String, imageMediaType: String): SendMessagePayload!
     createSession: SessionSummary!
     deleteSession(id: ID!): Boolean!
@@ -1011,6 +1061,7 @@ export const typeDefs = /* GraphQL */ `
     validateJintelKey(apiKey: String!): ValidateJintelKeyResult!
     processInsights: InsightReport
     runFullCuration: Boolean!
+    refreshIntelFeed: RefreshIntelFeedResult!
     addToWatchlist(symbol: String!, name: String!, assetClass: AssetClass!): WatchlistResult!
     removeFromWatchlist(symbol: String!): WatchlistResult!
     approveAction(id: ID!): Action!

@@ -10,6 +10,8 @@ import { CardEmptyState } from '../common/card-empty-state';
 import { DashboardCard } from '../common/dashboard-card';
 import Spinner from '../common/spinner';
 
+const ALL_TYPES: ActivityEventType[] = ['TRADE', 'SYSTEM', 'ACTION', 'ALERT', 'INSIGHT'];
+
 /* -- Event type config ---------------------------------------------------- */
 
 interface EventTypeConfig {
@@ -57,8 +59,6 @@ const EVENT_TYPE_CONFIG: Record<ActivityEventType, EventTypeConfig> = {
     icon: InsightIcon,
   },
 };
-
-const ALL_TYPES: ActivityEventType[] = ['TRADE', 'SYSTEM', 'ACTION', 'ALERT', 'INSIGHT'];
 
 /* -- Icons ---------------------------------------------------------------- */
 
@@ -207,23 +207,25 @@ export default function ActivityLog() {
       className="flex-1"
       headerAction={<span className="text-xs text-text-muted">{filteredEvents.length} events</span>}
     >
-      {/* Filter pills */}
-      <div className="flex flex-wrap gap-1.5 px-5 pb-3">
+      {/* Type filter pills */}
+      <div className="flex flex-wrap gap-1.5 px-3 pb-2">
         {ALL_TYPES.map((type) => {
           const config = EVENT_TYPE_CONFIG[type];
-          const active = activeTypes.has(type);
+          const isActive = activeTypes.has(type);
           return (
             <button
               key={type}
               onClick={() => toggleType(type)}
               className={cn(
-                'cursor-pointer rounded-full px-2.5 py-1 text-2xs font-medium transition-all',
-                active
-                  ? 'bg-bg-tertiary text-text-primary ring-1 ring-border'
-                  : 'text-text-muted hover:text-text-secondary',
+                'rounded-full px-2.5 py-0.5 text-2xs font-medium transition-colors',
+                isActive
+                  ? 'bg-bg-tertiary text-text-primary'
+                  : 'bg-transparent text-text-muted hover:text-text-secondary',
               )}
             >
-              {config.label}
+              <Badge variant={isActive ? config.badge : 'neutral'} size="xs">
+                {config.label}
+              </Badge>
             </button>
           );
         })}

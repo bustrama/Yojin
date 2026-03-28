@@ -17,6 +17,7 @@ const logger = createSubsystemLogger('curated-signal-store');
 export class CuratedSignalStore {
   private readonly baseDir: string;
   private readonly watermarkPath: string;
+  private cachedDismissedIds: Set<string> | null = null;
 
   constructor(dataRoot: string) {
     this.baseDir = join(dataRoot, 'signals', 'curated');
@@ -96,6 +97,36 @@ export class CuratedSignalStore {
       }
     }
     return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dismiss tracking
+  // ---------------------------------------------------------------------------
+
+  private get dismissedPath(): string {
+    return join(this.baseDir, 'dismissed.json');
+  }
+
+  /** Load the set of dismissed signal IDs (cached in memory after first load). */
+  async getDismissedIds(): Promise<Set<string>> {
+    if (this.cachedDismissedIds) return this.cachedDismissedIds;
+    try {
+      const raw = await readFile(this.dismissedPath, 'utf-8');
+      const ids = JSON.parse(raw) as string[];
+      this.cachedDismissedIds = new Set(ids);
+    } catch {
+      this.cachedDismissedIds = new Set();
+    }
+    return this.cachedDismissedIds;
+  }
+
+  /** Mark a signal as dismissed. */
+  async dismiss(signalId: string): Promise<void> {
+    const dismissed = await this.getDismissedIds();
+    dismissed.add(signalId);
+    await mkdir(this.baseDir, { recursive: true });
+    await writeFile(this.dismissedPath, JSON.stringify([...dismissed], null, 2));
+    logger.info('Signal dismissed', { signalId });
   }
 
   /** Get the latest watermark, or null if pipeline has never run. */
