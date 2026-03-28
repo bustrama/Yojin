@@ -47,6 +47,8 @@ const cache = cacheExchange({
     TickerProfile: (data) => data.ticker as string,
     TickerProfileBrief: () => null, // embedded — nested under TickerProfile
     SentimentPoint: () => null, // embedded — nested under TickerProfileBrief
+    PricePoint: () => null, // embedded — nested under TickerPriceHistory
+    TickerPriceHistory: () => null, // embedded — keyed by ticker in array
     SessionSummary: (data) => data.id as string,
     SessionDetail: (data) => data.id as string,
   },

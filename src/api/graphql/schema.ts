@@ -194,6 +194,20 @@ export const typeDefs = /* GraphQL */ `
     timestamp: String!
   }
 
+  type PricePoint {
+    date: String!
+    open: Float!
+    high: Float!
+    low: Float!
+    close: Float!
+    volume: Float!
+  }
+
+  type TickerPriceHistory {
+    ticker: String!
+    history: [PricePoint!]!
+  }
+
   type Article {
     id: ID!
     title: String!
@@ -966,6 +980,7 @@ export const typeDefs = /* GraphQL */ `
     alerts(status: AlertStatus): [Alert!]!
     news(symbol: String, limit: Int): [Article!]!
     quote(symbol: String!): Quote
+    priceHistory(tickers: [String!]!, range: String): [TickerPriceHistory!]!
     listConnections: [Connection!]!
     detectAvailableTiers(platform: String!): [TierAvailability!]!
     listDataSources: [DataSource!]!

@@ -57,7 +57,7 @@ import {
   onPriceMoveSubscription,
   onWorkflowProgressSubscription,
 } from './resolvers/live.js';
-import { newsQuery, quoteQuery } from './resolvers/market.js';
+import { newsQuery, priceHistoryQuery, quoteQuery } from './resolvers/market.js';
 import {
   briefingConfigQuery,
   completeMagicLinkMutation,
@@ -116,6 +116,7 @@ const schema = createSchema({
       alerts: alertsQuery,
       news: newsQuery,
       quote: quoteQuery,
+      priceHistory: priceHistoryQuery,
       listDataSources: listDataSourcesResolver,
       checkDataSourceHealth: checkDataSourceHealthResolver,
       checkCliCommands: checkCliCommandsResolver,
