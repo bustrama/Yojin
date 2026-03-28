@@ -144,6 +144,22 @@ export const QUOTE_QUERY = gql`
   }
 `;
 
+export const PRICE_HISTORY_QUERY = gql`
+  query PriceHistory($tickers: [String!]!, $range: String) {
+    priceHistory(tickers: $tickers, range: $range) {
+      ticker
+      history {
+        date
+        open
+        high
+        low
+        close
+        volume
+      }
+    }
+  }
+`;
+
 export const NEWS_QUERY = gql`
   query News($symbol: String, $limit: Int) {
     news(symbol: $symbol, limit: $limit) {

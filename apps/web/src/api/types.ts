@@ -204,6 +204,29 @@ export interface Quote {
   timestamp: string;
 }
 
+export interface PricePoint {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface TickerPriceHistory {
+  ticker: string;
+  history: PricePoint[];
+}
+
+export interface PriceHistoryQueryResult {
+  priceHistory: TickerPriceHistory[];
+}
+
+export interface PriceHistoryQueryVariables {
+  tickers: string[];
+  range?: string;
+}
+
 export interface Article {
   id: string;
   title: string;

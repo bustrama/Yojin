@@ -47,6 +47,7 @@ globs: ["**/*.ts"]
 - **Distinguish loading from empty.** When a query result is `undefined`, check `result.fetching` before showing the no-data fallback. Users should see a loading indicator during fetch, not a misleading "no data yet" CTA.
 - **Memoize query variables.** `useQuery` variables that contain computed values (e.g. `new Date().toISOString()`) must be wrapped in `useMemo`. An unstable reference makes urql treat every render as a new query, causing an infinite fetch loop. If a variable changes per-millisecond (timestamps, UUIDs), it **will** loop.
 - **Register every GraphQL type in graphcache keys.** When adding a new type to the schema, add a key resolver in `src/lib/graphql.ts`. Types that appear as nested objects on multiple parents (e.g. `SignalSource` shared across many `Signal` entries) must use `() => null` (embedded, not normalized) — otherwise graphcache merges unrelated parents into one cache entry.
+- **No business logic in the UI.** React components must not derive, compute, or transform domain values (e.g. `quantity * price`, PnL calculations, percentage changes). All computed values must come from the backend via GraphQL queries, mutations, or subscriptions. The UI is a render layer — it formats and displays what the BE returns, nothing more.
 
 ## Imports
 - Group imports: node builtins, external packages, internal modules.

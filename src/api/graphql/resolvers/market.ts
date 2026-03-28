@@ -134,6 +134,51 @@ export async function quoteQuery(_parent: unknown, args: { symbol: string }): Pr
   return stubQuotes[sym] ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Price history
+// ---------------------------------------------------------------------------
+
+interface PricePoint {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface TickerPriceHistory {
+  ticker: string;
+  history: PricePoint[];
+}
+
+const PRICE_HISTORY_QUERY = `
+  query PriceHistory($tickers: [String!]!, $range: String) {
+    priceHistory(tickers: $tickers, range: $range) {
+      ticker
+      history { date open high low close volume }
+    }
+  }
+`;
+
+export async function priceHistoryQuery(
+  _parent: unknown,
+  args: { tickers: string[]; range?: string },
+): Promise<TickerPriceHistory[]> {
+  if (!jintelClient) return [];
+
+  try {
+    const data = await jintelClient.request<{ priceHistory: TickerPriceHistory[] }>(PRICE_HISTORY_QUERY, {
+      tickers: args.tickers.map((t) => t.toUpperCase()),
+      range: args.range ?? '1y',
+    });
+    return data?.priceHistory ?? [];
+  } catch (err) {
+    log.warn('Jintel priceHistory failed', { tickers: args.tickers, error: String(err) });
+    return [];
+  }
+}
+
 export function newsQuery(_parent: unknown, args: { symbol?: string; limit?: number }): Article[] {
   let articles = stubArticles;
   if (args.symbol) {
