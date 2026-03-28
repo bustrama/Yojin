@@ -5,7 +5,7 @@
  * empty state when no snapshots have been imported yet.
  */
 
-import type { JintelClient, MarketQuote } from '@yojinhq/jintel-client';
+import type { JintelClient, MarketQuote, TickerPriceHistory } from '@yojinhq/jintel-client';
 
 import { getLogger } from '../../../logging/index.js';
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
@@ -34,27 +34,11 @@ export function setPortfolioJintelClient(c: JintelClient | undefined): void {
 // Live quote enrichment — batch-fetch from Jintel and merge onto positions
 // ---------------------------------------------------------------------------
 
-/** Build a synthetic sparkline (~20 points) from OHLC quote data. */
-function buildSyntheticSparkline(quote: MarketQuote): number[] {
-  const price = quote.price;
-  const o = quote.open ?? price;
-  const h = quote.high ?? Math.max(price, o);
-  const l = quote.low ?? Math.min(price, o);
-  const start = quote.previousClose ?? o;
-
-  // If price rose, show dip-then-rise; if fell, rise-then-dip
-  const anchors = price >= o ? [start, o, l, h, price] : [start, o, h, l, price];
-
-  const points: number[] = [];
-  const perSegment = 5;
-  for (let s = 0; s < anchors.length - 1; s++) {
-    const from = anchors[s];
-    const to = anchors[s + 1];
-    for (let i = 0; i < perSegment; i++) {
-      points.push(from + (to - from) * (i / perSegment));
-    }
-  }
-  points.push(anchors[anchors.length - 1]);
+/** Build a sparkline from real price history closing prices, appending the live price. */
+function buildSparkline(history: TickerPriceHistory, livePrice: number): number[] {
+  const points = history.history.map((p) => p.close);
+  // Append today's live price so the sparkline extends to "now"
+  points.push(livePrice);
   return points;
 }
 
@@ -76,10 +60,17 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
   const symbols = [...new Set(snapshot.positions.map((p) => p.symbol))];
   log.debug('Fetching live quotes', { symbols });
 
-  const result = await jintelClient.quotes(symbols).catch((err: unknown) => {
-    log.warn('Jintel quotes call failed', { error: String(err) });
-    return undefined;
-  });
+  // Fetch quotes and 5-day price history in parallel
+  const [result, historyResult] = await Promise.all([
+    jintelClient.quotes(symbols).catch((err: unknown) => {
+      log.warn('Jintel quotes call failed', { error: String(err) });
+      return undefined;
+    }),
+    jintelClient.priceHistory(symbols, '1m').catch((err: unknown) => {
+      log.warn('Jintel priceHistory call failed', { error: String(err) });
+      return undefined;
+    }),
+  ]);
 
   if (!result?.success) {
     log.warn('Jintel quotes returned non-success', {
@@ -99,6 +90,15 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
 
   const quoteMap = new Map<string, MarketQuote>(validQuotes.map((q) => [q.ticker, q]));
 
+  // Build price history map for sparklines
+  const historyMap = new Map<string, TickerPriceHistory>();
+  if (historyResult?.success) {
+    for (const h of historyResult.data) {
+      historyMap.set(h.ticker, h);
+    }
+    log.debug('Jintel priceHistory received', { tickers: [...historyMap.keys()] });
+  }
+
   const positions: Position[] = snapshot.positions.map((pos) => {
     const quote = quoteMap.get(pos.symbol);
     if (!quote) {
@@ -111,6 +111,10 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
     const hasCostBasis = pos.costBasis > 0;
     const totalCost = hasCostBasis ? pos.costBasis * pos.quantity : 0;
 
+    // Real sparkline from price history; undefined if no history available
+    const priceHist = historyMap.get(pos.symbol);
+    const sparkline = priceHist && priceHist.history.length > 0 ? buildSparkline(priceHist, currentPrice) : undefined;
+
     return {
       ...pos,
       currentPrice,
@@ -119,7 +123,7 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
       dayChangePercent: quote.changePercent,
       unrealizedPnl: hasCostBasis ? marketValue - totalCost : 0,
       unrealizedPnlPercent: hasCostBasis ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
-      sparkline: buildSyntheticSparkline(quote),
+      sparkline,
     };
   });
 
@@ -171,7 +175,7 @@ export async function portfolioQuery(): Promise<PortfolioSnapshot> {
   return enrichWithLiveQuotes(snapshot);
 }
 
-export async function portfolioHistoryQuery(): Promise<PortfolioHistoryPoint[]> {
+export async function portfolioHistoryQuery(days?: number | null): Promise<PortfolioHistoryPoint[]> {
   if (!snapshotStore) return [];
   const snapshots = await snapshotStore.getAll();
   if (snapshots.length === 0) return [];
@@ -204,9 +208,25 @@ export async function portfolioHistoryQuery(): Promise<PortfolioHistoryPoint[]> 
     }
   }
 
-  // Use stored totalValue for each historical snapshot — this preserves
-  // the actual portfolio value at the time of capture.
-  const history: PortfolioHistoryPoint[] = deduped.map((s) => ({
+  // Apply days filter if provided
+  let filtered = deduped;
+  if (days != null && days > 0) {
+    const latestTs = new Date(deduped[deduped.length - 1].timestamp).getTime();
+    const cutoff = latestTs - days * 24 * 60 * 60 * 1000;
+    filtered = deduped.filter((s) => new Date(s.timestamp).getTime() >= cutoff);
+  }
+
+  // Deduplicate to one point per day (keep last snapshot per day)
+  const dayDedup = new Map<string, PortfolioSnapshot>();
+  for (const s of filtered) {
+    const day = s.timestamp.slice(0, 10);
+    dayDedup.set(day, s);
+  }
+  const final = [...dayDedup.values()].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+
+  const history: PortfolioHistoryPoint[] = final.map((s) => ({
     timestamp: s.timestamp,
     totalValue: s.totalValue,
     totalCost: s.totalCost,
@@ -214,18 +234,26 @@ export async function portfolioHistoryQuery(): Promise<PortfolioHistoryPoint[]> 
     totalPnlPercent: s.totalPnlPercent,
   }));
 
-  // Append a live-priced data point so the chart's trailing edge
+  // Replace the trailing point with live-priced data so the chart's edge
   // matches the Portfolio Value card (which uses enrichWithLiveQuotes).
-  const latest = deduped[deduped.length - 1];
-  const liveSnapshot = await enrichWithLiveQuotes(latest);
-  if (liveSnapshot.totalValue !== latest.totalValue) {
-    history.push({
+  if (final.length > 0) {
+    const latest = final[final.length - 1];
+    const liveSnapshot = await enrichWithLiveQuotes(latest);
+    const livePoint: PortfolioHistoryPoint = {
       timestamp: new Date().toISOString(),
       totalValue: liveSnapshot.totalValue,
       totalCost: liveSnapshot.totalCost,
       totalPnl: liveSnapshot.totalPnl,
       totalPnlPercent: liveSnapshot.totalPnlPercent,
-    });
+    };
+    // Replace last entry if same day, otherwise append
+    const liveDay = livePoint.timestamp.slice(0, 10);
+    const lastDay = history[history.length - 1]?.timestamp.slice(0, 10);
+    if (liveDay === lastDay) {
+      history[history.length - 1] = livePoint;
+    } else {
+      history.push(livePoint);
+    }
   }
 
   return history;
@@ -402,7 +430,8 @@ export async function refreshPositionsMutation(
 
 export const portfolioSnapshotFieldResolvers = {
   /** Nested: historical portfolio values (deduplicated by day, latest live-priced). */
-  history: (): Promise<PortfolioHistoryPoint[]> => portfolioHistoryQuery(),
+  history: (_parent: PortfolioSnapshot, args: { days?: number | null }): Promise<PortfolioHistoryPoint[]> =>
+    portfolioHistoryQuery(args.days),
 
   /** Nested: sector allocation from the live-priced positions. */
   sectorExposure: (parent: PortfolioSnapshot): SectorWeight[] => {

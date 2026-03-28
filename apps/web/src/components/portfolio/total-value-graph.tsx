@@ -1,67 +1,101 @@
-import { useMemo } from 'react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { tooltipStyle } from '../../lib/chart-utils';
+import { useEffect, useRef, useMemo } from 'react';
+import { createChart, type IChartApi, type ISeriesApi, type Time, ColorType } from 'lightweight-charts';
 import { CardEmptyState } from '../common/card-empty-state';
-import { getScaleDays, type TimeScale } from '../../lib/time-scales';
 import type { PortfolioHistoryPoint } from '../../api/types';
 
 interface TotalValueGraphProps {
-  scale: TimeScale;
   history: PortfolioHistoryPoint[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts tooltip payload type
-function ValueTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.[0]) return null;
-  const value = payload[0].value as number;
-  const formatted = `$${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-
-  return (
-    <div style={tooltipStyle}>
-      <p style={{ margin: 0, padding: '4px 8px' }}>
-        <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
-        {' · '}
-        <span style={{ fontWeight: 600 }}>{formatted}</span>
-      </p>
-    </div>
-  );
+/** Convert history points to chart-ready { date, value } using UTC dates (matches BE day-dedup). */
+function toChartData(history: PortfolioHistoryPoint[]): { date: string; value: number }[] {
+  return history.map((p) => ({
+    date: new Date(p.timestamp).toISOString().slice(0, 10),
+    value: p.totalValue,
+  }));
 }
 
-function ensureMinPoints(points: { date: string; value: number }[]): { date: string; value: number }[] {
-  if (points.length >= 2) return points;
-  if (points.length === 0) return [];
-  const only = points[0];
-  return [{ date: only.date, value: only.value }, only];
-}
+export function TotalValueGraph({ history }: TotalValueGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
+  const chartData = useMemo(() => toChartData(history), [history]);
 
-export function TotalValueGraph({ scale, history }: TotalValueGraphProps) {
-  const chartData = useMemo(() => {
-    if (history.length === 0) return [];
+  // Create chart once on mount
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    const days = getScaleDays(scale);
-    const latest = new Date(history[history.length - 1].timestamp).getTime();
-    const cutoff = latest - days * 24 * 60 * 60 * 1000;
-    const filtered = history.filter((p) => new Date(p.timestamp).getTime() >= cutoff);
+    const { width, height } = container.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
 
-    // When all points are from the same day, show time labels (intraday view).
-    // Otherwise show date labels (multi-day view).
-    const firstDay = filtered[0].timestamp.slice(0, 10);
-    const allSameDay = filtered.every((p) => p.timestamp.slice(0, 10) === firstDay);
-
-    const mapped = filtered.map((p) => {
-      const ts = new Date(p.timestamp);
-      return {
-        date: allSameDay
-          ? ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-          : ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        value: p.totalValue,
-      };
+    const chart = createChart(container, {
+      width,
+      height,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#737373',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        fontSize: 10,
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: '#3d3d3d', style: 4 },
+      },
+      crosshair: {
+        vertLine: { color: '#737373', labelBackgroundColor: '#737373' },
+        horzLine: { color: '#737373', labelBackgroundColor: '#737373' },
+      },
+      rightPriceScale: { borderVisible: false },
+      timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
+      handleScroll: { vertTouchDrag: false },
     });
 
-    return ensureMinPoints(mapped);
-  }, [history, scale]);
+    chartRef.current = chart;
 
-  const baselineValue = chartData[0]?.value ?? 0;
+    seriesRef.current = chart.addAreaSeries({
+      lineWidth: 2,
+      crosshairMarkerRadius: 4,
+      priceFormat: {
+        type: 'custom',
+        formatter: (p: number) => `$${p.toLocaleString('en-US', { minimumFractionDigits: 0 })}`,
+      },
+    });
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width: w, height: h } = entry.contentRect;
+        if (w > 0 && h > 0) chart.applyOptions({ width: w, height: h });
+      }
+    });
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, []);
+
+  // Update series data when chartData changes
+  useEffect(() => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (!series || !chart || chartData.length === 0) return;
+
+    const isUp = chartData.length >= 2 && chartData[chartData.length - 1].value >= chartData[0].value;
+    const lineColor = isUp ? '#5bb98c' : '#ff5a5e';
+
+    series.applyOptions({
+      lineColor,
+      topColor: isUp ? 'rgba(91, 185, 140, 0.3)' : 'rgba(255, 90, 94, 0.3)',
+      bottomColor: isUp ? 'rgba(91, 185, 140, 0)' : 'rgba(255, 90, 94, 0)',
+    });
+
+    series.setData(chartData.map((d) => ({ time: d.date as Time, value: d.value })));
+    chart.timeScale().fitContent();
+  }, [chartData]);
 
   if (chartData.length === 0) {
     return (
@@ -81,33 +115,5 @@ export function TotalValueGraph({ scale, history }: TotalValueGraphProps) {
     );
   }
 
-  const values = chartData.map((d) => d.value);
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
-  const pad = Math.max(5, (maxVal - minVal) * 0.1 || maxVal * 0.1);
-
-  return (
-    <ResponsiveContainer width="100%" height="100%" minHeight={1}>
-      <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-        <defs>
-          <linearGradient id="totalValueGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--color-accent-primary)" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="var(--color-accent-primary)" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <XAxis dataKey="date" hide />
-        <YAxis hide domain={[Math.max(0, minVal - pad), maxVal + pad]} />
-        <ReferenceLine y={baselineValue} stroke="var(--color-text-muted)" strokeDasharray="4 4" strokeOpacity={0.6} />
-        <Tooltip content={<ValueTooltip />} />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke="var(--color-accent-primary)"
-          strokeWidth={2}
-          fill="url(#totalValueGrad)"
-          dot={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
+  return <div ref={containerRef} className="h-full w-full" />;
 }

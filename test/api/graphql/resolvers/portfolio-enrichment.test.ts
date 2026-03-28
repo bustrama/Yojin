@@ -97,6 +97,27 @@ function createQuoteMockClient(
   return {
     enrichEntity: enrichFn ?? vi.fn(),
     quotes: quotesFn ?? vi.fn().mockResolvedValue({ success: true, data: makeQuotes() }),
+    priceHistory: vi.fn().mockResolvedValue({
+      success: true,
+      data: [
+        {
+          ticker: 'AAPL',
+          history: [
+            { date: '2026-03-20', open: 185, high: 187, low: 184, close: 186, volume: 40_000_000 },
+            { date: '2026-03-21', open: 186, high: 189, low: 185, close: 188, volume: 42_000_000 },
+            { date: '2026-03-24', open: 188, high: 191, low: 187, close: 190, volume: 50_000_000 },
+          ],
+        },
+        {
+          ticker: 'GOOG',
+          history: [
+            { date: '2026-03-20', open: 150, high: 153, low: 149, close: 152, volume: 18_000_000 },
+            { date: '2026-03-21', open: 152, high: 156, low: 151, close: 155, volume: 19_000_000 },
+            { date: '2026-03-24', open: 155, high: 157, low: 153, close: 155, volume: 20_000_000 },
+          ],
+        },
+      ],
+    }),
   } as unknown as JintelClient;
 }
 

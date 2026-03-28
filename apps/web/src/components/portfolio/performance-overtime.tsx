@@ -1,115 +1,105 @@
-import { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { tooltipStyle } from '../../lib/chart-utils';
-import { getScaleDays, type TimeScale } from '../../lib/time-scales';
+import { useEffect, useRef, useMemo } from 'react';
+import { createChart, type IChartApi, type ISeriesApi, type Time, ColorType } from 'lightweight-charts';
 import type { PortfolioHistoryPoint } from '../../api/types';
 
-const GREEN = '#4ade80';
-const RED = '#f87171';
-
-interface PnlDataPoint {
-  date: string;
-  pnl: number;
-}
-
 interface PerformanceOvertimeProps {
-  scale: TimeScale;
   history: PortfolioHistoryPoint[];
 }
 
-/** Format a Date to "Mon DD" locale string. */
-function fmtDate(d: Date): string {
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+/** Convert history points to chart-ready { date, pnl } using UTC dates (matches BE day-dedup). */
+function toChartData(history: PortfolioHistoryPoint[]): { date: string; pnl: number }[] {
+  return history.map((h) => ({
+    date: new Date(h.timestamp).toISOString().slice(0, 10),
+    pnl: h.totalPnl,
+  }));
 }
 
-/** Local-timezone date key (YYYY-MM-DD) — avoids UTC/local mismatch. */
-function toLocalDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+export function PerformanceOvertime({ history }: PerformanceOvertimeProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const data = useMemo(() => toChartData(history), [history]);
 
-/**
- * Derive daily P&L from portfolio history snapshots.
- *
- * Builds a lookup of snapshot totalValue by local date (YYYY-MM-DD), then
- * walks every calendar day in the time-scale window. Each day's P&L is the
- * delta from the previous known snapshot value. Days without snapshot changes
- * get pnl = 0, which keeps the BarChart populated with enough data points
- * for stable tooltip behaviour.
- */
-function derivePnlFromHistory(history: PortfolioHistoryPoint[], scale: TimeScale): PnlDataPoint[] {
-  if (history.length < 2) return [];
+  // Create chart once on mount
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-  const days = getScaleDays(scale);
-  const latestTs = new Date(history[history.length - 1].timestamp);
-  const cutoff = new Date(latestTs.getTime() - days * 24 * 60 * 60 * 1000);
+    const { width, height } = container.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
 
-  // Build local-date → totalValue map (latest snapshot per day wins)
-  const valueByDay = new Map<string, number>();
-  for (const h of history) {
-    const day = toLocalDateKey(new Date(h.timestamp));
-    valueByDay.set(day, h.totalValue);
-  }
+    const chart = createChart(container, {
+      width,
+      height,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#737373',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        fontSize: 10,
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: '#3d3d3d', style: 4 },
+      },
+      crosshair: {
+        vertLine: { color: '#737373', labelBackgroundColor: '#737373' },
+        horzLine: { color: '#737373', labelBackgroundColor: '#737373' },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+      },
+      timeScale: {
+        borderVisible: false,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+      },
+      handleScroll: { vertTouchDrag: false },
+    });
 
-  // Walk every calendar day from cutoff to latest
-  const points: PnlDataPoint[] = [];
-  const cursor = new Date(cutoff);
-  cursor.setHours(0, 0, 0, 0);
-  const end = new Date(latestTs);
-  end.setHours(23, 59, 59, 999);
+    chartRef.current = chart;
 
-  let prevValue: number | undefined;
+    seriesRef.current = chart.addHistogramSeries({
+      priceFormat: {
+        type: 'custom',
+        formatter: (p: number) => {
+          const sign = p >= 0 ? '+' : '-';
+          return `${sign}$${Math.abs(p).toLocaleString('en-US')}`;
+        },
+      },
+    });
 
-  // Find the most recent snapshot value at or before cutoff for the starting baseline
-  for (const h of history) {
-    const t = new Date(h.timestamp);
-    if (t <= cutoff) {
-      prevValue = h.totalValue;
-    }
-  }
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width: w, height: h } = entry.contentRect;
+        if (w > 0 && h > 0) chart.applyOptions({ width: w, height: h });
+      }
+    });
+    observer.observe(container);
 
-  while (cursor <= end) {
-    const dayKey = toLocalDateKey(cursor);
-    const value = valueByDay.get(dayKey);
+    return () => {
+      observer.disconnect();
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, []);
 
-    if (value !== undefined) {
-      const pnl = prevValue !== undefined ? Math.round((value - prevValue) * 100) / 100 : 0;
-      points.push({ date: fmtDate(cursor), pnl });
-      prevValue = value;
-    } else if (prevValue !== undefined) {
-      // No snapshot on this day — zero change
-      points.push({ date: fmtDate(cursor), pnl: 0 });
-    }
+  // Update series data when data changes
+  useEffect(() => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (!series || !chart || data.length === 0) return;
 
-    cursor.setDate(cursor.getDate() + 1);
-  }
+    series.setData(
+      data.map((d) => ({
+        time: d.date as Time,
+        value: d.pnl,
+        color: d.pnl >= 0 ? 'rgba(91, 185, 140, 0.85)' : 'rgba(255, 90, 94, 0.85)',
+      })),
+    );
 
-  return points;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recharts tooltip payload type
-function PnlTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.[0]) return null;
-  const value = payload[0].value as number;
-  if (value === 0) return null;
-  const isPositive = value >= 0;
-  const formatted = `${isPositive ? '+' : '-'}$${Math.abs(value).toLocaleString('en-US')}`;
-
-  return (
-    <div style={tooltipStyle}>
-      <p style={{ margin: 0, padding: '4px 8px' }}>
-        <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
-        {' · '}
-        <span style={{ color: isPositive ? GREEN : RED, fontWeight: 600 }}>{formatted}</span>
-      </p>
-    </div>
-  );
-}
-
-export function PerformanceOvertime({ scale, history }: PerformanceOvertimeProps) {
-  const data = useMemo(() => derivePnlFromHistory(history, scale), [history, scale]);
+    chart.timeScale().fitContent();
+  }, [data]);
 
   if (data.length === 0) {
     return (
@@ -119,18 +109,5 @@ export function PerformanceOvertime({ scale, history }: PerformanceOvertimeProps
     );
   }
 
-  return (
-    <ResponsiveContainer width="100%" height="100%" minHeight={1}>
-      <BarChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-        <XAxis dataKey="date" hide />
-        <YAxis hide />
-        <Tooltip content={<PnlTooltip />} cursor={{ fill: 'var(--color-bg-hover)', opacity: 0.5 }} />
-        <Bar dataKey="pnl" radius={[2, 2, 0, 0]}>
-          {data.map((entry, index) => (
-            <Cell key={index} fill={entry.pnl >= 0 ? GREEN : RED} fillOpacity={entry.pnl === 0 ? 0 : 0.85} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
+  return <div ref={containerRef} className="h-full w-full" />;
 }

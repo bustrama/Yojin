@@ -1,6 +1,4 @@
-import { useMemo } from 'react';
-import { Link } from 'react-router';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { Link, useNavigate } from 'react-router';
 import { cn } from '../../lib/utils';
 import { SymbolLogo } from '../common/symbol-logo';
 import { usePortfolio } from '../../api';
@@ -21,9 +19,20 @@ function formatPercent(n: number): string {
   return `${Math.abs(n).toFixed(2)}%`;
 }
 
-/** Inline sparkline area chart — green when up, red when down, muted when flat. */
-function Sparkline({ symbol, data, dayChangePercent }: { symbol: string; data: number[]; dayChangePercent: number }) {
-  const chartData = useMemo(() => data.map((v) => ({ v })), [data]);
+/** Inline sparkline — sharp linear segments like real trading platforms. */
+function Sparkline({ data, dayChangePercent }: { symbol: string; data: number[]; dayChangePercent: number }) {
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * 120;
+      const y = 32 - ((v - min) / range) * 24 - 4; // 4px padding for labels
+      return `${x},${y}`;
+    })
+    .join(' ');
+
   const color =
     dayChangePercent > 0
       ? 'var(--color-success)'
@@ -32,26 +41,12 @@ function Sparkline({ symbol, data, dayChangePercent }: { symbol: string; data: n
         : 'var(--color-text-muted)';
 
   return (
-    <div className="pointer-events-none h-8 w-[100px]">
-      <ResponsiveContainer width="100%" height="100%" minHeight={1}>
-        <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
-          <defs>
-            <linearGradient id={`positions-preview-spark-${symbol}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
-              <stop offset="100%" stopColor={color} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <Area
-            type="monotone"
-            dataKey="v"
-            stroke={color}
-            strokeWidth={1.5}
-            fill={`url(#positions-preview-spark-${symbol})`}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div className="pointer-events-none flex items-center gap-1">
+      <div className="h-7 w-[80px]">
+        <svg viewBox="0 0 120 32" className="h-full w-full" preserveAspectRatio="none">
+          <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      </div>
     </div>
   );
 }
@@ -61,6 +56,7 @@ const TH = 'whitespace-nowrap px-3 py-2 text-2xs font-medium uppercase tracking-
 export default function PositionsPreview() {
   const [{ data: portfolioData, fetching, error }] = usePortfolio();
   const data = portfolioData?.portfolio;
+  const navigate = useNavigate();
 
   const viewAllLink = (
     <Link to="/portfolio" className="text-2xs text-accent-primary transition-colors hover:text-accent-primary/80">
@@ -108,7 +104,7 @@ export default function PositionsPreview() {
           <thead className="sticky top-0 z-10 bg-bg-card">
             <tr className="border-b border-border">
               <th className={TH}>Asset</th>
-              <th className={cn(TH, 'w-[100px]')} />
+              <th className={cn(TH, 'w-[80px]')} />
               <th className={cn(TH, 'text-right')}>Price Today</th>
               <th className={cn(TH, 'text-right')}>Change $</th>
               <th className={cn(TH, 'text-right')}>Change %</th>
@@ -124,7 +120,11 @@ export default function PositionsPreview() {
               const arrow = isUp ? '\u25B2' : isDown ? '\u25BC' : '';
 
               return (
-                <tr key={`${pos.symbol}:${pos.platform}`} className="border-b border-border last:border-b-0">
+                <tr
+                  key={`${pos.symbol}:${pos.platform}`}
+                  className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-bg-hover"
+                  onClick={() => navigate(`/portfolio/${pos.symbol.toLowerCase()}`)}
+                >
                   {/* Asset: logo + symbol + name */}
                   <td className="px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2">
