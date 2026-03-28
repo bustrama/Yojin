@@ -130,10 +130,10 @@ describe('triagePositions', () => {
     expect(result.hot.some((b) => b.symbol === 'ACTIVE')).toBe(true);
   });
 
-  it('scores sentiment divergence — flip from BUY to BEARISH signals rank higher', () => {
+  it('scores sentiment divergence — flip from BULLISH to BEARISH signals rank higher', () => {
     const previous = makePreviousReport([
-      { symbol: 'FLIP', rating: 'BUY' },
-      { symbol: 'SAME', rating: 'HOLD' },
+      { symbol: 'FLIP', rating: 'BULLISH' },
+      { symbol: 'SAME', rating: 'NEUTRAL' },
     ]);
 
     const padded = [
@@ -148,8 +148,8 @@ describe('triagePositions', () => {
 
   it('cold positions carry previous insights', () => {
     const previous = makePreviousReport([
-      { symbol: 'COLD1', rating: 'HOLD' },
-      { symbol: 'COLD2', rating: 'SELL' },
+      { symbol: 'COLD1', rating: 'NEUTRAL' },
+      { symbol: 'COLD2', rating: 'BEARISH' },
     ]);
 
     const briefs = [
@@ -165,10 +165,10 @@ describe('triagePositions', () => {
 
     for (const cold of result.cold) {
       if (cold.brief.symbol === 'COLD1') {
-        expect(cold.previousInsight?.rating).toBe('HOLD');
+        expect(cold.previousInsight?.rating).toBe('NEUTRAL');
       }
       if (cold.brief.symbol === 'COLD2') {
-        expect(cold.previousInsight?.rating).toBe('SELL');
+        expect(cold.previousInsight?.rating).toBe('BEARISH');
       }
     }
   });

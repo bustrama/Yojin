@@ -124,8 +124,8 @@ function AgentIcon() {
 /* ── Build feed items from insight report ────────────────────────── */
 
 function ratingToSentiment(rating: string): 'bullish' | 'bearish' | 'neutral' {
-  if (rating === 'STRONG_BUY' || rating === 'BUY') return 'bullish';
-  if (rating === 'STRONG_SELL' || rating === 'SELL') return 'bearish';
+  if (rating === 'VERY_BULLISH' || rating === 'BULLISH') return 'bullish';
+  if (rating === 'VERY_BEARISH' || rating === 'BEARISH') return 'bearish';
   return 'neutral';
 }
 
@@ -205,19 +205,19 @@ function buildFeedItems(report: {
 
   // Insights from position ratings (only non-HOLD)
   for (const pos of report.positions) {
-    if (pos.rating === 'HOLD' && pos.conviction < 0.5) continue;
+    if (pos.rating === 'NEUTRAL' && pos.conviction < 0.5) continue;
     const signals = (pos.keySignals ?? []).map((s) => ({ signalId: s.signalId, title: s.title, url: s.url }));
     items.push({
       category: 'Insight',
       source: 'Research Analyst',
       time: ts,
-      title: `${pos.symbol} — ${pos.rating.replace('_', ' ')}`,
+      title: `${pos.symbol} — ${pos.rating.replace('_', ' ').replace('VERY ', 'Very ')}`,
       description: pos.thesis,
       preview: pos.thesis,
       signals,
       detail: {
         keyPoints: [
-          `Rating: ${pos.rating.replace('_', ' ')} (${Math.round(pos.conviction * 100)}% conviction)`,
+          `Sentiment: ${pos.rating.replace('_', ' ')} (${Math.round(pos.conviction * 100)}% conviction)`,
           ...pos.risks.slice(0, 2),
           ...pos.opportunities.slice(0, 2),
         ],

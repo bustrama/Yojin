@@ -15,7 +15,7 @@ function makeReport(overrides?: Partial<InsightReport>): InsightReport {
       {
         symbol: 'AAPL',
         name: 'Apple Inc.',
-        rating: 'BUY',
+        rating: 'BULLISH',
         conviction: 0.8,
         thesis: 'Strong earnings momentum with expanding services revenue.',
         keySignals: [

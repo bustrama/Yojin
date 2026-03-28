@@ -17,7 +17,7 @@ import { SignalOutputTypeSchema } from '../signals/types.js';
 // Enums
 // ---------------------------------------------------------------------------
 
-export const InsightRatingSchema = z.enum(['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL']);
+export const InsightRatingSchema = z.enum(['VERY_BULLISH', 'BULLISH', 'NEUTRAL', 'BEARISH', 'VERY_BEARISH']);
 export type InsightRating = z.infer<typeof InsightRatingSchema>;
 
 export const PortfolioHealthSchema = z.enum(['STRONG', 'HEALTHY', 'CAUTIOUS', 'WEAK', 'CRITICAL']);

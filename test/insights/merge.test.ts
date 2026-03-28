@@ -14,7 +14,7 @@ function makeInsight(symbol: string, overrides?: Partial<PositionInsight>): Posi
   return {
     symbol,
     name: symbol,
-    rating: 'HOLD',
+    rating: 'NEUTRAL',
     conviction: 0.7,
     thesis: `Thesis for ${symbol}`,
     keySignals: [],
@@ -105,8 +105,8 @@ describe('mergeColdPositions', () => {
     await store.save(report);
 
     const cold: ColdPosition[] = [
-      { brief: makeBrief('COLD1'), previousInsight: makeInsight('COLD1', { rating: 'BUY' }) },
-      { brief: makeBrief('COLD2'), previousInsight: makeInsight('COLD2', { rating: 'SELL' }) },
+      { brief: makeBrief('COLD1'), previousInsight: makeInsight('COLD1', { rating: 'BULLISH' }) },
+      { brief: makeBrief('COLD2'), previousInsight: makeInsight('COLD2', { rating: 'BEARISH' }) },
     ];
 
     const merged = await mergeColdPositions(store, cold);
@@ -122,11 +122,11 @@ describe('mergeColdPositions', () => {
     // Cold positions are marked
     const cold1 = merged!.positions.find((p) => p.symbol === 'COLD1');
     expect(cold1?.carriedForward).toBe(true);
-    expect(cold1?.rating).toBe('BUY');
+    expect(cold1?.rating).toBe('BULLISH');
 
     const cold2 = merged!.positions.find((p) => p.symbol === 'COLD2');
     expect(cold2?.carriedForward).toBe(true);
-    expect(cold2?.rating).toBe('SELL');
+    expect(cold2?.rating).toBe('BEARISH');
   });
 
   it('skips cold positions already in the report', async () => {
@@ -135,7 +135,7 @@ describe('mergeColdPositions', () => {
 
     // AAPL is already in the report — should not be duplicated
     const cold: ColdPosition[] = [
-      { brief: makeBrief('AAPL'), previousInsight: makeInsight('AAPL', { rating: 'STRONG_BUY' }) },
+      { brief: makeBrief('AAPL'), previousInsight: makeInsight('AAPL', { rating: 'VERY_BULLISH' }) },
       { brief: makeBrief('GOOG'), previousInsight: makeInsight('GOOG') },
     ];
 

@@ -99,19 +99,19 @@ const sentimentVariant: Record<string, BadgeVariant> = {
 };
 
 const ratingVariant: Record<InsightRating, BadgeVariant> = {
-  STRONG_BUY: 'success',
-  BUY: 'success',
-  HOLD: 'warning',
-  SELL: 'error',
-  STRONG_SELL: 'error',
+  VERY_BULLISH: 'success',
+  BULLISH: 'success',
+  NEUTRAL: 'warning',
+  BEARISH: 'error',
+  VERY_BEARISH: 'error',
 };
 
 const ratingLabel: Record<InsightRating, string> = {
-  STRONG_BUY: 'Strong Buy',
-  BUY: 'Buy',
-  HOLD: 'Hold',
-  SELL: 'Sell',
-  STRONG_SELL: 'Strong Sell',
+  VERY_BULLISH: 'Very Bullish',
+  BULLISH: 'Bullish',
+  NEUTRAL: 'Neutral',
+  BEARISH: 'Bearish',
+  VERY_BEARISH: 'Very Bearish',
 };
 
 const healthVariant: Record<PortfolioHealth, BadgeVariant> = {
@@ -161,7 +161,7 @@ const PIPELINE_STAGES: PipelineStage[] = [
     title: 'Synthesis',
     agents: ['Strategist'],
     parallel: false,
-    tasks: ['Ratings & conviction scores', 'Thesis generation', 'Action items & memory update'],
+    tasks: ['Sentiment & conviction scores', 'Outlook generation', 'Action items & memory update'],
   },
 ];
 
@@ -752,6 +752,29 @@ function PortfolioSummaryCard({ report }: { report: InsightReport }) {
         </Card>
       </div>
 
+      {(report.portfolio.macroContext || report.portfolio.sectorThemes.length > 0) && (
+        <Card className="p-4">
+          {report.portfolio.macroContext && (
+            <>
+              <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Macro Context</h3>
+              <p className="text-sm text-text-primary leading-relaxed mb-3">{report.portfolio.macroContext}</p>
+            </>
+          )}
+          {report.portfolio.sectorThemes.length > 0 && (
+            <>
+              <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Sector Themes</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {report.portfolio.sectorThemes.map((theme, i) => (
+                  <span key={i} className="px-2.5 py-1 rounded-md bg-bg-tertiary text-xs text-text-secondary">
+                    {theme}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+      )}
+
       {report.portfolio.actionItems.length > 0 && (
         <Card className="p-4">
           <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Action Items</h3>
@@ -992,11 +1015,58 @@ function PositionSignalCard({
 
       {expanded && (
         <div className="mt-3 border-t border-border pt-3 space-y-3">
-          {/* Analysis thesis */}
-          {insight && <p className="text-sm text-text-secondary leading-relaxed">{insight.thesis}</p>}
+          {/* Analysis thesis — the "why" */}
+          {insight && <p className="text-sm text-text-primary leading-relaxed">{insight.thesis}</p>}
 
-          {/* Signals */}
+          {/* Key signals from analysis — with contextualized detail */}
+          {insight && insight.keySignals.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Key Signals</h4>
+              {insight.keySignals.map((sig) => (
+                <div key={sig.signalId} className="flex items-start gap-2 rounded-lg bg-bg-secondary p-3">
+                  <Badge
+                    variant={sig.impact === 'POSITIVE' ? 'success' : sig.impact === 'NEGATIVE' ? 'error' : 'neutral'}
+                    size="xs"
+                  >
+                    {sig.impact}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-text-primary">{sig.title}</p>
+                    {sig.detail && <p className="mt-1 text-xs text-text-secondary leading-relaxed">{sig.detail}</p>}
+                    {sig.url && (
+                      <a
+                        href={sig.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-2xs text-accent-primary hover:underline"
+                      >
+                        Source
+                        <svg
+                          className="h-2.5 w-2.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={2}
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                          />
+                        </svg>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* All curated signals for this position */}
           <div className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+              All Signals ({signals.length})
+            </h4>
             {sorted.map((signal) => (
               <PositionSignalItem key={signal.id} signal={signal} onViewSignal={onViewSignal} />
             ))}

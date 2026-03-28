@@ -1,7 +1,7 @@
 /**
  * Action data model — first-class output type for the signal/intel pipeline.
  *
- * An Action represents an actionable recommendation (e.g. "BUY 10 AAPL")
+ * An Action represents an observation or proposed step (e.g. "Review AAPL position")
  * that requires human approval before execution. Actions flow through
  * PENDING -> APPROVED | REJECTED | EXPIRED.
  *
@@ -28,7 +28,7 @@ export const ActionSchema = z.object({
   id: z.string().min(1),
   signalId: z.string().optional(), // originating signal, if any
   skillId: z.string().optional(), // originating skill, if any
-  what: z.string().min(1), // plain English: "BUY 10 AAPL @ $187.50 on Alpaca"
+  what: z.string().min(1), // plain English: "Review AAPL — bearish divergence detected"
   why: z.string().min(1), // reasoning trace
   source: z.string().min(1), // skill name or "rule: ..." or "agent: strategist"
   riskContext: z.string().optional(), // guard checks summary

@@ -5,8 +5,8 @@
  * (news, risk, fundamentals, technicals, filings) into the signal pipeline.
  */
 
-import type { JintelClient } from '@yojinhq/jintel-client';
-import { buildBatchEnrichQuery } from '@yojinhq/jintel-client';
+import type { EconomicDataPoint, JintelClient, SP500DataPoint } from '@yojinhq/jintel-client';
+import { GDP, INFLATION, INTEREST_RATES, SP500_MULTIPLES, buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 
 import { riskSignalsToRaw } from './tools.js';
 import type { ExtendedEntity } from './types.js';
@@ -15,7 +15,7 @@ import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
 
 const logger = createSubsystemLogger('jintel-signal-fetcher');
 
-const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(['market', 'risk', 'regulatory', 'technicals']);
+const BATCH_ENRICH_QUERY = buildBatchEnrichQuery(['market', 'risk', 'regulatory', 'technicals', 'news']);
 const CHUNK_SIZE = 20;
 
 export interface JintelFetchResult {
@@ -245,4 +245,154 @@ function enrichmentToSignals(entity: ExtendedEntity, tickers: string[]): RawSign
   }
 
   return signals;
+}
+
+// ---------------------------------------------------------------------------
+// Macro indicators
+// ---------------------------------------------------------------------------
+
+export interface MacroFetchResult {
+  ingested: number;
+  duplicates: number;
+}
+
+/**
+ * Fetch macro economic indicators from Jintel (GDP, inflation, interest rates,
+ * S&P 500 multiples) and ingest them as MACRO-typed signals.
+ * These are broad-market signals with no specific ticker.
+ */
+export async function fetchMacroIndicators(client: JintelClient, ingestor: SignalIngestor): Promise<MacroFetchResult> {
+  const signals: RawSignalInput[] = [];
+
+  // Fire all macro queries in parallel
+  const [gdpResult, inflationResult, ratesResult, peResult, shillerResult] = await Promise.allSettled([
+    client.request<EconomicDataPoint[]>(GDP, { country: 'US', type: 'REAL' }),
+    client.request<EconomicDataPoint[]>(INFLATION, { country: 'US' }),
+    client.request<EconomicDataPoint[]>(INTEREST_RATES, { country: 'US' }),
+    client.request<SP500DataPoint[]>(SP500_MULTIPLES, { series: 'PE_MONTH' }),
+    client.request<SP500DataPoint[]>(SP500_MULTIPLES, { series: 'SHILLER_PE_MONTH' }),
+  ]);
+
+  // GDP
+  if (gdpResult.status === 'fulfilled' && gdpResult.value.length > 0) {
+    const latest = latestEconomic(gdpResult.value);
+    if (latest?.value != null) {
+      signals.push({
+        sourceId: 'jintel-macro-gdp',
+        sourceName: 'Jintel Macro',
+        sourceType: 'API',
+        reliability: 0.95,
+        title: `US Real GDP: ${latest.value.toFixed(1)}% (${latest.date})`,
+        content: `US Real GDP growth rate: ${latest.value.toFixed(2)}% as of ${latest.date}`,
+        publishedAt: toPublishedAt(latest.date),
+        type: 'MACRO',
+        confidence: 0.95,
+      });
+    }
+  } else if (gdpResult.status === 'rejected') {
+    logger.warn('Macro GDP fetch failed', { error: String(gdpResult.reason) });
+  }
+
+  // Inflation
+  if (inflationResult.status === 'fulfilled' && inflationResult.value.length > 0) {
+    const latest = latestEconomic(inflationResult.value);
+    if (latest?.value != null) {
+      signals.push({
+        sourceId: 'jintel-macro-inflation',
+        sourceName: 'Jintel Macro',
+        sourceType: 'API',
+        reliability: 0.95,
+        title: `US Inflation (CPI): ${latest.value.toFixed(1)}% (${latest.date})`,
+        content: `US Consumer Price Index: ${latest.value.toFixed(2)}% year-over-year as of ${latest.date}`,
+        publishedAt: toPublishedAt(latest.date),
+        type: 'MACRO',
+        confidence: 0.95,
+      });
+    }
+  } else if (inflationResult.status === 'rejected') {
+    logger.warn('Macro inflation fetch failed', { error: String(inflationResult.reason) });
+  }
+
+  // Interest rates
+  if (ratesResult.status === 'fulfilled' && ratesResult.value.length > 0) {
+    const latest = latestEconomic(ratesResult.value);
+    if (latest?.value != null) {
+      signals.push({
+        sourceId: 'jintel-macro-rates',
+        sourceName: 'Jintel Macro',
+        sourceType: 'API',
+        reliability: 0.95,
+        title: `US Interest Rate: ${latest.value.toFixed(2)}% (${latest.date})`,
+        content: `US Federal Funds Rate: ${latest.value.toFixed(2)}% as of ${latest.date}`,
+        publishedAt: toPublishedAt(latest.date),
+        type: 'MACRO',
+        confidence: 0.95,
+      });
+    }
+  } else if (ratesResult.status === 'rejected') {
+    logger.warn('Macro interest rates fetch failed', { error: String(ratesResult.reason) });
+  }
+
+  // S&P 500 P/E
+  if (peResult.status === 'fulfilled' && peResult.value.length > 0) {
+    const latest = latestSP500(peResult.value);
+    if (latest) {
+      signals.push({
+        sourceId: 'jintel-macro-sp500-pe',
+        sourceName: 'Jintel Macro',
+        sourceType: 'API',
+        reliability: 0.95,
+        title: `S&P 500 P/E Ratio: ${latest.value.toFixed(1)} (${latest.date})`,
+        content: `S&P 500 trailing P/E ratio: ${latest.value.toFixed(2)} as of ${latest.date}`,
+        publishedAt: toPublishedAt(latest.date),
+        type: 'MACRO',
+        confidence: 0.95,
+      });
+    }
+  } else if (peResult.status === 'rejected') {
+    logger.warn('Macro S&P 500 P/E fetch failed', { error: String(peResult.reason) });
+  }
+
+  // Shiller P/E (CAPE)
+  if (shillerResult.status === 'fulfilled' && shillerResult.value.length > 0) {
+    const latest = latestSP500(shillerResult.value);
+    if (latest) {
+      signals.push({
+        sourceId: 'jintel-macro-sp500-cape',
+        sourceName: 'Jintel Macro',
+        sourceType: 'API',
+        reliability: 0.95,
+        title: `S&P 500 Shiller P/E (CAPE): ${latest.value.toFixed(1)} (${latest.date})`,
+        content: `S&P 500 cyclically-adjusted P/E ratio (Shiller CAPE): ${latest.value.toFixed(2)} as of ${latest.date}`,
+        publishedAt: toPublishedAt(latest.date),
+        type: 'MACRO',
+        confidence: 0.95,
+      });
+    }
+  } else if (shillerResult.status === 'rejected') {
+    logger.warn('Macro S&P 500 CAPE fetch failed', { error: String(shillerResult.reason) });
+  }
+
+  if (signals.length === 0) {
+    logger.warn('No macro indicators fetched from Jintel');
+    return { ingested: 0, duplicates: 0 };
+  }
+
+  const result = await ingestor.ingest(signals);
+  logger.info('Macro indicators ingested', { ingested: result.ingested, duplicates: result.duplicates });
+  return { ingested: result.ingested, duplicates: result.duplicates };
+}
+
+function latestEconomic(data: EconomicDataPoint[]): EconomicDataPoint | undefined {
+  return [...data].sort((a, b) => b.date.localeCompare(a.date))[0];
+}
+
+function latestSP500(data: SP500DataPoint[]): SP500DataPoint | undefined {
+  return [...data].sort((a, b) => b.date.localeCompare(a.date))[0];
+}
+
+/** Convert a YYYY-MM-DD date string to a stable publishedAt timestamp for dedup. */
+function toPublishedAt(dateStr: string): string {
+  const ms = new Date(dateStr).getTime();
+  return ms ? new Date(dateStr).toISOString() : `${dateStr}T00:00:00.000Z`;
 }

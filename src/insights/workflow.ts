@@ -122,10 +122,11 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
                 `## Positions Requiring Deep Analysis\n\n${dataBriefs}\n\n` +
                 `## Instructions — complete in 1 iteration\n` +
                 `Analyze ALL positions and output a structured brief per position:\n` +
-                `- Rating direction (STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL) and conviction (0-1)\n` +
-                `- Key thesis (1-2 sentences)\n` +
+                `- Sentiment direction (VERY_BULLISH/BULLISH/NEUTRAL/BEARISH/VERY_BEARISH) and conviction (0-1)\n` +
+                `- Key outlook (1-2 sentences)\n` +
                 `- Conflicting signals and sentiment shifts\n` +
                 `- Catalysts and risks\n` +
+                `- Cross-position connections (ONLY when a concrete, evidence-based link exists — e.g. shared supply chain, same macro driver, correlated sector): cite the specific data points that establish the link and estimate the magnitude of impact (high/medium/low). Do NOT fabricate connections.\n` +
                 `- IMPORTANT: Preserve signal IDs (sig-xxx) and source URLs — the Strategist needs these for the report\n` +
                 `\nDo NOT call store_signal_memory — the Strategist handles memory persistence.\n` +
                 `Be concise — output a structured brief per position, not lengthy prose.\n`;
@@ -133,14 +134,14 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
               if (warmBriefs) {
                 prompt +=
                   `\n## Positions Requiring Quick Rating\n` +
-                  `These positions have moderate activity. Provide a brief 1-2 sentence rating ` +
-                  `(STRONG_BUY/BUY/HOLD/SELL/STRONG_SELL) with conviction for each:\n\n${warmBriefs}\n`;
+                  `These positions have moderate activity. Provide a brief 1-2 sentence sentiment assessment ` +
+                  `(VERY_BULLISH/BULLISH/NEUTRAL/BEARISH/VERY_BEARISH) with conviction for each:\n\n${warmBriefs}\n`;
               }
 
               if (coldSummary) {
                 prompt +=
                   `\n## Carried-Forward Positions (no analysis needed)\n` +
-                  `These positions have minimal activity and their previous ratings are carried forward:\n${coldSummary}\n`;
+                  `These positions have minimal activity and their previous assessments are carried forward:\n${coldSummary}\n`;
               }
 
               return prompt;
@@ -286,9 +287,9 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
           prompt +=
             `## Instructions — 1 iteration, batch ALL tool calls\n` +
             `Call save_insight_report with snapshotId="${snapshotId}":\n` +
-            `- positions[]: symbol, name, rating, conviction, thesis (1 sentence MAX), keySignals[] (top 2 per position), risks[] (1-2 items), opportunities[] (1-2 items), memoryContext: null, priceTarget: null\n` +
+            `- positions[]: symbol, name, rating (sentiment: VERY_BULLISH/BULLISH/NEUTRAL/BEARISH/VERY_BEARISH), conviction, thesis (2-3 sentences: explain WHY — cite macro forces, geopolitical events, sector trends that drive this sentiment. When a concrete evidence-based link exists between positions — shared supply chain, same macro driver, correlated sector — cite it and estimate magnitude of impact. Do NOT invent connections), keySignals[] (top 2 per position), risks[] (1-2 items), opportunities[] (1-2 items), memoryContext: null, priceTarget: null\n` +
             `- keySignals: { signalId: "sig-xxx" (copy EXACT ID), type, title (short), impact: "POSITIVE"|"NEGATIVE"|"NEUTRAL", confidence, url: null }\n` +
-            `- portfolio: overallHealth, summary (2 sentences MAX), sectorThemes[], macroContext (1 sentence), topRisks[], topOpportunities[], actionItems[]\n` +
+            `- portfolio: overallHealth, summary (2 sentences MAX — include the most important cross-cutting theme), sectorThemes[], macroContext (1-2 sentences: current macro environment and how it affects the portfolio — cite real data like GDP, rates, inflation, market P/E when available), topRisks[], topOpportunities[], actionItems[]\n` +
             `- emotionState: { confidence, riskAppetite, reason (1 sentence) }\n` +
             `Also call brain_update_memory and brain_update_emotion in the SAME batch.\n` +
             `Keep ALL string values SHORT. Do NOT write lengthy prose.`;
@@ -361,7 +362,7 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
               if (prev) {
                 return `- ${c.brief.symbol}: ${prev.rating} (conviction: ${prev.conviction}) — ${prev.thesis.slice(0, 80)}`;
               }
-              return `- ${c.brief.symbol}: No previous rating (new position, minimal activity)`;
+              return `- ${c.brief.symbol}: No previous assessment (new position, minimal activity)`;
             });
             outputs.set('__cold_summary', {
               agentId: '__cold_summary',

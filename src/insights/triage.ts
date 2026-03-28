@@ -55,9 +55,9 @@ function scorePosition(brief: DataBrief, previousReport: InsightReport | null): 
   if (previousReport) {
     const prev = previousReport.positions.find((p) => p.symbol === brief.symbol);
     if (prev) {
-      const prevBullish = prev.rating === 'STRONG_BUY' || prev.rating === 'BUY';
+      const prevBullish = prev.rating === 'VERY_BULLISH' || prev.rating === 'BULLISH';
       const nowBearish = brief.sentimentDirection === 'BEARISH';
-      const prevBearish = prev.rating === 'STRONG_SELL' || prev.rating === 'SELL';
+      const prevBearish = prev.rating === 'VERY_BEARISH' || prev.rating === 'BEARISH';
       const nowBullish = brief.sentimentDirection === 'BULLISH';
 
       if ((prevBullish && nowBearish) || (prevBearish && nowBullish)) {

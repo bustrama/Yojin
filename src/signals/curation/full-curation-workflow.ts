@@ -25,7 +25,7 @@ import type { CuratedSignal, CurationConfig } from './types.js';
 import type { Orchestrator } from '../../agents/orchestrator.js';
 import { emitProgress } from '../../agents/orchestrator.js';
 import type { InsightStore } from '../../insights/insight-store.js';
-import { fetchJintelSignals } from '../../jintel/signal-fetcher.js';
+import { fetchJintelSignals, fetchMacroIndicators } from '../../jintel/signal-fetcher.js';
 import { createSubsystemLogger } from '../../logging/logger.js';
 import type { PortfolioSnapshotStore } from '../../portfolio/snapshot-store.js';
 import type { SignalArchive } from '../archive.js';
@@ -210,18 +210,31 @@ export function registerFullCurationWorkflow(orchestrator: Orchestrator, options
           timestamp: new Date().toISOString(),
         });
 
-        const fetchResult = await fetchJintelSignals(jintelClient, signalIngestor, portfolioTickers);
+        // Fetch ticker-specific signals and macro indicators in parallel
+        const [fetchResult, macroResult] = await Promise.all([
+          fetchJintelSignals(jintelClient, signalIngestor, portfolioTickers),
+          fetchMacroIndicators(jintelClient, signalIngestor),
+        ]);
         emitProgress({
           workflowId: WF_ID,
           stage: 'activity',
-          message: `Stage 0 complete: ${fetchResult.ingested} signals ingested, ${fetchResult.duplicates} duplicates skipped`,
+          message: `Stage 0 complete: ${fetchResult.ingested + macroResult.ingested} signals ingested (${macroResult.ingested} macro), ${fetchResult.duplicates + macroResult.duplicates} duplicates skipped`,
+          timestamp: new Date().toISOString(),
+        });
+      } else if (jintelClient && signalIngestor) {
+        // No portfolio but Jintel is available — still fetch macro indicators
+        const macroResult = await fetchMacroIndicators(jintelClient, signalIngestor);
+        emitProgress({
+          workflowId: WF_ID,
+          stage: 'activity',
+          message: `Stage 0: ${macroResult.ingested} macro signals ingested (no portfolio tickers)`,
           timestamp: new Date().toISOString(),
         });
       } else {
         emitProgress({
           workflowId: WF_ID,
           stage: 'activity',
-          message: 'Stage 0: Skipped — no portfolio or Jintel client not available',
+          message: 'Stage 0: Skipped — Jintel client not available',
           timestamp: new Date().toISOString(),
         });
       }

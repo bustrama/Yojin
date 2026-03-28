@@ -244,6 +244,11 @@ export class SignalGroupArchive {
     return true;
   }
 
+  /** Reset cached state after external data wipe (clearAppData). */
+  reset(): void {
+    this.dirCreated = false;
+  }
+
   private async ensureDir(): Promise<void> {
     if (this.dirCreated) return;
     await mkdir(this.dir, { recursive: true });

@@ -292,7 +292,7 @@ describe('E2E Signal Assessment workflow', () => {
         {
           symbol: 'AAPL',
           name: 'Apple Inc.',
-          rating: 'BUY',
+          rating: 'BULLISH',
           conviction: 0.8,
           thesis: 'Strong earnings momentum and AI integration driving growth.',
           keySignals: [],
@@ -304,7 +304,7 @@ describe('E2E Signal Assessment workflow', () => {
         {
           symbol: 'BTC',
           name: 'Bitcoin',
-          rating: 'HOLD',
+          rating: 'NEUTRAL',
           conviction: 0.5,
           thesis: 'Waiting for institutional catalyst. ETF flows are key signal.',
           keySignals: [],

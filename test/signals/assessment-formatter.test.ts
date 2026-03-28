@@ -59,12 +59,12 @@ describe('formatSignalsForAssessment', () => {
   it('includes thesis context when available', () => {
     const signalsByTicker = new Map([['AAPL', [makeCurated('AAPL')]]]);
     const thesisByTicker = new Map<string, TickerThesis>([
-      ['AAPL', { rating: 'BUY', conviction: 0.8, thesis: 'Strong AI narrative' }],
+      ['AAPL', { rating: 'BULLISH', conviction: 0.8, thesis: 'Strong AI narrative' }],
     ]);
 
     const result = formatSignalsForAssessment(signalsByTicker, thesisByTicker, new Map());
 
-    expect(result).toContain('THESIS: BUY conviction:0.8 — Strong AI narrative');
+    expect(result).toContain('THESIS: BULLISH conviction:0.8 — Strong AI narrative');
   });
 
   it('includes position sizing context', () => {

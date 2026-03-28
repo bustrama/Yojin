@@ -54,7 +54,7 @@ const INSIGHT_REPORT_INPUT = {
     {
       symbol: 'AAPL',
       name: 'Apple Inc.',
-      rating: 'BUY',
+      rating: 'BULLISH',
       conviction: 0.8,
       thesis: 'Strong earnings momentum and expanding services revenue drive continued growth.',
       keySignals: [
@@ -74,7 +74,7 @@ const INSIGHT_REPORT_INPUT = {
     {
       symbol: 'BTC',
       name: 'Bitcoin',
-      rating: 'HOLD',
+      rating: 'NEUTRAL',
       conviction: 0.5,
       thesis: 'Macro headwinds offset institutional inflows. Wait for clearer direction.',
       keySignals: [
@@ -278,9 +278,9 @@ describe('E2E ProcessInsights workflow', () => {
     expect(report!.snapshotId).toBe('snap-test1234');
     expect(report!.positions).toHaveLength(2);
     expect(report!.positions[0].symbol).toBe('AAPL');
-    expect(report!.positions[0].rating).toBe('BUY');
+    expect(report!.positions[0].rating).toBe('BULLISH');
     expect(report!.positions[1].symbol).toBe('BTC');
-    expect(report!.positions[1].rating).toBe('HOLD');
+    expect(report!.positions[1].rating).toBe('NEUTRAL');
     expect(report!.portfolio.overallHealth).toBe('HEALTHY');
     expect(report!.portfolio.actionItems).toHaveLength(2);
     expect(report!.emotionState.confidence).toBe(0.75);
@@ -327,7 +327,7 @@ describe('E2E ProcessInsights workflow', () => {
 
     // Position insights
     for (const pos of report!.positions) {
-      expect(['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL']).toContain(pos.rating);
+      expect(['VERY_BULLISH', 'BULLISH', 'NEUTRAL', 'BEARISH', 'VERY_BEARISH']).toContain(pos.rating);
       expect(pos.conviction).toBeGreaterThanOrEqual(0);
       expect(pos.conviction).toBeLessThanOrEqual(1);
       expect(pos.thesis.length).toBeGreaterThan(0);

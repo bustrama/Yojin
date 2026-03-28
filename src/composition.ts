@@ -37,6 +37,7 @@ import {
   setOnboardingVault,
 } from './api/graphql/resolvers/onboarding.js';
 import { setPortfolioConnectionManager, setPortfolioJintelClient } from './api/graphql/resolvers/portfolio.js';
+import { onAppDataCleared } from './api/graphql/resolvers/profile.js';
 import { setAssessmentStore } from './api/graphql/resolvers/signal-assessments.js';
 import { setGroupSignalArchive, setSignalGroupArchive } from './api/graphql/resolvers/signal-groups.js';
 import { setSignalArchive, setSignalSnapshotStore } from './api/graphql/resolvers/signals.js';
@@ -363,6 +364,13 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   setGroupSignalArchive(signalArchive);
   setDataSourceConfigPath(dsConfigPath);
   setFetchDeps({ configPath: dsConfigPath, ingestor: signalIngestor, vault });
+
+  // Reset in-memory caches when user clears app data — prevents stale dirCreated / hash maps
+  onAppDataCleared(() => {
+    signalArchive.reset();
+    signalGroupArchive.reset();
+    signalIngestor.reset();
+  });
 
   // 6c. Jintel client (primary intelligence source)
   let jintelClient: JintelClient | undefined;

@@ -597,7 +597,7 @@ export interface SignalsVariables {
 // Insights
 // ---------------------------------------------------------------------------
 
-export type InsightRating = 'STRONG_BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG_SELL';
+export type InsightRating = 'VERY_BULLISH' | 'BULLISH' | 'NEUTRAL' | 'BEARISH' | 'VERY_BEARISH';
 export type PortfolioHealth = 'STRONG' | 'HEALTHY' | 'CAUTIOUS' | 'WEAK' | 'CRITICAL';
 
 export interface SignalSummary {
