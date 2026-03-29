@@ -1066,5 +1066,5 @@ export interface SaveAiConfigMutationResult {
 }
 
 export interface SaveAiConfigVariables {
-  input: { defaultModel: string };
+  input: { defaultModel: string; defaultProvider?: string };
 }

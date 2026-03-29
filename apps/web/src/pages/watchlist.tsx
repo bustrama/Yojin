@@ -3,6 +3,7 @@ import { useWatchlist, useRemoveFromWatchlist } from '../api';
 import type { AssetClass, WatchlistEntry } from '../api';
 import EmptyState from '../components/common/empty-state';
 import Button from '../components/common/button';
+import { PageFeatureGate } from '../components/common/feature-gate';
 import { AddSymbolModal } from '../components/watchlist/add-symbol-modal';
 import { SymbolCard, SymbolCardSkeleton } from '../components/watchlist/symbol-card';
 
@@ -25,6 +26,14 @@ function timeAgo(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export default function Watchlist() {
+  return (
+    <PageFeatureGate requires="jintel">
+      <WatchlistContent />
+    </PageFeatureGate>
+  );
+}
+
+function WatchlistContent() {
   const [{ data, fetching, error }, refetchWatchlist] = useWatchlist();
   const [, removeFromWatchlist] = useRemoveFromWatchlist();
   const [modalOpen, setModalOpen] = useState(false);

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 
 export interface AiProviderState {
-  method: 'keychain' | 'api-key' | 'oauth' | 'env-detected';
+  method: 'keychain' | 'codex' | 'oauth' | 'env-detected';
   model?: string;
   validated: boolean;
 }
@@ -171,6 +171,7 @@ export function useOnboarding() {
 interface OnboardingStatusContextValue {
   completed: boolean;
   skipped: boolean;
+  isReset: boolean;
   openOnboarding: () => void;
   markSkipped: () => void;
   markCompleted: () => void;
@@ -180,6 +181,7 @@ interface OnboardingStatusContextValue {
 const OnboardingStatusContext = createContext<OnboardingStatusContextValue>({
   completed: false,
   skipped: false,
+  isReset: false,
   openOnboarding: () => {},
   markSkipped: () => {},
   markCompleted: () => {},

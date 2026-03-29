@@ -1,6 +1,5 @@
-import { useLocation } from 'react-router';
 import { useQuery } from 'urql';
-import { OnboardingProvider, useOnboarding } from '../lib/onboarding-context';
+import { OnboardingProvider, useOnboarding, useOnboardingStatus } from '../lib/onboarding-context';
 import { ONBOARDING_STATUS_QUERY } from '../api/documents';
 import type { OnboardingStatusQueryResult } from '../api/types';
 import { Step0Welcome } from './onboarding/step-0-welcome';
@@ -60,17 +59,16 @@ function OnboardingRouter() {
 }
 
 export default function OnboardingPage() {
-  const location = useLocation();
-  const wasReset = (location.state as { reset?: boolean } | null)?.reset === true;
+  const { isReset } = useOnboardingStatus();
 
   const [result] = useQuery<OnboardingStatusQueryResult>({
     query: ONBOARDING_STATUS_QUERY,
-    pause: wasReset,
+    pause: isReset,
     requestPolicy: 'network-only',
   });
 
   // Full reset — start from step 0, skip backend check
-  if (wasReset) {
+  if (isReset) {
     return (
       <OnboardingProvider initialStep={0} isReset>
         <OnboardingRouter />

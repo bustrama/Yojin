@@ -261,10 +261,10 @@ export const DETECT_KEYCHAIN_TOKEN_QUERY = gql`
   }
 `;
 
-export const VALIDATE_AI_CREDENTIAL_MUTATION = gql`
-  mutation ValidateAiCredential($input: ValidateCredentialInput!) {
-    validateAiCredential(input: $input) {
-      success
+export const DETECT_CODEX_TOKEN_QUERY = gql`
+  query DetectCodexToken {
+    detectCodexToken {
+      found
       model
       error
     }

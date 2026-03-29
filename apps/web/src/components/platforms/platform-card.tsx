@@ -11,6 +11,8 @@ import { PlatformLogo } from './platform-logos';
 
 interface PlatformCardProps {
   connection: Connection;
+  /** Portfolio data for this platform — synced from the same source as the dashboard. */
+  portfolioSummary?: { count: number; value: number };
   onSyncNow: (platform: string) => void;
   onDisconnect: (platform: string) => void | Promise<void>;
   syncing?: boolean;
@@ -39,8 +41,13 @@ function formatLastSync(lastSync: string | null): string {
   return `${days}d ago`;
 }
 
+function formatCurrency(n: number): string {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+}
+
 export function PlatformCard({
   connection,
+  portfolioSummary,
   onSyncNow,
   onDisconnect,
   syncing = false,
@@ -68,6 +75,16 @@ export function PlatformCard({
             <span className="capitalize">{connection.tier.toLowerCase()}</span>
             <span>&middot;</span>
             <span>Synced {formatLastSync(connection.lastSync)}</span>
+            {portfolioSummary && portfolioSummary.count > 0 && (
+              <>
+                <span>&middot;</span>
+                <span>
+                  {portfolioSummary.count} {portfolioSummary.count === 1 ? 'position' : 'positions'}
+                </span>
+                <span>&middot;</span>
+                <span>{formatCurrency(portfolioSummary.value)}</span>
+              </>
+            )}
           </div>
           {connection.lastError && <p className="mt-1 text-xs text-error truncate">{connection.lastError}</p>}
         </div>

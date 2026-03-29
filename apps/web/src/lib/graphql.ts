@@ -36,6 +36,7 @@ const cache = cacheExchange({
     CuratedSignal: () => null, // embedded — wraps Signal with scores
     PortfolioRelevanceScore: () => null, // embedded
     AiConfig: () => null, // singleton — no id field
+    OnboardingStatusResult: () => null, // singleton — no id field
     WorkflowStatus: () => null, // embedded — singleton status object
     PositionInsight: () => null, // embedded — nested under InsightReport
     SignalSummary: () => null, // embedded — nested under PositionInsight
@@ -107,6 +108,14 @@ const cache = cacheExchange({
       },
       deleteSession(_result, _args, cache) {
         cache.invalidate('Query', 'sessions');
+      },
+      resetOnboarding(_result, _args, cache) {
+        cache.invalidate('Query', 'onboardingStatus');
+        cache.invalidate('Query', 'portfolio');
+        cache.invalidate('Query', 'briefingConfig');
+        cache.invalidate('Query', 'listConnections');
+        cache.invalidate('Query', 'signals');
+        cache.invalidate('Query', 'curatedSignals');
       },
       clearAppData(_result, _args, cache) {
         cache.invalidate('Query', 'portfolio');

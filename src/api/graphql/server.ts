@@ -66,6 +66,7 @@ import {
   confirmPersonaMutation,
   confirmPositionsMutation,
   detectAiCredentialQuery,
+  detectCodexTokenQuery,
   detectKeychainTokenQuery,
   generatePersonaMutation,
   onboardingStatusQuery,
@@ -74,7 +75,6 @@ import {
   saveBriefingConfigMutation,
   sendMagicLinkMutation,
   startOAuthFlowMutation,
-  validateAiCredentialMutation,
   validateJintelKeyMutation,
 } from './resolvers/onboarding.js';
 import {
@@ -135,6 +135,7 @@ const schema = createSchema({
       listVaultSecrets: listVaultSecretsQuery,
       detectAiCredential: detectAiCredentialQuery,
       detectKeychainToken: detectKeychainTokenQuery,
+      detectCodexToken: detectCodexTokenQuery,
       onboardingStatus: onboardingStatusQuery,
       sessions: sessionsQuery,
       session: sessionQuery,
@@ -180,7 +181,6 @@ const schema = createSchema({
       addVaultSecret: addVaultSecretMutation,
       updateVaultSecret: updateVaultSecretMutation,
       deleteVaultSecret: deleteVaultSecretMutation,
-      validateAiCredential: validateAiCredentialMutation,
       startOAuthFlow: startOAuthFlowMutation,
       completeOAuthFlow: completeOAuthFlowMutation,
       sendMagicLink: sendMagicLinkMutation,

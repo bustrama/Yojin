@@ -4,9 +4,18 @@ import EmptyState from '../components/common/empty-state';
 import Button from '../components/common/button';
 import PortfolioStats from '../components/portfolio/portfolio-stats';
 import PositionTable from '../components/portfolio/position-table';
+import { PageFeatureGate } from '../components/common/feature-gate';
 import { useAddPositionModal } from '../lib/add-position-modal-context';
 
 export default function Positions() {
+  return (
+    <PageFeatureGate requires="jintel">
+      <PositionsContent />
+    </PageFeatureGate>
+  );
+}
+
+function PositionsContent() {
   const [{ data: portfolioData, fetching, error }] = usePortfolio();
   const { openModal: openAddPosition } = useAddPositionModal();
 

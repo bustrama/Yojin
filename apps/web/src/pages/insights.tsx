@@ -35,6 +35,7 @@ import type { BadgeVariant } from '../components/common/badge';
 import Button from '../components/common/button';
 import Card from '../components/common/card';
 import Tabs from '../components/common/tabs';
+import { PageFeatureGate } from '../components/common/feature-gate';
 import { collectInsightSignalIds } from '../lib/insight-signals';
 
 // ---------------------------------------------------------------------------
@@ -188,6 +189,14 @@ const CURATION_STAGES = [
 // ---------------------------------------------------------------------------
 
 export default function Insights() {
+  return (
+    <PageFeatureGate requires="both">
+      <InsightsContent />
+    </PageFeatureGate>
+  );
+}
+
+function InsightsContent() {
   const [searchParams] = useSearchParams();
   const urlHighlight = searchParams.get('highlight');
   const initialTicker = searchParams.get('ticker') ?? '';

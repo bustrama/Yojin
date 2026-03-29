@@ -64,12 +64,12 @@ export async function aiConfigQuery(): Promise<AiConfigGql> {
 
 export async function saveAiConfigMutation(
   _: unknown,
-  args: { input: { defaultModel: string } },
+  args: { input: { defaultModel: string; defaultProvider?: string } },
 ): Promise<AiConfigGql> {
-  const { defaultModel } = args.input;
+  const { defaultModel, defaultProvider } = args.input;
   const configPath = join(resolveDataRoot(), 'config', 'ai-provider.json');
 
-  // Read existing config to preserve other fields (defaultProvider, fallback, etc.)
+  // Read existing config to preserve other fields (fallback, etc.)
   let existing: Record<string, unknown> = {};
   try {
     const raw = await readFile(configPath, 'utf-8');
@@ -78,7 +78,10 @@ export async function saveAiConfigMutation(
     // File may not exist yet — start fresh
   }
 
-  const updated = { ...existing, defaultModel };
+  const updated: Record<string, unknown> = { ...existing, defaultModel };
+  if (defaultProvider) {
+    updated.defaultProvider = defaultProvider;
+  }
   await mkdir(join(resolveDataRoot(), 'config'), { recursive: true });
   await writeFile(configPath, JSON.stringify(updated, null, 2), 'utf-8');
 
@@ -93,10 +96,11 @@ export async function saveAiConfigMutation(
     }
   }
 
-  logger.info('AI config saved', { defaultModel });
+  const resolvedProvider = defaultProvider ?? (existing.defaultProvider as string | undefined) ?? 'claude-code';
+  logger.info('AI config saved', { defaultModel, defaultProvider: resolvedProvider });
 
   return {
     defaultModel,
-    defaultProvider: (existing.defaultProvider as string | undefined) ?? 'claude-code',
+    defaultProvider: resolvedProvider,
   };
 }
