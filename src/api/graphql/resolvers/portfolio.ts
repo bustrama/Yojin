@@ -270,6 +270,7 @@ interface ManualPositionInput {
   costBasis: number;
   assetClass?: string;
   platform?: string;
+  entryDate?: string;
 }
 
 export async function addManualPositionMutation(
@@ -278,7 +279,7 @@ export async function addManualPositionMutation(
 ): Promise<PortfolioSnapshot> {
   if (!snapshotStore) throw new Error('Snapshot store not available');
 
-  const { symbol, name, quantity, costBasis, assetClass, platform } = args.input;
+  const { symbol, name, quantity, costBasis, assetClass, platform, entryDate } = args.input;
 
   const newPosition: Position = {
     symbol: symbol.toUpperCase(),
@@ -291,6 +292,7 @@ export async function addManualPositionMutation(
     unrealizedPnlPercent: 0,
     assetClass: (assetClass as AssetClass) ?? 'EQUITY',
     platform: ((platform as Position['platform']) ?? 'MANUAL').toUpperCase(),
+    ...(entryDate ? { entryDate } : {}),
   };
 
   const effectivePlatform = newPosition.platform;
@@ -327,7 +329,7 @@ export async function editPositionMutation(
 
   const targetSymbol = args.symbol.toUpperCase();
   const targetPlatform = args.platform.toUpperCase();
-  const { symbol, name, quantity, costBasis, assetClass, platform } = args.input;
+  const { symbol, name, quantity, costBasis, assetClass, platform, entryDate } = args.input;
 
   const updatedPosition: Position = {
     symbol: symbol.toUpperCase(),
@@ -340,6 +342,7 @@ export async function editPositionMutation(
     unrealizedPnlPercent: 0,
     assetClass: (assetClass as AssetClass) ?? 'EQUITY',
     platform: ((platform as Position['platform']) ?? targetPlatform).toUpperCase(),
+    ...(entryDate !== undefined ? { entryDate: entryDate || undefined } : {}),
   };
 
   // Replace the matching position within the target platform only

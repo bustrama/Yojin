@@ -63,6 +63,7 @@ export interface Position {
   sector?: string;
   assetClass: AssetClass;
   platform: Platform;
+  entryDate?: string;
 }
 
 export interface PortfolioSnapshot {
@@ -194,6 +195,7 @@ export interface ManualPositionInput {
   costBasis: number;
   assetClass?: AssetClass;
   platform?: Platform;
+  entryDate?: string;
 }
 
 // ---------------------------------------------------------------------------

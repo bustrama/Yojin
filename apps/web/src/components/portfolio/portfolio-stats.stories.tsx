@@ -36,6 +36,7 @@ const mockPortfolio: PortfolioSnapshot = {
       sector: 'Technology',
       assetClass: 'EQUITY',
       platform: 'MANUAL',
+      entryDate: null,
     },
     {
       symbol: 'BTC',
@@ -52,6 +53,7 @@ const mockPortfolio: PortfolioSnapshot = {
       sector: null,
       assetClass: 'CRYPTO',
       platform: 'MANUAL',
+      entryDate: null,
     },
   ],
   totalValue: 47152.5,

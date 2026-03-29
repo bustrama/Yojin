@@ -27,6 +27,7 @@ export const POSITION_FIELDS = gql`
     sector
     assetClass
     platform
+    entryDate
   }
 `;
 

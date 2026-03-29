@@ -103,6 +103,7 @@ export const typeDefs = /* GraphQL */ `
     sector: String
     assetClass: AssetClass!
     platform: String!
+    entryDate: String
   }
 
   type PortfolioSnapshot {
@@ -318,6 +319,7 @@ export const typeDefs = /* GraphQL */ `
     costBasis: Float!
     assetClass: AssetClass
     platform: String
+    entryDate: String
   }
 
   # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ const mockPositions: Position[] = [
     sparkline: [186, 187, 186.5, 188, 189, 188.5, 189, 189.55],
     sector: 'Technology',
     platform: 'MANUAL',
+    entryDate: null,
   },
   {
     symbol: 'NVDA',
@@ -53,6 +54,7 @@ const mockPositions: Position[] = [
     sparkline: [484, 486, 488, 487, 490, 491, 492, 492.24],
     sector: 'Technology',
     platform: 'MANUAL',
+    entryDate: null,
   },
   {
     symbol: 'BTC',
@@ -69,6 +71,7 @@ const mockPositions: Position[] = [
     sparkline: [42200, 42000, 41800, 41900, 41700, 41500, 41650, 41600],
     sector: null,
     platform: 'MANUAL',
+    entryDate: null,
   },
 ];
 

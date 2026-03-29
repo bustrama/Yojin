@@ -104,6 +104,7 @@ export interface Position {
   sector: string | null;
   assetClass: AssetClass;
   platform: Platform;
+  entryDate: string | null;
 }
 
 export interface PortfolioSnapshot {
@@ -834,6 +835,7 @@ export interface ManualPositionInput {
   costBasis: number;
   assetClass?: AssetClass;
   platform?: Platform;
+  entryDate?: string;
 }
 
 export interface AddManualPositionMutationResult {
