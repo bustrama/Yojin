@@ -1,9 +1,15 @@
 import { useState } from 'react';
-import { useMutation } from 'urql';
+import { useMutation, useQuery } from 'urql';
 import { useOnboarding } from '../../lib/onboarding-context';
 import { OnboardingShell } from '../../components/onboarding/onboarding-shell';
 import Button from '../../components/common/button';
-import { SAVE_AI_CONFIG_MUTATION } from '../../api/documents';
+import {
+  SAVE_AI_CONFIG_MUTATION,
+  AI_CONFIG_QUERY,
+  DETECT_KEYCHAIN_TOKEN_QUERY,
+  DETECT_CODEX_TOKEN_QUERY,
+} from '../../api/documents';
+import type { AiConfigQueryResult, DetectKeychainTokenResult, DetectCodexTokenResult } from '../../api/types';
 import { cn } from '../../lib/utils';
 
 type Provider = 'claude' | 'codex';
@@ -40,14 +46,47 @@ const PROVIDERS: ProviderConfig[] = [
   },
 ];
 
+/** Maps provider ID to backend provider ID for config comparison */
+const BACKEND_TO_PROVIDER: Record<string, Provider> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+};
+
 export function Step1AiBrain() {
   const { state, updateState, nextStep, prevStep } = useOnboarding();
   const [, saveAiConfig] = useMutation(SAVE_AI_CONFIG_MUTATION);
 
+  // Detection queries — network-only since these detect machine state
+  const [keychainResult] = useQuery<DetectKeychainTokenResult>({
+    query: DETECT_KEYCHAIN_TOKEN_QUERY,
+    requestPolicy: 'network-only',
+  });
+  const [codexResult] = useQuery<DetectCodexTokenResult>({
+    query: DETECT_CODEX_TOKEN_QUERY,
+    requestPolicy: 'network-only',
+  });
+
+  // Current saved config — to show "Active" indicator
+  const [configResult] = useQuery<AiConfigQueryResult>({
+    query: AI_CONFIG_QUERY,
+    requestPolicy: 'network-only',
+  });
+
+  const claudeDetected = keychainResult.data?.detectKeychainToken.found ?? false;
+  const codexDetected = codexResult.data?.detectCodexToken.found ?? false;
+  const detecting = keychainResult.fetching || codexResult.fetching;
+
+  const activeProvider: Provider | undefined = configResult.data?.aiConfig.defaultProvider
+    ? BACKEND_TO_PROVIDER[configResult.data.aiConfig.defaultProvider]
+    : undefined;
+
   const [selected, setSelected] = useState<Provider>(state.aiProvider?.method === 'codex' ? 'codex' : 'claude');
 
+  // Fall back to Claude if Codex is selected but not available
+  const effectiveSelected: Provider = !detecting && !codexDetected && selected === 'codex' ? 'claude' : selected;
+
   const handleContinue = () => {
-    const provider = PROVIDERS.find((p) => p.id === selected);
+    const provider = PROVIDERS.find((p) => p.id === effectiveSelected);
     if (!provider) return;
     updateState({
       aiProvider: { method: provider.method, model: provider.defaultModel, validated: true },
@@ -55,6 +94,26 @@ export function Step1AiBrain() {
     // Persist provider + model to backend so settings page reflects the choice
     saveAiConfig({ input: { defaultProvider: provider.backendId, defaultModel: provider.defaultModel } });
     nextStep();
+  };
+
+  const getDetectionStatus = (
+    id: Provider,
+  ): { detected: boolean; loading: boolean; isActive: boolean; error?: string } => {
+    const active = activeProvider === id;
+    if (id === 'claude') {
+      return {
+        detected: claudeDetected,
+        loading: keychainResult.fetching,
+        isActive: active,
+        error: keychainResult.data?.detectKeychainToken.error,
+      };
+    }
+    return {
+      detected: codexDetected,
+      loading: codexResult.fetching,
+      isActive: active,
+      error: codexResult.data?.detectCodexToken.error,
+    };
   };
 
   return (
@@ -75,50 +134,75 @@ export function Step1AiBrain() {
           style={{ animationDelay: '100ms' }}
         >
           {PROVIDERS.map((p) => {
-            const isSelected = selected === p.id;
+            const isSelected = effectiveSelected === p.id;
+            const status = getDetectionStatus(p.id);
+            const isDisabled = !status.loading && !status.detected && p.id === 'codex';
+
             return (
               <button
                 key={p.id}
                 type="button"
-                onClick={() => setSelected(p.id)}
+                disabled={isDisabled}
+                onClick={() => !isDisabled && setSelected(p.id)}
                 className={cn(
-                  'group relative flex flex-col items-center gap-4 rounded-2xl border-2 px-6 py-8 transition-all duration-300 cursor-pointer',
-                  isSelected
-                    ? 'border-accent-primary bg-accent-glow shadow-[0_0_24px_-4px_var(--color-accent-primary)]'
-                    : 'border-border bg-bg-card hover:border-accent-primary/40 hover:bg-bg-hover/60',
+                  'group relative flex flex-col items-center gap-4 rounded-2xl border-2 px-6 py-8 transition-all duration-300',
+                  isDisabled
+                    ? 'cursor-not-allowed border-border/50 bg-bg-card/40 opacity-50'
+                    : isSelected
+                      ? 'cursor-pointer border-accent-primary bg-accent-glow shadow-[0_0_24px_-4px_var(--color-accent-primary)]'
+                      : 'cursor-pointer border-border bg-bg-card hover:border-accent-primary/40 hover:bg-bg-hover/60',
                 )}
               >
                 {/* Logo */}
                 <div
                   className={cn(
                     'flex h-16 w-16 items-center justify-center rounded-2xl transition-transform duration-300',
-                    isSelected ? 'scale-110' : 'group-hover:scale-105',
+                    isDisabled ? '' : isSelected ? 'scale-110' : 'group-hover:scale-105',
                   )}
                 >
-                  <img src={p.logo} alt={p.name} className="h-14 w-14 rounded-xl" />
+                  <img src={p.logo} alt={p.name} className={cn('h-14 w-14 rounded-xl', isDisabled && 'grayscale')} />
                 </div>
 
-                {/* Name + subtitle */}
+                {/* Name + subtitle + status (single block, no stacking) */}
                 <div className="text-center">
                   <p
                     className={cn(
                       'text-base font-semibold transition-colors',
-                      isSelected ? 'text-accent-primary' : 'text-text-primary',
+                      isDisabled ? 'text-text-muted' : isSelected ? 'text-accent-primary' : 'text-text-primary',
                     )}
                   >
                     {p.name}
                   </p>
                   <p className="mt-0.5 text-xs text-text-muted">{p.subtitle}</p>
+
+                  {/* Status line — single, minimal indicator below subtitle */}
+                  <p className="mt-2 text-2xs">
+                    {status.loading ? (
+                      <span className="text-text-muted">Checking...</span>
+                    ) : status.error ? (
+                      <span className="text-warning">{status.error}</span>
+                    ) : status.detected ? (
+                      <span className={status.isActive ? 'text-accent-primary' : 'text-success'}>
+                        {status.isActive ? 'Connected' : 'Available'}
+                      </span>
+                    ) : (
+                      <span className="text-text-muted">Not installed</span>
+                    )}
+                  </p>
                 </div>
 
                 {/* Selection ring */}
                 <div
                   className={cn(
                     'absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full transition-all duration-200',
-                    isSelected ? 'bg-accent-primary scale-100' : 'border-2 border-border-light scale-90',
+                    isDisabled
+                      ? 'border-2 border-border/40 scale-90'
+                      : isSelected
+                        ? 'bg-accent-primary scale-100'
+                        : 'border-2 border-border-light scale-90',
                   )}
                 >
-                  {isSelected && (
+                  {isSelected && !isDisabled && (
                     <svg
                       className="h-3.5 w-3.5 text-white"
                       fill="none"
@@ -135,10 +219,25 @@ export function Step1AiBrain() {
           })}
         </div>
 
+        {/* Detection explainer */}
+        <div
+          className="mb-8 rounded-xl border border-border/60 bg-bg-secondary/50 px-4 py-3 opacity-0 [animation:onboarding-fade-up_0.5s_ease-out_forwards]"
+          style={{ animationDelay: '200ms' }}
+        >
+          <p className="text-2xs leading-relaxed text-text-muted">
+            Yojin checks for existing credentials on your machine. <span className="text-text-secondary">Claude</span>{' '}
+            is detected via macOS Keychain (from{' '}
+            <code className="rounded bg-bg-tertiary px-1 py-px text-3xs text-text-secondary">claude auth login</code>).{' '}
+            <span className="text-text-secondary">Codex</span> is detected via{' '}
+            <code className="rounded bg-bg-tertiary px-1 py-px text-3xs text-text-secondary">~/.codex/auth.json</code>{' '}
+            or environment variables. No credentials are sent externally.
+          </p>
+        </div>
+
         {/* Navigation */}
         <div
           className="flex items-center justify-between opacity-0 [animation:onboarding-fade-up_0.5s_ease-out_forwards]"
-          style={{ animationDelay: '200ms' }}
+          style={{ animationDelay: '300ms' }}
         >
           <Button variant="ghost" size="md" onClick={prevStep}>
             <svg className="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">

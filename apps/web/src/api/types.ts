@@ -1064,3 +1064,21 @@ export interface SaveAiConfigMutationResult {
 export interface SaveAiConfigVariables {
   input: { defaultModel: string; defaultProvider?: string };
 }
+
+// ---------------------------------------------------------------------------
+// AI Credential Detection
+// ---------------------------------------------------------------------------
+
+export interface KeychainTokenResult {
+  found: boolean;
+  model?: string;
+  error?: string;
+}
+
+export interface DetectKeychainTokenResult {
+  detectKeychainToken: KeychainTokenResult;
+}
+
+export interface DetectCodexTokenResult {
+  detectCodexToken: KeychainTokenResult;
+}

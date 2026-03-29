@@ -219,8 +219,9 @@ export async function detectCodexTokenQuery(): Promise<KeychainTokenResult> {
       signal: AbortSignal.timeout(5000),
     });
 
-    if (res.ok) {
-      // Store in vault + env so the provider can use it
+    if (res.ok || res.status === 403) {
+      // 200 = full API access; 403 = authenticated but no model-list permission
+      // (normal for ChatGPT OAuth tokens — they work for completions, not /v1/models)
       process.env.OPENAI_API_KEY = creds.accessToken;
       if (vault?.isUnlocked) {
         await vault.set('openai_api_key', creds.accessToken);
