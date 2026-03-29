@@ -10,7 +10,9 @@ import { CuratedSignalStore } from '../../src/signals/curation/curated-signal-st
 import {
   classifyOutputType,
   computeCompositeScore,
+  computeContentQuality,
   computeExposureWeight,
+  computeNoveltyFactor,
   computeRecencyFactor,
   computeSourceReliability,
   computeTypeRelevance,
@@ -115,6 +117,44 @@ describe('Scoring helpers', () => {
     });
   });
 
+  describe('computeContentQuality', () => {
+    it('returns baseline for title-only signal', () => {
+      expect(computeContentQuality(makeSignal())).toBeCloseTo(0.3, 1);
+    });
+
+    it('scores higher with substantive content', () => {
+      const withContent = makeSignal({ content: 'A'.repeat(300) });
+      expect(computeContentQuality(withContent)).toBeGreaterThan(0.5);
+    });
+
+    it('scores higher with LLM summaries', () => {
+      const withSummary = makeSignal({ tier1: 'headline', tier2: 'summary text' });
+      expect(computeContentQuality(withSummary)).toBeGreaterThan(computeContentQuality(makeSignal()));
+    });
+
+    it('scores higher with multiple sources', () => {
+      const multiSource = makeSignal({
+        sources: [
+          { id: 's1', name: 'S1', type: 'API', reliability: 0.8 },
+          { id: 's2', name: 'S2', type: 'RSS', reliability: 0.7 },
+        ],
+      });
+      expect(computeContentQuality(multiSource)).toBeGreaterThan(computeContentQuality(makeSignal()));
+    });
+  });
+
+  describe('computeNoveltyFactor', () => {
+    it('returns 1.0 for novel signal', () => {
+      expect(computeNoveltyFactor(makeSignal(), new Set())).toBe(1.0);
+    });
+
+    it('returns low score for duplicate title', () => {
+      const signal = makeSignal();
+      const recentTitles = new Set([signal.title.trim().toLowerCase()]);
+      expect(computeNoveltyFactor(signal, recentTitles)).toBe(0.2);
+    });
+  });
+
   describe('computeCompositeScore', () => {
     it('combines weights correctly', () => {
       const score = computeCompositeScore(0.5, 0.8, 1.0, 0.9, DEFAULT_WEIGHTS);
@@ -125,6 +165,13 @@ describe('Scoring helpers', () => {
     it('clamps to [0, 1]', () => {
       expect(computeCompositeScore(1, 1, 1, 1, DEFAULT_WEIGHTS)).toBeLessThanOrEqual(1);
       expect(computeCompositeScore(0, 0, 0, 0, DEFAULT_WEIGHTS)).toBeGreaterThanOrEqual(0);
+    });
+
+    it('applies novelty as multiplier', () => {
+      const full = computeCompositeScore(0.5, 0.8, 1.0, 0.9, DEFAULT_WEIGHTS, 0.5, 1.0);
+      const penalized = computeCompositeScore(0.5, 0.8, 1.0, 0.9, DEFAULT_WEIGHTS, 0.5, 0.2);
+      expect(penalized).toBeLessThan(full);
+      expect(penalized).toBeCloseTo(full * 0.2, 2);
     });
   });
 });
@@ -247,6 +294,52 @@ describe('runCurationPipeline', () => {
 
     const result = await runCurationPipeline({ signalArchive, curatedStore, snapshotStore, config });
     expect(result.signalsCurated).toBe(1);
+  });
+
+  it('filters out data snapshot signals', async () => {
+    await seedPortfolio();
+    await signalArchive.appendBatch([
+      makeSignal({
+        id: 's1',
+        contentHash: 'h1',
+        title: 'AAPL: $180.50 | +1.2% | RSI 65',
+        sources: [{ id: 'jintel-snapshot', name: 'Jintel', type: 'ENRICHMENT', reliability: 0.95 }],
+      }),
+      makeSignal({
+        id: 's2',
+        contentHash: 'h2',
+        title: 'Apple beats Q4 estimates',
+        sources: [{ id: 'jintel-news-reuters', name: 'Jintel News (Reuters)', type: 'API', reliability: 0.8 }],
+      }),
+    ]);
+
+    const result = await runCurationPipeline({ signalArchive, curatedStore, snapshotStore, config });
+    expect(result.signalsCurated).toBe(1); // only the news signal
+  });
+
+  it('drops redundant price-move when news exists for same ticker+day', async () => {
+    await seedPortfolio();
+    await signalArchive.appendBatch([
+      makeSignal({
+        id: 's1',
+        contentHash: 'h1',
+        title: 'AAPL down 3.2% to $174.50',
+        type: 'TECHNICAL',
+        sources: [{ id: 'jintel-market', name: 'Jintel Market', type: 'ENRICHMENT', reliability: 0.95 }],
+      }),
+      makeSignal({
+        id: 's2',
+        contentHash: 'h2',
+        title: 'Apple misses revenue expectations',
+        type: 'NEWS',
+        sources: [{ id: 'jintel-news-reuters', name: 'Reuters', type: 'API', reliability: 0.8 }],
+      }),
+    ]);
+
+    const result = await runCurationPipeline({ signalArchive, curatedStore, snapshotStore, config });
+    expect(result.signalsCurated).toBe(1);
+    const curated = await curatedStore.queryByTickers(['AAPL']);
+    expect(curated[0].signal.type).toBe('NEWS');
   });
 
   it('filters out signals with no portfolio ticker', async () => {

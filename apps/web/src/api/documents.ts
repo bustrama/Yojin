@@ -1081,6 +1081,9 @@ export const INTEL_FEED_QUERY = gql`
         compositeScore
       }
       curatedAt
+      verdict
+      thesisAlignment
+      actionability
     }
   }
 `;

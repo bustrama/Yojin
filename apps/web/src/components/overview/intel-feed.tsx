@@ -29,6 +29,8 @@ interface IntelFeedItem {
   source: string | null;
   data?: DataRow[];
   primaryAction: string;
+  verdict: 'CRITICAL' | 'IMPORTANT' | 'NOISE' | null;
+  thesisAlignment: 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL' | null;
 }
 
 /** Map signal type to an icon name. */
@@ -428,6 +430,18 @@ function IntelFeedCard({
             >
               {signalTypeLabel[item.signalType] ?? item.signalType}
             </span>
+            {item.verdict && (
+              <span
+                className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none',
+                  item.verdict === 'CRITICAL' && 'bg-error/20 text-error',
+                  item.verdict === 'IMPORTANT' && 'bg-warning/20 text-warning',
+                  item.verdict === 'NOISE' && 'bg-text-muted/10 text-text-muted',
+                )}
+              >
+                {item.verdict}
+              </span>
+            )}
           </div>
           <p className="text-xs font-medium leading-tight text-text-primary line-clamp-2">{item.title}</p>
         </div>
@@ -559,6 +573,8 @@ export default function IntelFeed() {
               ]
             : undefined,
         primaryAction: primaryActionLabel[itemType],
+        verdict: cs.verdict ?? null,
+        thesisAlignment: cs.thesisAlignment ?? null,
       };
     });
 

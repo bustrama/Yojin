@@ -35,6 +35,10 @@ const TYPE_RELEVANCE: Record<SignalType, Record<AssetClass, number>> = {
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Source IDs that produce recurring data snapshots (daily price, technicals, sentiment).
+// These are valuable for insight generation but not actionable as standalone Intel Feed cards.
+const DATA_SNAPSHOT_SOURCES = new Set(['jintel-snapshot', 'jintel-technicals', 'jintel-sentiment']);
+
 // ---------------------------------------------------------------------------
 // Pipeline options
 // ---------------------------------------------------------------------------
@@ -72,19 +76,60 @@ export function computeSourceReliability(signal: Signal): number {
   return sum / signal.sources.length;
 }
 
+/**
+ * Content quality — signals with substantive content are more valuable than title-only.
+ * Multi-source signals also get a boost (corroborated from multiple feeds).
+ */
+export function computeContentQuality(signal: Signal): number {
+  let score = 0.3; // baseline for title-only
+
+  // Has body content
+  const contentLen = signal.content?.length ?? 0;
+  if (contentLen > 50) score += 0.2;
+  if (contentLen > 200) score += 0.15;
+  if (contentLen > 500) score += 0.1;
+
+  // Has LLM-generated summary (processed by clustering or summary generator)
+  if (signal.tier1 && signal.tier2) score += 0.15;
+
+  // Multi-source corroboration
+  if (signal.sources.length >= 2) score += 0.1;
+
+  return Math.min(1, score);
+}
+
+/**
+ * Novelty factor — penalize signals whose title closely matches recently curated signals.
+ * Receives a set of recent normalized titles for O(1) lookup.
+ */
+export function computeNoveltyFactor(signal: Signal, recentTitles: Set<string>): number {
+  const normalized = signal.title.trim().toLowerCase();
+  // Exact title match — very low novelty (not 0, in case scoring or source differs)
+  if (recentTitles.has(normalized)) return 0.2;
+  return 1.0;
+}
+
 export function computeCompositeScore(
   exposureWeight: number,
   typeRelevance: number,
   recencyFactor: number,
   sourceReliability: number,
   weights: CurationConfig['weights'],
+  contentQuality?: number,
+  noveltyFactor?: number,
 ): number {
+  const cq = contentQuality ?? 0.5;
+  const nf = noveltyFactor ?? 1.0;
+
   const raw =
     weights.exposure * exposureWeight +
     weights.typeRelevance * typeRelevance +
     weights.recency * recencyFactor +
-    weights.sourceReliability * sourceReliability;
-  return Math.max(0, Math.min(1, raw));
+    weights.sourceReliability * sourceReliability +
+    (weights.contentQuality ?? 0) * cq;
+  // Novelty is a multiplier, not an additive factor — novel signals keep full score,
+  // repeat signals get penalized proportionally
+  return Math.max(0, Math.min(1, raw * nf));
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +208,10 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
     // Skip already-curated signals
     if (alreadyCuratedIds.has(signal.id)) return false;
 
+    // Skip recurring data snapshots (price, technicals, sentiment) — they feed insight
+    // generation via DataBrief but aren't actionable as standalone Intel Feed cards.
+    if (signal.sources.some((s) => DATA_SNAPSHOT_SOURCES.has(s.id))) return false;
+
     // Confidence threshold
     if (signal.confidence < config.minConfidence) return false;
 
@@ -177,6 +226,9 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
   const now = Date.now();
   const curatedSignals: CuratedSignal[] = [];
 
+  // Build recent title set for novelty scoring — titles of already-curated signals
+  const recentTitles = new Set(alreadyCurated.map((cs) => cs.signal.title.trim().toLowerCase()));
+
   // Group scores by ticker for rank/trim
   const scoresByTicker = new Map<string, Array<{ signal: Signal; score: PortfolioRelevanceScore }>>();
 
@@ -184,6 +236,8 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
     const scores: PortfolioRelevanceScore[] = [];
     const reliability = computeSourceReliability(signal);
     const recency = computeRecencyFactor(signal.publishedAt, now);
+    const contentQuality = computeContentQuality(signal);
+    const novelty = computeNoveltyFactor(signal, recentTitles);
 
     for (const asset of signal.assets) {
       const position = positionByTicker.get(asset.ticker);
@@ -191,7 +245,15 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
 
       const exposure = computeExposureWeight(position.marketValue, snapshot.totalValue);
       const typeRel = computeTypeRelevance(signal.type, position.assetClass);
-      const composite = computeCompositeScore(exposure, typeRel, recency, reliability, config.weights);
+      const composite = computeCompositeScore(
+        exposure,
+        typeRel,
+        recency,
+        reliability,
+        config.weights,
+        contentQuality,
+        novelty,
+      );
 
       const relevanceScore: PortfolioRelevanceScore = {
         signalId: signal.id,
@@ -258,7 +320,26 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
       }
     }
   }
-  const finalCurated = [...byTitle.values()];
+  // 4c. CROSS-TYPE EVENT GROUPING — when the same ticker has both a price-move signal
+  // (TECHNICAL from jintel-market) and a news/fundamental signal on the same day,
+  // the price move is redundant — the news explains the move. Drop the price-move
+  // signal if a more informative signal exists for the same ticker+day.
+  const REDUNDANT_SOURCES = new Set(['jintel-market']); // price-move signals
+  const tickerDayHasExplanation = new Set<string>();
+  for (const cs of byTitle.values()) {
+    if (!cs.signal.sources.some((s) => REDUNDANT_SOURCES.has(s.id))) {
+      const day = cs.signal.publishedAt.slice(0, 10);
+      for (const score of cs.scores) {
+        tickerDayHasExplanation.add(`${score.ticker}|${day}`);
+      }
+    }
+  }
+  const finalCurated = [...byTitle.values()].filter((cs) => {
+    if (!cs.signal.sources.some((s) => REDUNDANT_SOURCES.has(s.id))) return true;
+    // Drop price-move signal if there's already a news/fundamental signal for same ticker+day
+    const day = cs.signal.publishedAt.slice(0, 10);
+    return !cs.scores.some((score) => tickerDayHasExplanation.has(`${score.ticker}|${day}`));
+  });
 
   // 5. STORE — write curated signals + update watermark
   await curatedStore.writeBatch(finalCurated);

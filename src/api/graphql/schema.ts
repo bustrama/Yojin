@@ -885,6 +885,12 @@ export const typeDefs = /* GraphQL */ `
     signal: Signal!
     scores: [PortfolioRelevanceScore!]!
     curatedAt: String!
+    "Agent assessment verdict (CRITICAL/IMPORTANT/NOISE) — null if not yet assessed"
+    verdict: SignalVerdict
+    "Alignment with investment thesis — null if not yet assessed"
+    thesisAlignment: ThesisAlignment
+    "How actionable this signal is (0-1) — null if not yet assessed"
+    actionability: Float
   }
 
   type CurationStatus {

@@ -149,6 +149,7 @@ Answer:`;
     concurrencyLimit: 5,
   });
   services.signalIngestor.setClustering(clustering);
+  services.signalIngestor.setSummaryGenerator(summaryGenerator);
 
   // ReflectionEngine with lazy price provider — reads jintelToolOptions.client at call time.
   const priceProvider = createJintelPriceProvider({

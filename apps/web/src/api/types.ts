@@ -984,6 +984,9 @@ export interface IntelFeedCuratedSignal {
   signal: IntelFeedSignal;
   scores: { ticker: string; compositeScore: number }[];
   curatedAt: string;
+  verdict: 'CRITICAL' | 'IMPORTANT' | 'NOISE' | null;
+  thesisAlignment: 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL' | null;
+  actionability: number | null;
 }
 
 export interface IntelFeedQueryResult {

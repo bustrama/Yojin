@@ -50,10 +50,11 @@ export type CurationRunResult = z.infer<typeof CurationRunResultSchema>;
 // ---------------------------------------------------------------------------
 
 export const CurationWeightsSchema = z.object({
-  exposure: z.number().min(0).max(1).default(0.3),
-  typeRelevance: z.number().min(0).max(1).default(0.25),
-  recency: z.number().min(0).max(1).default(0.25),
-  sourceReliability: z.number().min(0).max(1).default(0.2),
+  exposure: z.number().min(0).max(1).default(0.25),
+  typeRelevance: z.number().min(0).max(1).default(0.2),
+  recency: z.number().min(0).max(1).default(0.2),
+  sourceReliability: z.number().min(0).max(1).default(0.15),
+  contentQuality: z.number().min(0).max(1).default(0.2),
 });
 export type CurationWeights = z.infer<typeof CurationWeightsSchema>;
 
