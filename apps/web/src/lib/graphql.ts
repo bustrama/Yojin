@@ -68,7 +68,11 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'signals');
         cache.invalidate('Query', 'curatedSignals');
       },
+      validateJintelKey(_result, _args, cache) {
+        cache.invalidate('Query', 'onboardingStatus');
+      },
       completeOnboarding(_result, _args, cache) {
+        cache.invalidate('Query', 'onboardingStatus');
         cache.invalidate('Query', 'portfolio');
         cache.invalidate('Query', 'listConnections');
         cache.invalidate('Query', 'signals');

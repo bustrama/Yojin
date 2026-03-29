@@ -9,6 +9,7 @@ import type { OnboardingStatusQueryResult } from '../api/types';
 export function useFeatureStatus() {
   const [result] = useQuery<OnboardingStatusQueryResult>({
     query: ONBOARDING_STATUS_QUERY,
+    requestPolicy: 'cache-and-network',
   });
 
   return {
