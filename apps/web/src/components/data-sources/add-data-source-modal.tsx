@@ -455,7 +455,7 @@ export function AddDataSourceModal({ open, onClose }: AddDataSourceModalProps) {
               setError(null);
               setStep('paste');
             }}
-            className="w-full flex items-center gap-3 rounded-xl border border-dashed border-border p-4 text-left hover:border-accent-primary hover:bg-accent-primary/5 transition-colors"
+            className="w-full flex items-center gap-3 rounded-xl border border-dashed border-border p-4 text-left hover:border-accent-primary hover:bg-accent-primary/5 transition-colors cursor-pointer"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-bg-tertiary text-text-muted shrink-0">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -712,7 +712,11 @@ function CatalogButton({
 
   return (
     <div className="flex items-center gap-2 rounded-xl border border-border p-3 hover:border-accent-primary/50 transition-colors">
-      <button onClick={onClick} disabled={disabled} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
+      >
         <div
           className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${
             hasKey ? 'bg-success/10 text-success' : 'bg-bg-tertiary text-text-muted'

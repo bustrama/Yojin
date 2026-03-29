@@ -171,6 +171,7 @@ export function useOnboarding() {
 interface OnboardingStatusContextValue {
   completed: boolean;
   skipped: boolean;
+  isReset: boolean;
   openOnboarding: () => void;
   markSkipped: () => void;
   markCompleted: () => void;
@@ -180,6 +181,7 @@ interface OnboardingStatusContextValue {
 const OnboardingStatusContext = createContext<OnboardingStatusContextValue>({
   completed: false,
   skipped: false,
+  isReset: false,
   openOnboarding: () => {},
   markSkipped: () => {},
   markCompleted: () => {},

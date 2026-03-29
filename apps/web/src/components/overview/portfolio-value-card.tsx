@@ -1,6 +1,8 @@
 import { cn } from '../../lib/utils';
+import { useFeatureStatus } from '../../lib/feature-status';
 import { usePortfolio } from '../../api';
 import { CardEmptyState } from '../common/card-empty-state';
+import { FeatureCardGate } from '../common/feature-gate';
 import Spinner from '../common/spinner';
 import { DashboardCard } from '../common/dashboard-card';
 
@@ -19,7 +21,16 @@ function formatPercent(n: number): string {
 }
 
 export default function PortfolioValueCard() {
+  const { jintelConfigured } = useFeatureStatus();
   const [{ data, fetching, error }] = usePortfolio();
+
+  if (!jintelConfigured) {
+    return (
+      <DashboardCard title="Portfolio Value">
+        <FeatureCardGate requires="jintel" />
+      </DashboardCard>
+    );
+  }
 
   if (fetching) {
     return (

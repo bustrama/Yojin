@@ -17,6 +17,7 @@ import { PriceChart } from '../components/charts/price-chart';
 import Card from '../components/common/card';
 import Badge from '../components/common/badge';
 import type { BadgeVariant } from '../components/common/badge';
+import { PageFeatureGate } from '../components/common/feature-gate';
 import Spinner from '../components/common/spinner';
 import { SymbolLogo } from '../components/common/symbol-logo';
 import { timeAgo } from '../lib/utils';
@@ -147,6 +148,14 @@ function DayRange({ low, high, current }: { low: number; high: number; current: 
 // ---------------------------------------------------------------------------
 
 export default function Position() {
+  return (
+    <PageFeatureGate requires="jintel">
+      <PositionContent />
+    </PageFeatureGate>
+  );
+}
+
+function PositionContent() {
   const { symbol } = useParams<{ symbol: string }>();
   const upperSymbol = symbol?.toUpperCase();
 

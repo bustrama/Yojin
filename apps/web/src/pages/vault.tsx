@@ -3,7 +3,6 @@ import { cn } from '../lib/utils';
 import Card from '../components/common/card';
 import Button from '../components/common/button';
 import Input from '../components/common/input';
-import Badge from '../components/common/badge';
 import Modal from '../components/common/modal';
 import {
   useVaultStatus,
@@ -24,7 +23,6 @@ export function VaultSection() {
 
   const isUnlocked = statusResult.data?.vaultStatus.isUnlocked ?? false;
   const hasPassphrase = statusResult.data?.vaultStatus.hasPassphrase ?? false;
-  const secretCount = statusResult.data?.vaultStatus.secretCount ?? 0;
   const secrets = secretsResult.data?.listVaultSecrets ?? [];
   const loading = statusResult.fetching || secretsResult.fetching;
 
@@ -48,27 +46,8 @@ export function VaultSection() {
           </div>
           <div>
             <h2 className="font-headline text-lg text-text-primary">Credential Vault</h2>
-            <p className="text-sm text-text-secondary">
-              {isUnlocked ? (
-                <>
-                  <Badge variant="success" size="xs" className="mr-2">
-                    Unlocked
-                  </Badge>
-                  {secretCount} {secretCount === 1 ? 'secret' : 'secrets'} stored
-                  {!hasPassphrase && (
-                    <Badge variant="neutral" size="xs" className="ml-2">
-                      No passphrase
-                    </Badge>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Badge variant="warning" size="xs" className="mr-2">
-                    Locked
-                  </Badge>
-                  Enter passphrase to manage secrets
-                </>
-              )}
+            <p className="text-sm text-text-muted">
+              Securely store and manage API keys, tokens, and credentials with AES-256 encryption.
             </p>
           </div>
         </div>
@@ -223,20 +202,20 @@ function PassphrasePanel({ hasPassphrase, onChanged }: { hasPassphrase: boolean;
               )}
             </>
           ) : (
-            <>
-              <p className="text-sm text-text-primary">No passphrase set</p>
-              <p className="text-xs text-text-muted mt-0.5">
-                Your vault auto-unlocks on startup. Set a passphrase to require authentication before secrets can be
-                accessed.
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-text-primary">No passphrase set</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Your vault auto-unlocks on startup. Set a passphrase to require authentication before secrets can be
+                  accessed.
+                </p>
+              </div>
               {mode === 'idle' && (
-                <div className="mt-3">
-                  <Button variant="secondary" size="sm" onClick={() => setMode('set')}>
-                    Set Passphrase
-                  </Button>
-                </div>
+                <Button variant="secondary" size="sm" onClick={() => setMode('set')} className="flex-shrink-0">
+                  Set Passphrase
+                </Button>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>

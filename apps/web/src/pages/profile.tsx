@@ -104,7 +104,12 @@ export default function Profile() {
   const handleResetOnboarding = useCallback(async () => {
     setResetting(true);
     try {
-      await resetOnboarding({});
+      const result = await resetOnboarding({});
+      if (result.error) {
+        console.error('Reset onboarding failed:', result.error.message);
+      }
+      // Clear client state and open modal regardless — the user explicitly
+      // asked to reset, so start fresh even if the server cleanup was partial.
       resetOnboardingStatus();
       openOnboarding();
     } finally {

@@ -4,6 +4,8 @@ import { useMutation, useQuery } from 'urql';
 import { DISMISS_SIGNAL_MUTATION, INTEL_FEED_QUERY, REFRESH_INTEL_FEED_MUTATION } from '../../api/documents';
 import type { IntelFeedQueryResult, IntelFeedQueryVariables, RefreshIntelFeedMutationResult } from '../../api/types';
 import { cn, timeAgo } from '../../lib/utils';
+import { useFeatureStatus } from '../../lib/feature-status';
+import { FeatureCardGate } from '../common/feature-gate';
 import Spinner from '../common/spinner';
 
 type ItemType = 'action' | 'alert' | 'insight';
@@ -376,6 +378,23 @@ function IntelFeedCard({
 }
 
 export default function IntelFeed() {
+  const { jintelConfigured, aiConfigured } = useFeatureStatus();
+
+  if (!jintelConfigured || !aiConfigured) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-text-primary">Intel Feed</h2>
+        </div>
+        <FeatureCardGate requires={!jintelConfigured ? (!aiConfigured ? 'both' : 'jintel') : 'ai'} />
+      </div>
+    );
+  }
+
+  return <IntelFeedContent />;
+}
+
+function IntelFeedContent() {
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);

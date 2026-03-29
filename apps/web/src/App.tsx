@@ -162,6 +162,7 @@ function OnboardingGuard() {
   const statusValue = {
     completed: isComplete,
     skipped,
+    isReset: resetRequested,
     openOnboarding,
     markSkipped,
     markCompleted,

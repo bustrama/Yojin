@@ -11,10 +11,19 @@ import CardSkeleton from '../components/chat/tool-cards/card-skeleton';
 import { SessionSidebar } from '../components/chat/session-sidebar';
 import { useChatContext } from '../lib/chat-context';
 import { useAddPositionModal } from '../lib/add-position-modal-context';
+import { PageFeatureGate } from '../components/common/feature-gate';
 
 /* ─── Page ─── */
 
 export default function Chat() {
+  return (
+    <PageFeatureGate requires="ai">
+      <ChatContent />
+    </PageFeatureGate>
+  );
+}
+
+function ChatContent() {
   const { messages, pendingMessages, streamingContent, isLoading, pendingToolCards, sendMessage, activeSession } =
     useChatContext();
   const { openModal: openAddPosition } = useAddPositionModal();

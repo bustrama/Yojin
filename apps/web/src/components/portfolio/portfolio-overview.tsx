@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
 import { cn } from '../../lib/utils';
+import { useFeatureStatus } from '../../lib/feature-status';
 import { usePortfolio } from '../../api';
 import { CardEmptyState } from '../common/card-empty-state';
+import { FeatureCardGate } from '../common/feature-gate';
 import Spinner from '../common/spinner';
 import { timeScales, getScaleDays, type TimeScale } from '../../lib/time-scales';
 import { DashboardCard } from '../common/dashboard-card';
@@ -9,12 +11,21 @@ import { TotalValueGraph } from './total-value-graph';
 import { PerformanceOvertime } from './performance-overtime';
 
 export function PortfolioOverview() {
+  const { jintelConfigured } = useFeatureStatus();
   const [scale, setScale] = useState<TimeScale>('7D');
   const days = useMemo(() => getScaleDays(scale), [scale]);
   const vars = useMemo(() => ({ historyDays: days }), [days]);
   const [{ data: portfolioData, fetching }] = usePortfolio(vars);
   const history = portfolioData?.portfolio?.history ?? [];
   const hasHistory = history.length > 0;
+
+  if (!jintelConfigured) {
+    return (
+      <DashboardCard title="Total Value" className="min-h-[120px] flex-1">
+        <FeatureCardGate requires="jintel" />
+      </DashboardCard>
+    );
+  }
 
   const timeScaleButtons = (
     <div className="flex gap-0.5">

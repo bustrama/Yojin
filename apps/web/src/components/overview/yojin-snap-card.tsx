@@ -3,7 +3,9 @@ import { useQuery } from 'urql';
 import { SNAP_QUERY } from '../../api/documents';
 import type { SnapQueryResult, SnapSeverity } from '../../api/types';
 import { cn, timeAgo } from '../../lib/utils';
+import { useFeatureStatus } from '../../lib/feature-status';
 import { CardEmptyState } from '../common/card-empty-state';
+import { FeatureCardGate } from '../common/feature-gate';
 import { DashboardCard } from '../common/dashboard-card';
 import Spinner from '../common/spinner';
 
@@ -14,8 +16,17 @@ const SEVERITY_STYLES: Record<SnapSeverity, { dot: string; text: string }> = {
 };
 
 export default function YojinSnapCard() {
+  const { aiConfigured } = useFeatureStatus();
   const [result] = useQuery<SnapQueryResult>({ query: SNAP_QUERY });
   const snap = result.data?.snap;
+
+  if (!aiConfigured) {
+    return (
+      <DashboardCard title="Yojin Snap" variant="feature" className="flex-1">
+        <FeatureCardGate requires="ai" />
+      </DashboardCard>
+    );
+  }
 
   if (result.fetching) {
     return (

@@ -1,8 +1,10 @@
 import { Link, useNavigate } from 'react-router';
 import { cn } from '../../lib/utils';
+import { useFeatureStatus } from '../../lib/feature-status';
 import { SymbolLogo } from '../common/symbol-logo';
 import { usePortfolio } from '../../api';
 import { CardEmptyState } from '../common/card-empty-state';
+import { FeatureCardGate } from '../common/feature-gate';
 import Spinner from '../common/spinner';
 import { DashboardCard } from '../common/dashboard-card';
 
@@ -54,9 +56,18 @@ function Sparkline({ data, dayChangePercent }: { symbol: string; data: number[];
 const TH = 'whitespace-nowrap px-3 py-2 text-2xs font-medium uppercase tracking-wider text-text-muted';
 
 export default function PositionsPreview() {
+  const { jintelConfigured } = useFeatureStatus();
   const [{ data: portfolioData, fetching, error }] = usePortfolio();
   const data = portfolioData?.portfolio;
   const navigate = useNavigate();
+
+  if (!jintelConfigured) {
+    return (
+      <DashboardCard title="Top Positions">
+        <FeatureCardGate requires="jintel" />
+      </DashboardCard>
+    );
+  }
 
   const viewAllLink = (
     <Link to="/portfolio" className="text-2xs text-accent-primary transition-colors hover:text-accent-primary/80">
