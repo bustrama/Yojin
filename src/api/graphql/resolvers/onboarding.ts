@@ -17,6 +17,7 @@ import {
   generatePkceParams,
   refreshClaudeOAuthToken,
 } from '../../../auth/claude-oauth.js';
+import { readCodexCredentials } from '../../../auth/codex-credentials.js';
 import { readRefreshTokenFromKeychain, readTokenFromKeychain } from '../../../auth/keychain.js';
 import { completeMagicLinkFlow, startMagicLinkFlow } from '../../../auth/magic-link-flow.js';
 import type { PersonaManager } from '../../../brain/types.js';
@@ -82,15 +83,12 @@ interface DetectedCredential {
 }
 
 export async function detectAiCredentialQuery(): Promise<DetectedCredential | null> {
-  // Check environment variables
+  // Check environment variables for Claude Code
   if (process.env.ANTHROPIC_API_KEY) {
     return { method: 'ENV_DETECTED', model: 'Claude (env key)' };
   }
-  if (process.env.OPENAI_API_KEY) {
-    return { method: 'ENV_DETECTED', model: 'OpenAI (env key)' };
-  }
-  if (process.env.OPENROUTER_API_KEY) {
-    return { method: 'ENV_DETECTED', model: 'Claude via OpenRouter (env key)' };
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+    return { method: 'ENV_DETECTED', model: 'Claude Code (env token)' };
   }
 
   // Check vault
@@ -98,11 +96,8 @@ export async function detectAiCredentialQuery(): Promise<DetectedCredential | nu
     if (await vault.has('anthropic_api_key')) {
       return { method: 'ENV_DETECTED', model: 'Claude (vault)' };
     }
-    if (await vault.has('openai_api_key')) {
-      return { method: 'ENV_DETECTED', model: 'OpenAI (vault)' };
-    }
-    if (await vault.has('openrouter_api_key')) {
-      return { method: 'ENV_DETECTED', model: 'Claude via OpenRouter (vault)' };
+    if (await vault.has('anthropic_oauth_token')) {
+      return { method: 'ENV_DETECTED', model: 'Claude Code (vault)' };
     }
   }
 
@@ -195,6 +190,47 @@ export async function detectKeychainTokenQuery(): Promise<KeychainTokenResult> {
     found: true,
     error: 'Keychain token found but expired. Re-authenticate Claude Code with: claude auth login',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Codex detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Check the local machine for Codex CLI credentials.
+ * Reads from ~/.codex/auth.json (default), env vars, or macOS Keychain.
+ */
+export async function detectCodexTokenQuery(): Promise<KeychainTokenResult> {
+  const creds = await readCodexCredentials();
+  if (!creds) {
+    return { found: false };
+  }
+
+  // Validate with a lightweight OpenAI API call
+  try {
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${creds.accessToken}` },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (res.ok) {
+      // Store in vault + env so the provider can use it
+      process.env.OPENAI_API_KEY = creds.accessToken;
+      if (vault?.isUnlocked) {
+        await vault.set('openai_api_key', creds.accessToken);
+      }
+      const label = creds.authMode === 'chatgpt' ? 'Codex (ChatGPT)' : 'Codex (API key)';
+      return { found: true, model: label };
+    }
+
+    if (res.status === 401) {
+      return { found: true, error: 'Codex token found but invalid. Re-authenticate with: codex login' };
+    }
+
+    return { found: true, error: `Codex token validation failed (HTTP ${res.status})` };
+  } catch {
+    return { found: true, error: 'Could not reach OpenAI API to validate Codex token.' };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -397,137 +433,6 @@ export async function validateJintelKeyMutation(
 // ---------------------------------------------------------------------------
 // Mutation resolvers
 // ---------------------------------------------------------------------------
-
-interface ValidateCredentialInput {
-  method: 'MAGIC_LINK' | 'API_KEY' | 'ENV_DETECTED';
-  apiKey?: string;
-  provider?: 'ANTHROPIC' | 'OPENAI' | 'OPENROUTER';
-}
-
-interface ValidateCredentialResult {
-  success: boolean;
-  model?: string;
-  error?: string;
-}
-
-async function validateAnthropicKey(apiKey: string): Promise<ValidateCredentialResult> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    }),
-  });
-
-  if (res.ok) {
-    if (vault?.isUnlocked) {
-      await vault.set('anthropic_api_key', apiKey);
-    }
-    process.env.ANTHROPIC_API_KEY = apiKey;
-    claudeCodeProvider?.configureApiKey(apiKey);
-    return { success: true, model: 'Claude (Anthropic)' };
-  }
-
-  const body = await res.json().catch(() => ({}));
-  const errorMsg = (body as Record<string, unknown>)?.error
-    ? String((body as Record<string, Record<string, unknown>>).error?.message || 'Invalid API key')
-    : `API returned ${res.status}`;
-  return { success: false, error: errorMsg };
-}
-
-async function validateOpenAiKey(apiKey: string): Promise<ValidateCredentialResult> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    }),
-  });
-
-  if (res.ok) {
-    if (vault?.isUnlocked) {
-      await vault.set('openai_api_key', apiKey);
-    }
-    return { success: true, model: 'OpenAI' };
-  }
-
-  const body = await res.json().catch(() => ({}));
-  const errorMsg = (body as Record<string, Record<string, unknown>>)?.error?.message;
-  return { success: false, error: errorMsg ? String(errorMsg) : 'Invalid OpenAI API key' };
-}
-
-async function validateOpenRouterKey(apiKey: string): Promise<ValidateCredentialResult> {
-  // Validate by making a minimal chat completion with a tiny model
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'anthropic/claude-sonnet-4',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    }),
-  });
-
-  if (res.ok) {
-    if (vault?.isUnlocked) {
-      await vault.set('openrouter_api_key', apiKey);
-    }
-    return { success: true, model: 'Claude via OpenRouter' };
-  }
-
-  const body = await res.json().catch(() => ({}));
-  const errorMsg = (body as Record<string, Record<string, unknown>>)?.error?.message;
-  return { success: false, error: errorMsg ? String(errorMsg) : 'Invalid OpenRouter API key' };
-}
-
-export async function validateAiCredentialMutation(
-  _parent: unknown,
-  args: { input: ValidateCredentialInput },
-): Promise<ValidateCredentialResult> {
-  const { method, apiKey, provider: keyProvider } = args.input;
-
-  if (method === 'API_KEY') {
-    if (!apiKey?.trim()) {
-      return { success: false, error: 'API key is required' };
-    }
-
-    try {
-      if (keyProvider === 'OPENROUTER') {
-        return await validateOpenRouterKey(apiKey.trim());
-      }
-      if (keyProvider === 'OPENAI') {
-        return await validateOpenAiKey(apiKey.trim());
-      }
-      return await validateAnthropicKey(apiKey.trim());
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : 'Connection failed' };
-    }
-  }
-
-  if (method === 'ENV_DETECTED') {
-    const detected = await detectAiCredentialQuery();
-    if (detected) {
-      return { success: true, model: detected.model };
-    }
-    return { success: false, error: 'No credential found in environment or vault' };
-  }
-
-  return { success: false, error: 'Unsupported method' };
-}
 
 interface MagicLinkResult {
   success: boolean;
@@ -835,7 +740,6 @@ export async function resetOnboardingMutation(): Promise<boolean> {
     for (const key of [
       'anthropic_api_key',
       'openai_api_key',
-      'openrouter_api_key',
       'anthropic_verified_email',
       'anthropic_oauth_token',
       'anthropic_oauth_refresh_token',

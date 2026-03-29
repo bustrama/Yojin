@@ -85,6 +85,9 @@ function OnboardingGuard() {
   const [modalOpen, setModalOpen] = useState(false);
   const [completed, setCompleted] = useState(() => (didReset ? false : isOnboardingComplete()));
   const [skipped, setSkipped] = useState(() => (didReset ? false : isOnboardingSkipped()));
+  // Track whether a reset has been requested. Stays true until markCompleted clears it.
+  // The effective `resetting` flag is derived below (no effect needed to clear it).
+  const [resetRequested, setResetRequested] = useState(didReset);
 
   const [result] = useQuery<OnboardingStatusQueryResult>({
     query: ONBOARDING_STATUS_QUERY,
@@ -117,6 +120,7 @@ function OnboardingGuard() {
     localStorage.removeItem(ONBOARDING_KEYS.STATE_KEY);
     setCompleted(true);
     setSkipped(false);
+    setResetRequested(false);
     setModalOpen(false);
   }, []);
 
@@ -128,19 +132,28 @@ function OnboardingGuard() {
     localStorage.removeItem(ONBOARDING_KEYS.PERSONA_NAME_KEY);
     setCompleted(false);
     setSkipped(false);
+    setResetRequested(true);
   }, []);
 
   const serverCompleted = result.data?.onboardingStatus?.completed ?? false;
 
-  // Re-hydrate localStorage when backend confirms completion (external side-effect only)
+  // Derive effective resetting state: true while the server still reports the old
+  // (completed) state or is mid-fetch after a reset request. Auto-clears once the
+  // query resolves with completed=false — no cascading setState in an effect needed.
+  const resetting = resetRequested && (serverCompleted || result.fetching);
+
+  // Re-hydrate localStorage when backend confirms completion (external side-effect only).
+  // Skip during reset — stale cache would re-assert completion before the invalidated
+  // query resolves with the fresh (completed: false) response.
   useEffect(() => {
-    if (!completed && !skipped && serverCompleted) {
+    if (!resetting && !completed && !skipped && serverCompleted) {
       localStorage.setItem(ONBOARDING_KEYS.COMPLETE_KEY, 'true');
     }
-  }, [completed, skipped, serverCompleted]);
+  }, [resetting, completed, skipped, serverCompleted]);
 
-  // Derive effective completion from both local and server state
-  const isComplete = completed || serverCompleted;
+  // Derive effective completion from both local and server state.
+  // During a reset, ignore stale serverCompleted from cache.
+  const isComplete = completed || (!resetting && serverCompleted);
 
   // Still loading backend status — wait
   if (!isComplete && !skipped && result.fetching) return null;

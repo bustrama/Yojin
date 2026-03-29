@@ -139,7 +139,14 @@ export function Step6Done() {
   /* ── Derive summary from wizard state ── */
 
   const aiConnected = state.aiProvider?.validated ?? false;
-  const aiDetail = state.aiProvider?.model || 'Claude';
+  const MODEL_LABELS: Record<string, string> = {
+    'claude-opus-4-6': 'Claude Opus 4.6',
+    'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+    'claude-haiku-4-5-20251001': 'Claude Haiku 4.5',
+    o3: 'Codex o3',
+    'o4-mini': 'Codex o4-mini',
+  };
+  const aiDetail = MODEL_LABELS[state.aiProvider?.model ?? ''] ?? state.aiProvider?.model ?? 'Claude';
 
   const persona = state.persona;
   const personaCreated = persona?.confirmed ?? false;

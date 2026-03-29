@@ -549,32 +549,23 @@ export const typeDefs = /* GraphQL */ `
   # Onboarding
   # ---------------------------------------------------------------------------
 
-  enum AiAuthMethod {
-    MAGIC_LINK
-    API_KEY
-    ENV_DETECTED
-    OAUTH
-    KEYCHAIN
-  }
-
   type DetectedCredential {
-    method: AiAuthMethod!
+    method: String!
     model: String
   }
 
-  enum AiKeyProvider {
-    ANTHROPIC
-    OPENAI
-    OPENROUTER
+  type KeychainTokenResult {
+    found: Boolean!
+    model: String
+    error: String
   }
 
-  input ValidateCredentialInput {
-    method: AiAuthMethod!
-    apiKey: String
-    provider: AiKeyProvider
+  type OAuthFlowResult {
+    authUrl: String!
+    state: String!
   }
 
-  type ValidateCredentialResult {
+  type OAuthCompleteResult {
     success: Boolean!
     model: String
     error: String
@@ -666,23 +657,6 @@ export const typeDefs = /* GraphQL */ `
 
   type ValidateJintelKeyResult {
     success: Boolean!
-    error: String
-  }
-
-  type KeychainTokenResult {
-    found: Boolean!
-    model: String
-    error: String
-  }
-
-  type OAuthFlowResult {
-    authUrl: String!
-    state: String!
-  }
-
-  type OAuthCompleteResult {
-    success: Boolean!
-    model: String
     error: String
   }
 
@@ -1009,6 +983,7 @@ export const typeDefs = /* GraphQL */ `
     listVaultSecrets: [VaultSecret!]!
     detectAiCredential: DetectedCredential
     detectKeychainToken: KeychainTokenResult!
+    detectCodexToken: KeychainTokenResult!
     onboardingStatus: OnboardingStatusResult!
     sessions: [SessionSummary!]!
     session(id: ID!): SessionDetail
@@ -1037,6 +1012,7 @@ export const typeDefs = /* GraphQL */ `
 
   input AiConfigInput {
     defaultModel: String!
+    defaultProvider: String
   }
 
   type Mutation {
@@ -1062,7 +1038,6 @@ export const typeDefs = /* GraphQL */ `
     addVaultSecret(input: VaultSecretInput!): VaultResult!
     updateVaultSecret(input: VaultSecretInput!): VaultResult!
     deleteVaultSecret(key: String!): VaultResult!
-    validateAiCredential(input: ValidateCredentialInput!): ValidateCredentialResult!
     startOAuthFlow: OAuthFlowResult!
     completeOAuthFlow(code: String!, state: String!): OAuthCompleteResult!
     sendMagicLink(email: String!): MagicLinkResult!

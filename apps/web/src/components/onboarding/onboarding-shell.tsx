@@ -16,7 +16,7 @@ export function OnboardingShell({ currentStep, showProgress = true, children, cl
       <div className="absolute inset-0 bg-black/40" />
 
       {/* Modal panel */}
-      <div className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-bg-primary shadow-2xl">
+      <div className="relative flex h-[70vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-bg-primary shadow-2xl">
         {/* Atmospheric gradient (decorative) */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
           <div className="absolute -top-1/4 left-1/2 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-accent-primary/[0.03] blur-[120px]" />

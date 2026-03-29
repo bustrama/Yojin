@@ -17,7 +17,7 @@ import {
 } from '../api/hooks';
 import type { VaultSecret } from '../api/types';
 
-/** Vault management section — embedded in the Profile page. */
+/** Vault management — single unified card embedded in the Profile page. */
 export function VaultSection() {
   const [statusResult, reexecuteStatus] = useVaultStatus();
   const [secretsResult, reexecuteSecrets] = useListVaultSecrets();
@@ -34,89 +34,64 @@ export function VaultSection() {
   }, [reexecuteStatus, reexecuteSecrets]);
 
   return (
-    <>
-      <VaultStatusCard
-        isUnlocked={isUnlocked}
-        hasPassphrase={hasPassphrase}
-        secretCount={secretCount}
-        loading={loading}
-        onRefresh={refresh}
-      />
+    <Card className="overflow-hidden p-0">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-5 py-4">
+        <div className="flex items-center gap-4">
+          <div
+            className={cn(
+              'flex h-10 w-10 items-center justify-center rounded-xl',
+              isUnlocked ? 'bg-success/10' : 'bg-warning/10',
+            )}
+          >
+            {isUnlocked ? <UnlockedIcon /> : <LockedIcon />}
+          </div>
+          <div>
+            <h2 className="font-headline text-lg text-text-primary">Credential Vault</h2>
+            <p className="text-sm text-text-secondary">
+              {isUnlocked ? (
+                <>
+                  <Badge variant="success" size="xs" className="mr-2">
+                    Unlocked
+                  </Badge>
+                  {secretCount} {secretCount === 1 ? 'secret' : 'secrets'} stored
+                  {!hasPassphrase && (
+                    <Badge variant="neutral" size="xs" className="ml-2">
+                      No passphrase
+                    </Badge>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Badge variant="warning" size="xs" className="mr-2">
+                    Locked
+                  </Badge>
+                  Enter passphrase to manage secrets
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
+          <RefreshIcon />
+        </Button>
+      </div>
+
+      {/* ── Body ── */}
       {!isUnlocked ? (
         <UnlockForm onUnlocked={refresh} />
       ) : (
         <>
-          <SecretsList secrets={secrets} onMutated={refresh} />
-          <PassphraseSection hasPassphrase={hasPassphrase} onChanged={refresh} />
+          <SecretsPanel secrets={secrets} onMutated={refresh} />
+          <PassphrasePanel hasPassphrase={hasPassphrase} onChanged={refresh} />
         </>
       )}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Vault Status Card
-// ---------------------------------------------------------------------------
-
-function VaultStatusCard({
-  isUnlocked,
-  hasPassphrase,
-  secretCount,
-  loading,
-  onRefresh,
-}: {
-  isUnlocked: boolean;
-  hasPassphrase: boolean;
-  secretCount: number;
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <Card className="flex items-center justify-between">
-      <div className="flex items-center gap-4">
-        <div
-          className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-xl',
-            isUnlocked ? 'bg-success/10' : 'bg-warning/10',
-          )}
-        >
-          {isUnlocked ? <UnlockedIcon /> : <LockedIcon />}
-        </div>
-        <div>
-          <h2 className="font-headline text-lg text-text-primary">Credential Vault</h2>
-          <p className="text-sm text-text-secondary">
-            {isUnlocked ? (
-              <>
-                <Badge variant="success" size="xs" className="mr-2">
-                  Unlocked
-                </Badge>
-                {secretCount} {secretCount === 1 ? 'secret' : 'secrets'} stored
-                {!hasPassphrase && (
-                  <Badge variant="neutral" size="xs" className="ml-2">
-                    No passphrase
-                  </Badge>
-                )}
-              </>
-            ) : (
-              <>
-                <Badge variant="warning" size="xs" className="mr-2">
-                  Locked
-                </Badge>
-                Enter passphrase to manage secrets
-              </>
-            )}
-          </p>
-        </div>
-      </div>
-      <Button variant="ghost" size="sm" onClick={onRefresh} disabled={loading}>
-        <RefreshIcon />
-      </Button>
     </Card>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Unlock Form (only shown when vault has a passphrase and is locked)
+// Unlock Form (locked state)
 // ---------------------------------------------------------------------------
 
 function UnlockForm({ onUnlocked }: { onUnlocked: () => void }) {
@@ -139,10 +114,10 @@ function UnlockForm({ onUnlocked }: { onUnlocked: () => void }) {
   };
 
   return (
-    <Card section>
-      <div className="flex flex-col items-center py-8">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warning/10 mb-4">
-          <LockedIcon className="h-8 w-8 text-warning" />
+    <div className="border-t border-border px-5 py-8">
+      <div className="flex flex-col items-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-warning/10 mb-4">
+          <LockedIcon className="h-7 w-7 text-warning" />
         </div>
         <h3 className="font-headline text-lg text-text-primary mb-1">Vault is Locked</h3>
         <p className="text-sm text-text-secondary mb-6 text-center max-w-md">
@@ -162,19 +137,68 @@ function UnlockForm({ onUnlocked }: { onUnlocked: () => void }) {
           </Button>
         </form>
       </div>
-    </Card>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Passphrase Management Section
+// Secrets Panel (inline section, no Card wrapper)
 // ---------------------------------------------------------------------------
 
-function PassphraseSection({ hasPassphrase, onChanged }: { hasPassphrase: boolean; onChanged: () => void }) {
+function SecretsPanel({ secrets, onMutated }: { secrets: VaultSecret[]; onMutated: () => void }) {
+  const [search, setSearch] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [deleteKey, setDeleteKey] = useState<string | null>(null);
+
+  const filtered = secrets.filter((s) => s.key.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <>
+      <div className="border-t border-border px-5 py-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Stored Secrets</h3>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <PlusIcon /> Add Secret
+          </Button>
+        </div>
+
+        {secrets.length > 3 && (
+          <Input placeholder="Search secrets..." value={search} onChange={(e) => setSearch(e.target.value)} size="sm" />
+        )}
+
+        {filtered.length === 0 ? (
+          <SecretsEmptyState hasSearch={search.length > 0} onAdd={() => setAddOpen(true)} />
+        ) : (
+          <div className="space-y-1">
+            {filtered.map((secret) => (
+              <SecretRow
+                key={secret.key}
+                secret={secret}
+                onEdit={() => setEditKey(secret.key)}
+                onDelete={() => setDeleteKey(secret.key)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <AddSecretModal open={addOpen} onClose={() => setAddOpen(false)} onAdded={onMutated} />
+      <EditSecretModal secretKey={editKey} onClose={() => setEditKey(null)} onUpdated={onMutated} />
+      <DeleteSecretModal secretKey={deleteKey} onClose={() => setDeleteKey(null)} onDeleted={onMutated} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Passphrase Panel (inline section, no Card wrapper)
+// ---------------------------------------------------------------------------
+
+function PassphrasePanel({ hasPassphrase, onChanged }: { hasPassphrase: boolean; onChanged: () => void }) {
   const [mode, setMode] = useState<'idle' | 'set' | 'change' | 'remove'>('idle');
 
   return (
-    <Card section>
+    <div className="border-t border-border px-5 py-4 space-y-3">
       <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Vault Security</h3>
       <div className="flex items-start gap-4">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-bg-tertiary flex-shrink-0">
@@ -244,9 +268,13 @@ function PassphraseSection({ hasPassphrase, onChanged }: { hasPassphrase: boolea
           onCancel={() => setMode('idle')}
         />
       )}
-    </Card>
+    </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Passphrase Forms
+// ---------------------------------------------------------------------------
 
 function SetPassphraseForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const [newPass, setNewPass] = useState('');
@@ -275,7 +303,7 @@ function SetPassphraseForm({ onDone, onCancel }: { onDone: () => void; onCancel:
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 border-t border-border pt-4 mt-4">
+    <form onSubmit={handleSubmit} className="space-y-3 border-t border-border-light pt-4 mt-4">
       <Input
         type="password"
         label="New Passphrase"
@@ -333,7 +361,7 @@ function ChangePassphraseForm({ onDone, onCancel }: { onDone: () => void; onCanc
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 border-t border-border pt-4 mt-4">
+    <form onSubmit={handleSubmit} className="space-y-3 border-t border-border-light pt-4 mt-4">
       <Input
         type="password"
         label="Current Passphrase"
@@ -390,7 +418,7 @@ function RemovePassphraseForm({ onDone, onCancel }: { onDone: () => void; onCanc
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 border-t border-border pt-4 mt-4">
+    <form onSubmit={handleSubmit} className="space-y-3 border-t border-border-light pt-4 mt-4">
       <p className="text-sm text-warning">
         Removing the passphrase means the vault will auto-unlock on server startup without authentication.
       </p>
@@ -412,55 +440,6 @@ function RemovePassphraseForm({ onDone, onCancel }: { onDone: () => void; onCanc
         </Button>
       </div>
     </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Secrets List
-// ---------------------------------------------------------------------------
-
-function SecretsList({ secrets, onMutated }: { secrets: VaultSecret[]; onMutated: () => void }) {
-  const [search, setSearch] = useState('');
-  const [addOpen, setAddOpen] = useState(false);
-  const [editKey, setEditKey] = useState<string | null>(null);
-  const [deleteKey, setDeleteKey] = useState<string | null>(null);
-
-  const filtered = secrets.filter((s) => s.key.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <>
-      <Card section>
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Stored Secrets</h3>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <PlusIcon /> Add Secret
-          </Button>
-        </div>
-
-        {secrets.length > 3 && (
-          <Input placeholder="Search secrets..." value={search} onChange={(e) => setSearch(e.target.value)} size="sm" />
-        )}
-
-        {filtered.length === 0 ? (
-          <EmptyState hasSearch={search.length > 0} onAdd={() => setAddOpen(true)} />
-        ) : (
-          <div className="space-y-1">
-            {filtered.map((secret) => (
-              <SecretRow
-                key={secret.key}
-                secret={secret}
-                onEdit={() => setEditKey(secret.key)}
-                onDelete={() => setDeleteKey(secret.key)}
-              />
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <AddSecretModal open={addOpen} onClose={() => setAddOpen(false)} onAdded={onMutated} />
-      <EditSecretModal secretKey={editKey} onClose={() => setEditKey(null)} onUpdated={onMutated} />
-      <DeleteSecretModal secretKey={deleteKey} onClose={() => setDeleteKey(null)} onDeleted={onMutated} />
-    </>
   );
 }
 
@@ -498,9 +477,9 @@ function SecretRow({ secret, onEdit, onDelete }: { secret: VaultSecret; onEdit: 
 // Empty State
 // ---------------------------------------------------------------------------
 
-function EmptyState({ hasSearch, onAdd }: { hasSearch: boolean; onAdd: () => void }) {
+function SecretsEmptyState({ hasSearch, onAdd }: { hasSearch: boolean; onAdd: () => void }) {
   return (
-    <div className="flex flex-col items-center py-8 text-center">
+    <div className="flex flex-col items-center py-6 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-bg-tertiary mb-3">
         <KeyIcon className="h-6 w-6 text-text-muted" />
       </div>
@@ -520,7 +499,7 @@ function EmptyState({ hasSearch, onAdd }: { hasSearch: boolean; onAdd: () => voi
 }
 
 // ---------------------------------------------------------------------------
-// Add Secret Modal
+// Modals
 // ---------------------------------------------------------------------------
 
 function AddSecretModal({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: () => void }) {
@@ -587,10 +566,6 @@ function AddSecretModal({ open, onClose, onAdded }: { open: boolean; onClose: ()
   );
 }
 
-// ---------------------------------------------------------------------------
-// Edit Secret Modal
-// ---------------------------------------------------------------------------
-
 function EditSecretModal({
   secretKey,
   onClose,
@@ -654,10 +629,6 @@ function EditSecretModal({
     </Modal>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Delete Secret Modal
-// ---------------------------------------------------------------------------
 
 function DeleteSecretModal({
   secretKey,

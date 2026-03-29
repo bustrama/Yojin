@@ -336,9 +336,6 @@ export function Step2Persona() {
                   </svg>
                   <span className="text-xs font-medium text-text-primary">Persona preview</span>
                 </div>
-                <Button variant="ghost" size="sm" loading={generating} onClick={generatePreview}>
-                  Regenerate
-                </Button>
               </div>
               <div
                 className={cn(
