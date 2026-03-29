@@ -11,7 +11,7 @@ import type { AssetClass } from '../../api/graphql/types.js';
 import { createSubsystemLogger } from '../../logging/logger.js';
 import type { PortfolioSnapshotStore } from '../../portfolio/snapshot-store.js';
 import type { SignalArchive } from '../archive.js';
-import type { PortfolioRelevanceScore, Signal, SignalType } from '../types.js';
+import type { PortfolioRelevanceScore, Signal, SignalOutputType, SignalType } from '../types.js';
 import type { CuratedSignalStore } from './curated-signal-store.js';
 import type { CuratedSignal, CurationConfig, CurationRunResult } from './types.js';
 
@@ -88,6 +88,38 @@ export function computeCompositeScore(
 }
 
 // ---------------------------------------------------------------------------
+// Deterministic outputType classification (exported for testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Classify a signal's outputType using deterministic rules.
+ *
+ * If the signal already has an LLM-assigned outputType (from clustering/summary),
+ * we preserve it — this function only upgrades from the default 'INSIGHT'.
+ *
+ * Rules (checked in order, first match wins):
+ *   ALERT:
+ *     - BEARISH sentiment with confidence > 0.7
+ *     - FILINGS type (SEC filings are always time-sensitive)
+ *     - TRADING_LOGIC_TRIGGER type (automated strategy signals)
+ *     - TECHNICAL type with confidence > 0.8 (strong technical breakout/breakdown)
+ *     - Signal already marked ALERT by LLM (preserve)
+ *   INSIGHT:
+ *     - Everything else
+ */
+export function classifyOutputType(signal: Signal): SignalOutputType {
+  // Preserve LLM-assigned non-default outputType
+  if (signal.outputType === 'ALERT' || signal.outputType === 'ACTION') return signal.outputType;
+
+  if (signal.sentiment === 'BEARISH' && signal.confidence > 0.7) return 'ALERT';
+  if (signal.type === 'FILINGS') return 'ALERT';
+  if (signal.type === 'TRADING_LOGIC_TRIGGER') return 'ALERT';
+  if (signal.type === 'TECHNICAL' && signal.confidence > 0.8) return 'ALERT';
+
+  return 'INSIGHT';
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline
 // ---------------------------------------------------------------------------
 
@@ -120,10 +152,17 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
     return { signalsProcessed: 0, signalsCurated: 0, signalsDropped: 0, durationMs: Date.now() - start };
   }
 
-  // 2. FILTER — confidence, spam, portfolio match
+  // 1b. DEDUP — load already-curated signal IDs to skip re-processing
+  const alreadyCurated = await curatedStore.queryByTickers([...portfolioTickers], { limit: 10000 });
+  const alreadyCuratedIds = new Set(alreadyCurated.map((cs) => cs.signal.id));
+
+  // 2. FILTER — confidence, spam, portfolio match, already-curated
   const spamRegexes = config.spamPatterns.map((p) => new RegExp(p, 'i'));
 
   const filtered = rawSignals.filter((signal) => {
+    // Skip already-curated signals
+    if (alreadyCuratedIds.has(signal.id)) return false;
+
     // Confidence threshold
     if (signal.confidence < config.minConfidence) return false;
 
@@ -174,8 +213,12 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
     }
 
     if (scores.length > 0) {
+      // Deterministic outputType classification — upgrades default INSIGHT to ALERT when rules match
+      const outputType = classifyOutputType(signal);
+      const classified = outputType !== signal.outputType ? { ...signal, outputType } : signal;
+
       curatedSignals.push({
-        signal,
+        signal: classified,
         scores,
         curatedAt: new Date().toISOString(),
       });
@@ -196,7 +239,26 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
     }
   }
 
-  const finalCurated = curatedSignals.filter((cs) => keptSignalIds.has(cs.signal.id));
+  const rankedCurated = curatedSignals.filter((cs) => keptSignalIds.has(cs.signal.id));
+
+  // 4b. TITLE DEDUP — keep only the highest-scoring signal per normalized title.
+  // Prevents near-identical signals (same headline from different sources/runs) from cluttering the feed.
+  const byTitle = new Map<string, CuratedSignal>();
+  for (const cs of rankedCurated) {
+    const key = cs.signal.title.trim().toLowerCase();
+    const existing = byTitle.get(key);
+    if (!existing) {
+      byTitle.set(key, cs);
+    } else {
+      // Keep the one with the higher max composite score
+      const maxExisting = Math.max(...existing.scores.map((s) => s.compositeScore));
+      const maxCurrent = Math.max(...cs.scores.map((s) => s.compositeScore));
+      if (maxCurrent > maxExisting) {
+        byTitle.set(key, cs);
+      }
+    }
+  }
+  const finalCurated = [...byTitle.values()];
 
   // 5. STORE — write curated signals + update watermark
   await curatedStore.writeBatch(finalCurated);

@@ -65,7 +65,19 @@ export const CurationConfigSchema = z.object({
   /** Pipeline run interval in minutes. */
   intervalMinutes: z.number().int().min(1).default(15),
   /** Regex patterns for spam title filtering (case-insensitive). */
-  spamPatterns: z.array(z.string()).default(['sponsored', 'press release', 'advertisement', 'partner content']),
+  spamPatterns: z
+    .array(z.string())
+    .default([
+      'sponsored',
+      'press release',
+      'advertisement',
+      'partner content',
+      'stock price, news, quote',
+      'check out .+ stock price',
+      'stock (?:price|chart) .+ tradingview',
+      'stock chart .+ tradingview',
+      'in real time$',
+    ]),
   /** Scoring weights (must sum to ~1.0). */
   weights: CurationWeightsSchema.default({}),
 });

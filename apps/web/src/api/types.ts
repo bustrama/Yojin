@@ -977,6 +977,7 @@ export interface IntelFeedSignal {
   confidence: number;
   sources: { name: string; reliability: number }[];
   tier1: string | null;
+  tier2: string | null;
 }
 
 export interface IntelFeedCuratedSignal {
@@ -985,23 +986,13 @@ export interface IntelFeedCuratedSignal {
   curatedAt: string;
 }
 
-export interface IntelFeedAction {
-  id: string;
-  what: string;
-  why: string;
-  source: string;
-  status: ActionStatus;
-  expiresAt: string;
-  createdAt: string;
-}
-
 export interface IntelFeedQueryResult {
   curatedSignals: IntelFeedCuratedSignal[];
-  actions: IntelFeedAction[];
 }
 
 export interface IntelFeedQueryVariables {
   limit?: number;
+  offset?: number;
 }
 
 export interface RefreshIntelFeedResult {

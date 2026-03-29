@@ -999,7 +999,7 @@ export const typeDefs = /* GraphQL */ `
       limit: Int
     ): [Signal!]!
     signalGroups(ticker: String, since: String, limit: Int): [SignalGroup!]!
-    curatedSignals(ticker: String, since: String, limit: Int): [CuratedSignal!]!
+    curatedSignals(ticker: String, since: String, limit: Int, offset: Int): [CuratedSignal!]!
     curationStatus: CurationStatus!
     curationWorkflowStatus: WorkflowStatus!
     signalAssessments(ticker: String, since: String, limit: Int): [AssessmentReport!]!

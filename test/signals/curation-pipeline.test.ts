@@ -8,6 +8,7 @@ import { PortfolioSnapshotStore } from '../../src/portfolio/snapshot-store.js';
 import { SignalArchive } from '../../src/signals/archive.js';
 import { CuratedSignalStore } from '../../src/signals/curation/curated-signal-store.js';
 import {
+  classifyOutputType,
   computeCompositeScore,
   computeExposureWeight,
   computeRecencyFactor,
@@ -200,8 +201,18 @@ describe('runCurationPipeline', () => {
   it('curates signals matching portfolio', async () => {
     await seedPortfolio();
     await signalArchive.appendBatch([
-      makeSignal({ id: 's1', contentHash: 'h1', assets: [{ ticker: 'AAPL', relevance: 0.9, linkType: 'DIRECT' }] }),
-      makeSignal({ id: 's2', contentHash: 'h2', assets: [{ ticker: 'MSFT', relevance: 0.8, linkType: 'DIRECT' }] }),
+      makeSignal({
+        id: 's1',
+        contentHash: 'h1',
+        title: 'AAPL earnings beat',
+        assets: [{ ticker: 'AAPL', relevance: 0.9, linkType: 'DIRECT' }],
+      }),
+      makeSignal({
+        id: 's2',
+        contentHash: 'h2',
+        title: 'MSFT cloud revenue up',
+        assets: [{ ticker: 'MSFT', relevance: 0.8, linkType: 'DIRECT' }],
+      }),
     ]);
 
     const result = await runCurationPipeline({ signalArchive, curatedStore, snapshotStore, config });
@@ -260,6 +271,7 @@ describe('runCurationPipeline', () => {
       makeSignal({
         id: `s${i}`,
         contentHash: `h${i}`,
+        title: `AAPL signal ${i}`,
         confidence: 0.5 + (i % 10) * 0.05,
         assets: [{ ticker: 'AAPL', relevance: 0.9, linkType: 'DIRECT' }],
       }),
@@ -283,5 +295,87 @@ describe('runCurationPipeline', () => {
     expect(watermark).not.toBeNull();
     expect(watermark!.signalsProcessed).toBe(1);
     expect(watermark!.signalsCurated).toBe(1);
+  });
+
+  it('classifies BEARISH high-confidence signals as ALERT', async () => {
+    await seedPortfolio();
+    await signalArchive.appendBatch([
+      makeSignal({ id: 's1', contentHash: 'h1', sentiment: 'BEARISH', confidence: 0.85 }),
+    ]);
+
+    await runCurationPipeline({ signalArchive, curatedStore, snapshotStore, config });
+    const curated = await curatedStore.queryByTickers(['AAPL']);
+    expect(curated).toHaveLength(1);
+    expect(curated[0].signal.outputType).toBe('ALERT');
+  });
+
+  it('classifies FILINGS signals as ALERT', async () => {
+    await seedPortfolio();
+    await signalArchive.appendBatch([makeSignal({ id: 's1', contentHash: 'h1', type: 'FILINGS', confidence: 0.5 })]);
+
+    await runCurationPipeline({ signalArchive, curatedStore, snapshotStore, config });
+    const curated = await curatedStore.queryByTickers(['AAPL']);
+    expect(curated).toHaveLength(1);
+    expect(curated[0].signal.outputType).toBe('ALERT');
+  });
+
+  it('preserves INSIGHT for low-confidence neutral NEWS', async () => {
+    await seedPortfolio();
+    await signalArchive.appendBatch([
+      makeSignal({ id: 's1', contentHash: 'h1', type: 'NEWS', sentiment: 'NEUTRAL', confidence: 0.5 }),
+    ]);
+
+    await runCurationPipeline({ signalArchive, curatedStore, snapshotStore, config });
+    const curated = await curatedStore.queryByTickers(['AAPL']);
+    expect(curated).toHaveLength(1);
+    expect(curated[0].signal.outputType).toBe('INSIGHT');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// classifyOutputType
+// ---------------------------------------------------------------------------
+
+describe('classifyOutputType', () => {
+  it('returns ALERT for BEARISH sentiment with confidence > 0.7', () => {
+    expect(classifyOutputType(makeSignal({ sentiment: 'BEARISH', confidence: 0.8 }))).toBe('ALERT');
+  });
+
+  it('returns INSIGHT for BEARISH sentiment with confidence <= 0.7', () => {
+    expect(classifyOutputType(makeSignal({ sentiment: 'BEARISH', confidence: 0.5 }))).toBe('INSIGHT');
+  });
+
+  it('returns ALERT for FILINGS type regardless of sentiment', () => {
+    expect(classifyOutputType(makeSignal({ type: 'FILINGS', sentiment: 'NEUTRAL', confidence: 0.4 }))).toBe('ALERT');
+  });
+
+  it('returns ALERT for TRADING_LOGIC_TRIGGER type', () => {
+    expect(classifyOutputType(makeSignal({ type: 'TRADING_LOGIC_TRIGGER' }))).toBe('ALERT');
+  });
+
+  it('returns ALERT for TECHNICAL type with confidence > 0.8', () => {
+    expect(classifyOutputType(makeSignal({ type: 'TECHNICAL', confidence: 0.9 }))).toBe('ALERT');
+  });
+
+  it('returns INSIGHT for TECHNICAL type with confidence <= 0.8', () => {
+    expect(classifyOutputType(makeSignal({ type: 'TECHNICAL', confidence: 0.7 }))).toBe('INSIGHT');
+  });
+
+  it('preserves existing ALERT outputType from LLM', () => {
+    expect(classifyOutputType(makeSignal({ outputType: 'ALERT', sentiment: 'NEUTRAL', confidence: 0.3 }))).toBe(
+      'ALERT',
+    );
+  });
+
+  it('preserves existing ACTION outputType', () => {
+    expect(classifyOutputType(makeSignal({ outputType: 'ACTION' }))).toBe('ACTION');
+  });
+
+  it('returns INSIGHT for default NEWS signal', () => {
+    expect(classifyOutputType(makeSignal({ type: 'NEWS', sentiment: 'NEUTRAL', confidence: 0.5 }))).toBe('INSIGHT');
+  });
+
+  it('returns INSIGHT for BULLISH signals', () => {
+    expect(classifyOutputType(makeSignal({ sentiment: 'BULLISH', confidence: 0.9 }))).toBe('INSIGHT');
   });
 });

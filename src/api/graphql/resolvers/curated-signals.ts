@@ -74,7 +74,7 @@ interface CurationStatusGql {
 
 export async function curatedSignalsResolver(
   _parent: unknown,
-  args: { ticker?: string; since?: string; limit?: number },
+  args: { ticker?: string; since?: string; limit?: number; offset?: number },
 ): Promise<CuratedSignalGql[]> {
   if (!store) return [];
 
@@ -98,8 +98,33 @@ export async function curatedSignalsResolver(
     store.getDismissedIds(),
   ]);
 
-  // Filter out dismissed signals
-  const visible = curated.filter((cs) => !dismissedIds.has(cs.signal.id));
+  // Filter out dismissed signals, dedup by normalized title (keep highest score), sort by composite score
+  const nonDismissed = curated.filter((cs) => !dismissedIds.has(cs.signal.id));
+
+  // Title-level dedup — keep the curated signal with the highest composite score per unique title
+  const byTitle = new Map<string, (typeof nonDismissed)[number]>();
+  for (const cs of nonDismissed) {
+    const key = cs.signal.title.trim().toLowerCase();
+    const existing = byTitle.get(key);
+    if (!existing) {
+      byTitle.set(key, cs);
+    } else {
+      const maxExisting = Math.max(...existing.scores.map((s) => s.compositeScore));
+      const maxCurrent = Math.max(...cs.scores.map((s) => s.compositeScore));
+      if (maxCurrent > maxExisting) byTitle.set(key, cs);
+    }
+  }
+
+  const sorted = [...byTitle.values()].sort((a, b) => {
+    const maxA = Math.max(...a.scores.map((s) => s.compositeScore));
+    const maxB = Math.max(...b.scores.map((s) => s.compositeScore));
+    return maxB - maxA;
+  });
+
+  // Pagination — offset/limit applied after dedup + sort
+  const offset = args.offset ?? 0;
+  const limit = args.limit ?? 200;
+  const visible = sorted.slice(offset, offset + limit);
 
   return visible.map((cs) => ({
     signal: toGql(cs.signal),
