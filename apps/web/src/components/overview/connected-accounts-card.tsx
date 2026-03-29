@@ -102,7 +102,7 @@ export default function ConnectedAccountsCard() {
   if (error || accounts.length === 0) {
     const showContinueSetup = !onboardingComplete && !onboardingSkipped;
     return (
-      <DashboardCard title="Connected Accounts">
+      <DashboardCard title="Connected Accounts" headerAction={addButton}>
         <CardEmptyState
           icon={
             <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -120,7 +120,11 @@ export default function ConnectedAccountsCard() {
               <Button variant="primary" size="sm" onClick={openOnboarding}>
                 Continue setup
               </Button>
-            ) : undefined
+            ) : (
+              <Button variant="primary" size="sm" onClick={() => setModalOpen(true)}>
+                Add account
+              </Button>
+            )
           }
         />
         {modal}

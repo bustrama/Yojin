@@ -213,10 +213,10 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
         if (field === 'symbol') {
           updated.name = lookupName(sanitized);
         }
-        if (field === 'quantity' || field === 'marketPrice') {
+        if (field === 'quantity' || field === 'avgEntry') {
           updated.marketValue = computeValue(
             field === 'quantity' ? sanitized : e.quantity,
-            field === 'marketPrice' ? sanitized : e.marketPrice,
+            field === 'avgEntry' ? sanitized : e.avgEntry,
           );
         }
         return updated;
@@ -405,16 +405,6 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
                     className="w-24"
                   />
                   <Input
-                    label={idx === 0 ? 'Mkt Price' : undefined}
-                    placeholder="175.00"
-                    inputMode="decimal"
-                    value={entry.marketPrice}
-                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
-                    error={rowErrors.marketPrice}
-                    size="sm"
-                    className="w-24"
-                  />
-                  <Input
                     label={idx === 0 ? 'Value' : undefined}
                     placeholder="Auto"
                     value={entry.marketValue}
@@ -522,16 +512,6 @@ export default function AddAccountModal({ open, onClose, onSuccess, connectedPla
                     value={entry.avgEntry}
                     onChange={(e) => updateManualEntry(idx, 'avgEntry', e.target.value)}
                     error={rowErrors.avgEntry}
-                    size="sm"
-                    className="w-24"
-                  />
-                  <Input
-                    label={idx === 0 ? 'Mkt Price' : undefined}
-                    placeholder="175.00"
-                    inputMode="decimal"
-                    value={entry.marketPrice}
-                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
-                    error={rowErrors.marketPrice}
                     size="sm"
                     className="w-24"
                   />

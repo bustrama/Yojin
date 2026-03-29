@@ -26,7 +26,7 @@ export default function Input({ label, hint, error, size = 'md', className, id, 
       <input
         id={inputId}
         className={cn(
-          'w-full border bg-bg-tertiary text-text-primary placeholder:text-text-muted outline-none transition-colors focus-visible:border-accent-primary focus-visible:ring-2 focus-visible:ring-accent-primary/30',
+          'w-full border bg-bg-tertiary text-text-primary placeholder:text-text-muted outline-none transition-colors focus-visible:border-accent-primary focus-visible:ring-2 focus-visible:ring-accent-primary/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:ring-0 disabled:border-border read-only:cursor-not-allowed read-only:ring-0 read-only:border-border read-only:focus-visible:border-border read-only:focus-visible:ring-0',
           error ? 'border-error' : 'border-border',
           sizeStyles[size],
           className,

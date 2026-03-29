@@ -66,13 +66,9 @@ export function EditableTable({ positions, onChange, assetClass = 'equity', clas
     if (!editing) return;
     const updated = [...positions];
     const { row, field } = editing;
-    if (field === 'symbol' || field === 'name') {
-      updated[row] = { ...updated[row], [field]: editValue };
-      // Auto-fill name when symbol is edited and name is empty
-      if (field === 'symbol' && !updated[row].name) {
-        const resolved = lookupSymbolName(editValue);
-        if (resolved) updated[row] = { ...updated[row], name: resolved };
-      }
+    if (field === 'symbol') {
+      const resolved = lookupSymbolName(editValue);
+      updated[row] = { ...updated[row], symbol: editValue, name: resolved || updated[row].name };
     } else {
       const num = parseFloat(editValue);
       updated[row] = { ...updated[row], [field]: Number.isNaN(num) ? null : num };
@@ -138,7 +134,6 @@ export function EditableTable({ positions, onChange, assetClass = 'equity', clas
             {pagePositions.map((pos, i) => {
               const rowIdx = pageStart + i;
               const editingSymbol = editing?.row === rowIdx && editing?.field === 'symbol';
-              const editingName = editing?.row === rowIdx && editing?.field === 'name';
               const editingQty = editing?.row === rowIdx && editing?.field === 'quantity';
               const editingEntry = editing?.row === rowIdx && editing?.field === 'avgEntry';
               return (
@@ -171,26 +166,9 @@ export function EditableTable({ positions, onChange, assetClass = 'equity', clas
                       </button>
                     )}
                   </td>
-                  {/* Name */}
+                  {/* Name (read-only, auto-detected from symbol) */}
                   <td className="px-2 py-2">
-                    {editingName ? (
-                      <input
-                        autoFocus
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onBlur={commitEdit}
-                        onKeyDown={handleKeyDown}
-                        className="w-full rounded bg-bg-tertiary px-2 py-1 text-sm text-text-primary outline-none ring-1 ring-accent-primary/40"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => startEdit(rowIdx, 'name')}
-                        className="cursor-pointer truncate rounded px-1 py-0.5 text-sm text-text-secondary hover:bg-bg-tertiary"
-                      >
-                        {pos.name || <MissingBadge />}
-                      </button>
-                    )}
+                    <span className="block truncate px-1 py-0.5 text-sm text-text-muted">{pos.name || '—'}</span>
                   </td>
                   {/* Qty */}
                   <td className="px-2 py-2 text-right">
@@ -265,19 +243,6 @@ export function EditableTable({ positions, onChange, assetClass = 'equity', clas
                 </tr>
               );
             })}
-            {/* Empty placeholder rows to keep table height constant */}
-            {Array.from({ length: PAGE_SIZE - pagePositions.length }, (_, i) => (
-              <tr key={`empty-${i}`} className="border-t border-border">
-                <td className="py-2 pl-4 pr-2">
-                  <span className="inline-block py-0.5 text-sm">&nbsp;</span>
-                </td>
-                <td className="px-2 py-2" />
-                <td className="px-2 py-2" />
-                <td className="px-2 py-2" />
-                <td className="px-2 py-2" />
-                <td className="pr-3" />
-              </tr>
-            ))}
           </tbody>
         </table>
       </div>

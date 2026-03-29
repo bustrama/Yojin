@@ -63,7 +63,7 @@ export default function PositionsPreview() {
 
   if (!jintelConfigured) {
     return (
-      <DashboardCard title="Top Positions">
+      <DashboardCard title="Portfolio">
         <FeatureCardGate requires="jintel" />
       </DashboardCard>
     );
@@ -77,7 +77,7 @@ export default function PositionsPreview() {
 
   if (fetching) {
     return (
-      <DashboardCard title="Top Positions" headerAction={viewAllLink}>
+      <DashboardCard title="Portfolio" headerAction={viewAllLink}>
         <div className="flex flex-1 items-center justify-center">
           <Spinner size="md" label="Fetching positions…" />
         </div>
@@ -87,7 +87,7 @@ export default function PositionsPreview() {
 
   if (error || !data || data.positions.length === 0) {
     return (
-      <DashboardCard title="Top Positions">
+      <DashboardCard title="Portfolio">
         <CardEmptyState
           icon={
             <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -109,7 +109,7 @@ export default function PositionsPreview() {
   const top = [...data.positions].sort((a, b) => b.marketValue - a.marketValue).slice(0, 5);
 
   return (
-    <DashboardCard title="Top Positions" headerAction={viewAllLink}>
+    <DashboardCard title="Portfolio" headerAction={viewAllLink}>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full text-left">
           <thead className="sticky top-0 z-10 bg-bg-card">

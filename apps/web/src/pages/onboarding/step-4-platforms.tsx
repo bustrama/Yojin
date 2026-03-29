@@ -16,6 +16,7 @@ import {
   validateEntries,
   type ManualEntryErrors,
 } from '../../lib/manual-entry-validation';
+import { lookupSymbolName } from '../../lib/symbol-names';
 
 type Screen = 'grid' | 'detail' | 'manual' | 'custom' | 'verify';
 
@@ -187,10 +188,32 @@ export function Step4Platforms() {
     }
   };
 
+  const computeValue = (qty: string, price: string): string => {
+    const q = parseFloat(qty);
+    const p = parseFloat(price);
+    if (isNaN(q) || isNaN(p)) return '';
+    return (q * p).toFixed(2);
+  };
+
   const updateManualEntry = (idx: number, field: keyof ManualEntry, value: string) => {
     const sanitized = field === 'symbol' ? sanitizeSymbol(value) : field === 'name' ? value : sanitizeNumeric(value);
 
-    setManualEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, [field]: sanitized } : e)));
+    setManualEntries((prev) =>
+      prev.map((e, i) => {
+        if (i !== idx) return e;
+        const updated = { ...e, [field]: sanitized };
+        if (field === 'symbol') {
+          updated.name = lookupSymbolName(sanitized);
+        }
+        if (field === 'quantity' || field === 'avgEntry') {
+          updated.marketValue = computeValue(
+            field === 'quantity' ? sanitized : e.quantity,
+            field === 'avgEntry' ? sanitized : e.avgEntry,
+          );
+        }
+        return updated;
+      }),
+    );
 
     // Clear error for the field being edited
     setEntryErrors((prev) => {
@@ -409,11 +432,11 @@ export function Step4Platforms() {
                   />
                   <Input
                     label={idx === 0 ? 'Name' : undefined}
-                    placeholder="Apple Inc."
+                    placeholder="Auto"
                     value={entry.name}
-                    onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
+                    readOnly
                     size="sm"
-                    className="flex-1"
+                    className="flex-1 opacity-60"
                   />
                   <Input
                     label={idx === 0 ? 'Qty' : undefined}
@@ -436,24 +459,12 @@ export function Step4Platforms() {
                     className="w-24"
                   />
                   <Input
-                    label={idx === 0 ? 'Mkt Price' : undefined}
-                    placeholder="175.00"
-                    inputMode="decimal"
-                    value={entry.marketPrice}
-                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
-                    error={rowErrors.marketPrice}
-                    size="sm"
-                    className="w-24"
-                  />
-                  <Input
                     label={idx === 0 ? 'Value' : undefined}
-                    placeholder="1500.00"
-                    inputMode="decimal"
+                    placeholder="Auto"
                     value={entry.marketValue}
-                    onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
-                    error={rowErrors.marketValue}
+                    readOnly
                     size="sm"
-                    className="w-24"
+                    className="w-24 opacity-60"
                   />
                   {manualEntries.length > 1 && (
                     <button
@@ -548,11 +559,11 @@ export function Step4Platforms() {
                   />
                   <Input
                     label={idx === 0 ? 'Name' : undefined}
-                    placeholder="Apple Inc."
+                    placeholder="Auto"
                     value={entry.name}
-                    onChange={(e) => updateManualEntry(idx, 'name', e.target.value)}
+                    readOnly
                     size="sm"
-                    className="flex-1"
+                    className="flex-1 opacity-60"
                   />
                   <Input
                     label={idx === 0 ? 'Qty' : undefined}
@@ -575,24 +586,12 @@ export function Step4Platforms() {
                     className="w-24"
                   />
                   <Input
-                    label={idx === 0 ? 'Mkt Price' : undefined}
-                    placeholder="175.00"
-                    inputMode="decimal"
-                    value={entry.marketPrice}
-                    onChange={(e) => updateManualEntry(idx, 'marketPrice', e.target.value)}
-                    error={rowErrors.marketPrice}
-                    size="sm"
-                    className="w-24"
-                  />
-                  <Input
                     label={idx === 0 ? 'Value' : undefined}
-                    placeholder="1500.00"
-                    inputMode="decimal"
+                    placeholder="Auto"
                     value={entry.marketValue}
-                    onChange={(e) => updateManualEntry(idx, 'marketValue', e.target.value)}
-                    error={rowErrors.marketValue}
+                    readOnly
                     size="sm"
-                    className="w-24"
+                    className="w-24 opacity-60"
                   />
                   {manualEntries.length > 1 && (
                     <button
