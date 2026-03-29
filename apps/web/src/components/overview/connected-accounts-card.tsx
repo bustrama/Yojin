@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePortfolio } from '../../api';
-import { useOnboardingStatus } from '../../lib/onboarding-context';
 import Spinner from '../common/spinner';
-import Button from '../common/button';
 import { CardEmptyState } from '../common/card-empty-state';
 import { DashboardCard } from '../common/dashboard-card';
 import AddAccountModal from './add-account-modal';
@@ -38,7 +36,6 @@ function formatCurrency(n: number): string {
 export default function ConnectedAccountsCard() {
   const [{ data: portfolioData, fetching, error }, reexecuteQuery] = usePortfolio();
   const [modalOpen, setModalOpen] = useState(false);
-  const { openOnboarding, completed: onboardingComplete, skipped: onboardingSkipped } = useOnboardingStatus();
 
   const accounts = useMemo<AccountSummary[]>(() => {
     const positions = portfolioData?.portfolio?.positions ?? [];
@@ -100,7 +97,6 @@ export default function ConnectedAccountsCard() {
   }
 
   if (error || accounts.length === 0) {
-    const showContinueSetup = !onboardingComplete && !onboardingSkipped;
     return (
       <DashboardCard title="Connected Accounts" headerAction={addButton}>
         <CardEmptyState
@@ -115,17 +111,6 @@ export default function ConnectedAccountsCard() {
           }
           title="No accounts connected"
           description="Link your investment platforms to track positions."
-          action={
-            showContinueSetup ? (
-              <Button variant="primary" size="sm" onClick={openOnboarding}>
-                Continue setup
-              </Button>
-            ) : (
-              <Button variant="primary" size="sm" onClick={() => setModalOpen(true)}>
-                Add account
-              </Button>
-            )
-          }
         />
         {modal}
       </DashboardCard>
