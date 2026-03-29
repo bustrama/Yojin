@@ -101,6 +101,12 @@ export async function detectAiCredentialQuery(): Promise<DetectedCredential | nu
     }
   }
 
+  // Check macOS Keychain for Claude Code OAuth token
+  const keychain = await detectKeychainTokenQuery();
+  if (keychain.found && !keychain.error) {
+    return { method: 'ENV_DETECTED', model: keychain.model ?? 'Claude (Keychain)' };
+  }
+
   return null;
 }
 
