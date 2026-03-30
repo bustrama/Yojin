@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 
 import { startChat } from './chat.js';
 import { setupToken } from './setup-token.js';
+import { createSlackPlugin } from '../../channels/slack/index.js';
 import { createTelegramPlugin } from '../../channels/telegram/index.js';
 import { LocalRuntimeBridge } from '../acp/runtime-bridge.js';
 import { startAcpServer } from '../acp/server.js';
@@ -263,12 +264,14 @@ async function startGateway(): Promise<void> {
 
   const notificationBus = new NotificationBus();
 
-  const telegramPlugin = createTelegramPlugin({
-    vault: services.vault,
+  const channelDeps = {
     notificationBus,
     snapStore: services.snapStore,
     actionStore: services.actionStore,
-  });
+  };
+
+  const slackPlugin = createSlackPlugin(channelDeps);
+  const telegramPlugin = createTelegramPlugin({ vault: services.vault, ...channelDeps });
 
   // Daily insights scheduler — reads digestSchedule from alerts.json
   const scheduler = new Scheduler({
@@ -296,7 +299,7 @@ async function startGateway(): Promise<void> {
     snapshotStore: services.snapshotStore,
     connectionManager: services.connectionManager,
     sessionStore,
-    extraPlugins: [telegramPlugin],
+    extraPlugins: [slackPlugin, telegramPlugin],
   });
 
   // Graceful shutdown

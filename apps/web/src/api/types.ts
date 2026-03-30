@@ -79,6 +79,11 @@ export interface ChannelResult {
   error?: string;
 }
 
+export interface NotificationPreferences {
+  channelId: string;
+  enabledTypes: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Activity Log
 // ---------------------------------------------------------------------------

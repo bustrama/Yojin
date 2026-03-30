@@ -1,3 +1,6 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import type { SecretVault } from '../../../trust/vault/types.js';
 
 let vault: SecretVault | undefined;
@@ -5,6 +8,14 @@ let vault: SecretVault | undefined;
 export function setChannelVault(v: SecretVault): void {
   vault = v;
 }
+
+let dataRoot: string | undefined;
+
+export function setChannelDataRoot(root: string): void {
+  dataRoot = root;
+}
+
+const ALL_NOTIFICATION_TYPES = ['snap.ready', 'insight.ready', 'action.created', 'approval.requested'];
 
 interface ChannelDef {
   id: string;
@@ -199,4 +210,59 @@ export async function validateChannelTokenMutation(
 
   recordSuccess();
   return { success: true };
+}
+
+interface NotificationPrefsFile {
+  preferences: Record<string, string[]>;
+}
+
+async function loadPreferences(): Promise<Record<string, string[]>> {
+  if (!dataRoot) return {};
+  const filePath = join(dataRoot, 'config', 'notifications.json');
+  try {
+    const raw = await readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(raw) as NotificationPrefsFile;
+    return parsed.preferences ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function savePreferences(prefs: Record<string, string[]>): Promise<void> {
+  if (!dataRoot) return;
+  const dir = join(dataRoot, 'config');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'notifications.json'), JSON.stringify({ preferences: prefs }, null, 2));
+}
+
+export async function isNotificationEnabled(channelId: string, notificationType: string): Promise<boolean> {
+  const prefs = await loadPreferences();
+  if (!(channelId in prefs)) return true; // default: all enabled
+  return prefs[channelId].includes(notificationType);
+}
+
+export async function notificationPreferencesQuery(): Promise<{ channelId: string; enabledTypes: string[] }[]> {
+  const prefs = await loadPreferences();
+  const results: { channelId: string; enabledTypes: string[] }[] = [];
+
+  for (const def of CHANNEL_DEFS) {
+    const enabled = prefs[def.id] ?? ALL_NOTIFICATION_TYPES;
+    results.push({ channelId: def.id, enabledTypes: enabled });
+  }
+
+  return results;
+}
+
+export async function saveNotificationPreferencesMutation(
+  _parent: unknown,
+  args: { channelId: string; enabledTypes: string[] },
+): Promise<boolean> {
+  const def = findChannel(args.channelId);
+  if (!def) return false;
+
+  const validTypes = args.enabledTypes.filter((t) => ALL_NOTIFICATION_TYPES.includes(t));
+  const prefs = await loadPreferences();
+  prefs[args.channelId] = validTypes;
+  await savePreferences(prefs);
+  return true;
 }

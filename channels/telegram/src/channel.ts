@@ -3,6 +3,7 @@ import type { Bot } from 'grammy';
 import { buildActionKeyboard, buildApprovalKeyboard, createBot } from './bot.js';
 import { chunkMessage, formatAction, formatSnap } from './formatting.js';
 import type { ActionStore } from '../../../src/actions/action-store.js';
+import { isNotificationEnabled } from '../../../src/api/graphql/resolvers/channels.js';
 import type { NotificationBus } from '../../../src/core/notification-bus.js';
 import { createSubsystemLogger } from '../../../src/logging/logger.js';
 import type {
@@ -133,7 +134,6 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
       bot.start({
         onStart: () => {
           logger.info('Telegram bot started (long polling)');
-          console.log('Telegram channel connected (polling)');
         },
       });
     },
@@ -174,6 +174,7 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
     unsubscribers.push(
       bus.on('snap.ready', async (event) => {
         if (!bot || !activeChatId || !deps.snapStore) return;
+        if (!(await isNotificationEnabled('telegram', 'snap.ready'))) return;
         try {
           const snap = await deps.snapStore.getLatest();
           if (!snap || snap.id !== event.snapId) return;
@@ -191,6 +192,7 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
     unsubscribers.push(
       bus.on('action.created', async (event) => {
         if (!bot || !activeChatId || !deps.actionStore) return;
+        if (!(await isNotificationEnabled('telegram', 'action.created'))) return;
         try {
           const action = await deps.actionStore.getById(event.actionId);
           if (!action) return;
@@ -206,6 +208,7 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
     unsubscribers.push(
       bus.on('approval.requested', async (event) => {
         if (!bot || !activeChatId) return;
+        if (!(await isNotificationEnabled('telegram', 'approval.requested'))) return;
         try {
           const text = `\u{1F6A8} Approval Required\n\n${event.action}: ${event.description}`;
           const keyboard = buildApprovalKeyboard(event.requestId);

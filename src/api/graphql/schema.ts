@@ -637,14 +637,12 @@ export const typeDefs = /* GraphQL */ `
     time: String!
     timezone: String!
     sections: [String!]!
-    channel: String!
   }
 
   type BriefingConfig {
     time: String!
     timezone: String!
     sections: [String!]!
-    channel: String!
     enabled: Boolean!
   }
 
@@ -665,6 +663,11 @@ export const typeDefs = /* GraphQL */ `
   type ChannelResult {
     success: Boolean!
     error: String
+  }
+
+  type NotificationPreferences {
+    channelId: ID!
+    enabledTypes: [String!]!
   }
 
   type OnboardingStatusResult {
@@ -1022,6 +1025,7 @@ export const typeDefs = /* GraphQL */ `
     insightsWorkflowStatus: WorkflowStatus!
     briefingConfig: BriefingConfig
     listChannels: [Channel!]!
+    notificationPreferences: [NotificationPreferences!]!
     snap: Snap
     activityLog(types: [ActivityEventType!], since: String, limit: Int): [ActivityEvent!]!
     actions(status: ActionStatus, since: String, limit: Int): [Action!]!
@@ -1078,6 +1082,7 @@ export const typeDefs = /* GraphQL */ `
     connectChannel(id: ID!, credentials: [CredentialInput!]!): ChannelResult!
     disconnectChannel(id: ID!): ChannelResult!
     validateChannelToken(id: ID!, credentials: [CredentialInput!]!): ChannelResult!
+    saveNotificationPreferences(channelId: ID!, enabledTypes: [String!]!): Boolean!
     completeOnboarding: Boolean!
     resetOnboarding: Boolean!
     validateJintelKey(apiKey: String!): ValidateJintelKeyResult!

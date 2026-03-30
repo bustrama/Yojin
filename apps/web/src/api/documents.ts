@@ -339,7 +339,6 @@ export const BRIEFING_CONFIG_QUERY = gql`
       time
       timezone
       sections
-      channel
       enabled
     }
   }
@@ -391,6 +390,25 @@ export const VALIDATE_CHANNEL_TOKEN_MUTATION = gql`
       success
       error
     }
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Notification Preferences
+// ---------------------------------------------------------------------------
+
+export const NOTIFICATION_PREFERENCES_QUERY = gql`
+  query NotificationPreferences {
+    notificationPreferences {
+      channelId
+      enabledTypes
+    }
+  }
+`;
+
+export const SAVE_NOTIFICATION_PREFERENCES_MUTATION = gql`
+  mutation SaveNotificationPreferences($channelId: ID!, $enabledTypes: [String!]!) {
+    saveNotificationPreferences(channelId: $channelId, enabledTypes: $enabledTypes)
   }
 `;
 

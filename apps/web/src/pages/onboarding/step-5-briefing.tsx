@@ -73,7 +73,6 @@ export function Step5Briefing() {
   const [time, setTime] = useState(state.briefing?.time ?? '08:00');
   const [timezone, setTimezone] = useState(state.briefing?.timezone ?? detectTimezone());
   const [sections, setSections] = useState<string[]>(state.briefing?.sections ?? getDefaultSections());
-  const [channel, setChannel] = useState(state.briefing?.channel ?? 'web');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [, executeSave] = useMutation(SAVE_BRIEFING_CONFIG_MUTATION);
@@ -94,13 +93,13 @@ export function Step5Briefing() {
     setSaving(true);
     setError('');
     try {
-      const result = await executeSave({ input: { time, timezone, sections, channel } });
+      const result = await executeSave({ input: { time, timezone, sections } });
       if (result.error) {
         setError(result.error.message || 'Connection failed.');
         return;
       }
       if (result.data?.saveBriefingConfig) {
-        updateState({ briefing: { time, timezone, sections, channel } });
+        updateState({ briefing: { time, timezone, sections } });
         nextStep();
       } else {
         setError('Failed to save config. Try again.');
@@ -110,7 +109,7 @@ export function Step5Briefing() {
     } finally {
       setSaving(false);
     }
-  }, [time, timezone, sections, channel, updateState, nextStep, executeSave]);
+  }, [time, timezone, sections, updateState, nextStep, executeSave]);
 
   return (
     <OnboardingShell currentStep={5}>
@@ -154,32 +153,28 @@ export function Step5Briefing() {
             </div>
           </div>
 
-          {/* Section 3: Delivery Channel */}
+          {/* Section 3: Notification Channels */}
           <div className="space-y-3">
-            <p className="text-sm font-medium text-text-secondary">Deliver briefing via</p>
+            <p className="text-sm font-medium text-text-secondary">Connect channels for notifications</p>
             <div className="flex gap-3">
               {channels.map((ch) => {
                 const meta = getChannelMeta(ch.id);
-                const selected = channel === ch.id;
                 const connected = ch.status === 'CONNECTED';
-                const canSelect = connected || ch.id === 'web';
 
                 return (
                   <button
                     key={ch.id}
                     type="button"
                     onClick={() => {
-                      if (canSelect) {
-                        setChannel(ch.id);
-                      } else {
+                      if (!connected && ch.id !== 'web') {
                         setConnectModalChannel(ch.id);
                       }
                     }}
                     className={cn(
-                      'flex flex-1 items-center gap-3 rounded-xl border p-4 transition-all duration-200 cursor-pointer',
-                      selected
-                        ? 'border-accent-primary/60 bg-accent-glow'
-                        : 'border-border bg-bg-card hover:border-accent-primary/30',
+                      'flex flex-1 items-center gap-3 rounded-xl border p-4 transition-all duration-200',
+                      connected
+                        ? 'border-success/40 bg-success/5'
+                        : 'border-border bg-bg-card hover:border-accent-primary/30 cursor-pointer',
                     )}
                   >
                     <div
@@ -193,10 +188,16 @@ export function Step5Briefing() {
                     <div className="text-left">
                       <p className="text-sm font-medium text-text-primary">
                         {meta.label}
-                        {!canSelect && (
-                          <span className="ml-1.5 rounded-full bg-bg-tertiary px-2 py-0.5 text-[10px] font-medium text-text-muted">
-                            Connect
+                        {connected ? (
+                          <span className="ml-1.5 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+                            Connected
                           </span>
+                        ) : (
+                          ch.id !== 'web' && (
+                            <span className="ml-1.5 rounded-full bg-bg-tertiary px-2 py-0.5 text-[10px] font-medium text-text-muted">
+                              Connect
+                            </span>
+                          )
                         )}
                       </p>
                       <p className="text-xs text-text-muted">{meta.description}</p>
@@ -212,10 +213,8 @@ export function Step5Briefing() {
             channelId={connectModalChannel}
             onClose={() => setConnectModalChannel(null)}
             onConnected={() => {
-              const connected = connectModalChannel;
               setConnectModalChannel(null);
               reexecuteChannels({ requestPolicy: 'network-only' });
-              if (connected) setChannel(connected);
             }}
           />
         </div>

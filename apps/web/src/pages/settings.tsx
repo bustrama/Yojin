@@ -9,7 +9,12 @@ import { TimePicker } from '../components/onboarding/time-picker';
 import { TimezonePicker } from '../components/onboarding/timezone-picker';
 import { ChannelCard } from '../components/channels/channel-card';
 import { ConnectChannelModal } from '../components/channels/connect-channel-modal';
-import { useListChannels, useDisconnectChannel } from '../api/hooks/use-channels';
+import {
+  useListChannels,
+  useDisconnectChannel,
+  useNotificationPreferences,
+  useSaveNotificationPreferences,
+} from '../api/hooks/use-channels';
 import {
   AI_CONFIG_QUERY,
   BRIEFING_CONFIG_QUERY,
@@ -28,7 +33,6 @@ interface BriefingConfig {
   time: string;
   timezone: string;
   sections: string[];
-  channel: string;
   enabled: boolean;
 }
 
@@ -116,6 +120,15 @@ export default function Settings() {
             Connect messaging channels for notifications, approvals, and daily briefings.
           </p>
           <ChannelsSection />
+        </div>
+
+        <div className="border-t border-border" />
+
+        {/* Section: Notification Preferences */}
+        <div className="p-5 space-y-4">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Notification Routing</h3>
+          <p className="text-sm text-text-muted">Choose which notifications each channel receives.</p>
+          <NotificationPreferencesEditor />
         </div>
 
         <div className="border-t border-border" />
@@ -346,8 +359,6 @@ function ModelPicker() {
 function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean }) {
   const [result] = useQuery<{ briefingConfig: BriefingConfig | null }>({ query: BRIEFING_CONFIG_QUERY });
   const [, saveBriefing] = useMutation(SAVE_BRIEFING_CONFIG_MUTATION);
-  const [channelsResult] = useListChannels();
-  const connectedChannels = (channelsResult.data?.listChannels ?? []).filter((ch) => ch.status === 'CONNECTED');
 
   const config = result.data?.briefingConfig;
   const loading = result.fetching;
@@ -355,7 +366,6 @@ function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean })
   const [time, setTime] = useState('08:00');
   const [timezone, setTimezone] = useState(detectTimezone);
   const [sections, setSections] = useState<string[]>([]);
-  const [channel, setChannel] = useState('web');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -367,7 +377,6 @@ function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean })
       setTime(config.time);
       setTimezone(config.timezone);
       setSections(config.sections);
-      setChannel(config.channel || 'web');
       setDirty(false);
     }
   }, [config]);
@@ -389,16 +398,12 @@ function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean })
     setSections((prev) => (prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key]));
     markDirty();
   };
-  const handleChannelChange = (ch: string) => {
-    setChannel(ch);
-    markDirty();
-  };
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await saveBriefing({ input: { time, timezone, sections, channel } });
+      const result = await saveBriefing({ input: { time, timezone, sections } });
       if (result.error) {
         setSaveError(result.error.message || 'Failed to save schedule');
         return;
@@ -408,7 +413,7 @@ function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean })
     } finally {
       setSaving(false);
     }
-  }, [saveBriefing, time, timezone, sections, channel]);
+  }, [saveBriefing, time, timezone, sections]);
 
   if (loading) {
     return <p className="text-sm text-text-muted">Loading schedule...</p>;
@@ -451,22 +456,6 @@ function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean })
         </div>
       </div>
 
-      {/* Delivery channel */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-text-secondary">Deliver via</p>
-        <select
-          value={channel}
-          onChange={(e) => handleChannelChange(e.target.value)}
-          className="rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-        >
-          {connectedChannels.map((ch) => (
-            <option key={ch.id} value={ch.id}>
-              {ch.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
       {/* Save */}
       <div className="flex items-center gap-3">
         <Button variant="primary" size="sm" loading={saving} disabled={!dirty} onClick={handleSave}>
@@ -475,6 +464,101 @@ function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean })
         {saved && <span className="text-xs text-success">Saved</span>}
         {saveError && <span className="text-xs text-error">{saveError}</span>}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notification preferences editor
+// ---------------------------------------------------------------------------
+
+const NOTIFICATION_TYPES = [
+  { key: 'snap.ready', label: 'Snap briefs', description: 'Periodic attention summaries' },
+  { key: 'insight.ready', label: 'Daily insights', description: 'Full portfolio analysis reports' },
+  { key: 'action.created', label: 'Action alerts', description: 'Skill-triggered trade recommendations' },
+  { key: 'approval.requested', label: 'Approval requests', description: 'Actions requiring your approval' },
+];
+
+function NotificationPreferencesEditor() {
+  const [channelsResult] = useListChannels();
+  const [prefsResult] = useNotificationPreferences();
+  const [, savePrefs] = useSaveNotificationPreferences();
+
+  const channels = (channelsResult.data?.listChannels ?? []).filter((ch) => ch.status === 'CONNECTED');
+  const prefs = prefsResult.data?.notificationPreferences ?? [];
+
+  const isEnabled = (channelId: string, notificationType: string): boolean => {
+    const channelPrefs = prefs.find((p) => p.channelId === channelId);
+    if (!channelPrefs) return true; // default: all enabled
+    return channelPrefs.enabledTypes.includes(notificationType);
+  };
+
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleToggle = async (channelId: string, notificationType: string) => {
+    const channelPrefs = prefs.find((p) => p.channelId === channelId);
+    const currentTypes = channelPrefs?.enabledTypes ?? NOTIFICATION_TYPES.map((t) => t.key);
+
+    const newTypes = currentTypes.includes(notificationType)
+      ? currentTypes.filter((t) => t !== notificationType)
+      : [...currentTypes, notificationType];
+
+    setSaveError(null);
+    const res = await savePrefs({ channelId, enabledTypes: newTypes });
+    if (res.error) {
+      setSaveError(res.error.message || 'Failed to save');
+    }
+  };
+
+  if (channelsResult.fetching || prefsResult.fetching) {
+    return <p className="text-sm text-text-muted">Loading...</p>;
+  }
+
+  if (channelsResult.error || prefsResult.error) {
+    return <p className="text-sm text-error">Failed to load notification preferences.</p>;
+  }
+
+  if (channels.length === 0) {
+    return <p className="text-sm text-text-muted">No channels connected.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left py-2 pr-4 text-xs font-medium uppercase tracking-wider text-text-muted">
+                Notification
+              </th>
+              {channels.map((ch) => (
+                <th
+                  key={ch.id}
+                  className="text-center py-2 px-3 text-xs font-medium uppercase tracking-wider text-text-muted"
+                >
+                  {ch.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {NOTIFICATION_TYPES.map((nt) => (
+              <tr key={nt.key} className="border-b border-border last:border-0">
+                <td className="py-3 pr-4">
+                  <p className="text-sm text-text-primary">{nt.label}</p>
+                  <p className="text-xs text-text-muted">{nt.description}</p>
+                </td>
+                {channels.map((ch) => (
+                  <td key={ch.id} className="text-center py-3 px-3">
+                    <Toggle size="sm" checked={isEnabled(ch.id, nt.key)} onChange={() => handleToggle(ch.id, nt.key)} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {saveError && <p className="text-sm text-error">{saveError}</p>}
     </div>
   );
 }

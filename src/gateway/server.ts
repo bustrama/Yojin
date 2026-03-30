@@ -6,7 +6,6 @@
  * All agent logic (sessions, tools, guards) lives in AgentRuntime.
  */
 
-import { slackPlugin } from '../../channels/slack/index.js';
 import { webPlugin } from '../../channels/web/index.js';
 import { anthropicPlugin } from '../../providers/anthropic/index.js';
 import { setChatAgentRuntime, setSessionStore } from '../api/graphql/resolvers/chat.js';
@@ -65,7 +64,6 @@ export class Gateway {
   async loadPlugins(): Promise<void> {
     this.log.info('Loading plugins…');
     this.registry.loadPlugin(anthropicPlugin);
-    this.registry.loadPlugin(slackPlugin);
     this.registry.loadPlugin(webPlugin);
     for (const plugin of this.extraPlugins) {
       this.registry.loadPlugin(plugin);
