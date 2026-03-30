@@ -18,7 +18,7 @@ const SEVERITY_STYLES: Record<SnapSeverity, { dot: string; text: string }> = {
   LOW: { dot: 'bg-info', text: 'text-info/80' },
 };
 
-export default function YojinSnapCard() {
+export default function YojinSnapCard({ hasPositions = false }: { hasPositions?: boolean }) {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
   const [result] = useQuery<SnapQueryResult>({ query: SNAP_QUERY });
   const { openModal } = useAddPositionModal();
@@ -69,11 +69,15 @@ export default function YojinSnapCard() {
               </svg>
             }
             title="No snap brief yet"
-            description="Generated once your portfolio is loaded."
+            description={
+              hasPositions ? 'Your brief will be generated shortly.' : 'Generated once your portfolio is loaded.'
+            }
             action={
-              <Button variant="primary" size="sm" onClick={openModal}>
-                Add positions
-              </Button>
+              hasPositions ? undefined : (
+                <Button variant="primary" size="sm" onClick={openModal}>
+                  Add positions
+                </Button>
+              )
             }
           />
         </CardBlurGate>

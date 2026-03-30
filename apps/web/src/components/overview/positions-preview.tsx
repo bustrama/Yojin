@@ -10,6 +10,8 @@ import Spinner from '../common/spinner';
 import Button from '../common/button';
 import { DashboardCard } from '../common/dashboard-card';
 import { useAddPositionModal } from '../../lib/add-position-modal-context';
+import { useMarketStatus } from '../../hooks/use-market-status';
+import type { Position } from '../../api/types';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -56,14 +58,35 @@ function Sparkline({ data, dayChangePercent }: { symbol: string; data: number[];
   );
 }
 
+/** Returns the extended-hours label ("Pre" / "After") and change $ / % if applicable. */
+function getExtendedHoursLabel(
+  status: 'open' | 'pre-market' | 'after-hours' | 'closed',
+  pos: Position,
+): { prefix: string; value: number; dollarChange: number | null } | null {
+  if (status === 'pre-market' && pos.preMarketChangePercent != null) {
+    return { prefix: 'Pre', value: pos.preMarketChangePercent, dollarChange: pos.preMarketChange };
+  }
+  // After-hours and closed (weekends/overnight) both show the post-market move
+  if ((status === 'after-hours' || status === 'closed') && pos.postMarketChangePercent != null) {
+    return { prefix: 'After', value: pos.postMarketChangePercent, dollarChange: pos.postMarketChange };
+  }
+  return null;
+}
+
+function formatExtendedPercent(value: number): string {
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+}
+
 const TH = 'whitespace-nowrap px-3 py-2 text-2xs font-medium uppercase tracking-wider text-text-muted';
 
 export default function PositionsPreview() {
   const { jintelConfigured } = useFeatureStatus();
-  const [{ data: portfolioData, fetching, error }] = usePortfolio();
+  const [{ data: portfolioData, fetching, error }] = usePortfolio(undefined, { pollInterval: 30_000 });
   const data = portfolioData?.portfolio;
   const navigate = useNavigate();
   const { openModal } = useAddPositionModal();
+  const { status: marketStatus } = useMarketStatus();
 
   if (!jintelConfigured) {
     return (
@@ -142,6 +165,7 @@ export default function PositionsPreview() {
               const isDown = dc != null && dc < 0;
               const colorClass = isUp ? 'text-success' : isDown ? 'text-error' : 'text-text-muted';
               const arrow = isUp ? '\u25B2' : isDown ? '\u25BC' : '';
+              const ext = getExtendedHoursLabel(marketStatus, pos);
 
               return (
                 <tr
@@ -180,28 +204,58 @@ export default function PositionsPreview() {
                     {formatCurrency(pos.currentPrice)}
                   </td>
 
-                  {/* Change $ */}
-                  <td className={cn('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', colorClass)}>
-                    {dc != null ? (
-                      <>
-                        {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
-                        {formatChange(dc)}
-                      </>
-                    ) : (
-                      <span className="text-text-muted/40">—</span>
-                    )}
+                  {/* Change $ + extended-hours dollar */}
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    <div className={cn('text-xs tabular-nums', colorClass)}>
+                      {dc != null ? (
+                        <>
+                          {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
+                          {formatChange(dc)}
+                        </>
+                      ) : (
+                        <span className="text-text-muted/40">—</span>
+                      )}
+                    </div>
+                    {ext &&
+                      ext.dollarChange != null &&
+                      (() => {
+                        const extColor =
+                          ext.dollarChange > 0
+                            ? 'text-success'
+                            : ext.dollarChange < 0
+                              ? 'text-error'
+                              : 'text-text-muted';
+                        return (
+                          <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
+                            {ext.prefix}: {ext.dollarChange >= 0 ? '+' : '-'}
+                            {formatChange(ext.dollarChange)}
+                          </div>
+                        );
+                      })()}
                   </td>
 
-                  {/* Change % */}
-                  <td className={cn('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', colorClass)}>
-                    {dcp != null ? (
-                      <>
-                        {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
-                        {formatPercent(dcp)}
-                      </>
-                    ) : (
-                      <span className="text-text-muted/40">—</span>
-                    )}
+                  {/* Change % + extended-hours percent */}
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    <div className={cn('text-xs tabular-nums', colorClass)}>
+                      {dcp != null ? (
+                        <>
+                          {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
+                          {formatPercent(dcp)}
+                        </>
+                      ) : (
+                        <span className="text-text-muted/40">—</span>
+                      )}
+                    </div>
+                    {ext &&
+                      (() => {
+                        const extColor =
+                          ext.value > 0 ? 'text-success' : ext.value < 0 ? 'text-error' : 'text-text-muted';
+                        return (
+                          <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
+                            {ext.prefix}: {formatExtendedPercent(ext.value)}
+                          </div>
+                        );
+                      })()}
                   </td>
                 </tr>
               );

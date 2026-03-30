@@ -23,8 +23,8 @@ export default function Dashboard() {
         <ConnectedAccountsCard />
         <PortfolioOverview />
         <PositionsPreview />
-        <YojinSnapCard />
-        <ActivityLog />
+        <YojinSnapCard hasPositions={hasData} />
+        <ActivityLog hasPositions={hasData} />
       </div>
 
       {/* Right panel — unified feed */}
