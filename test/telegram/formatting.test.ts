@@ -58,24 +58,23 @@ describe('chunkMessage', () => {
 });
 
 describe('formatSnap', () => {
-  it('formats with HTML and severity icons', () => {
+  it('formats with HTML and action items', () => {
     const snap: Snap = {
       id: 'snap-1',
       generatedAt: '2026-03-30T08:00:00Z',
-      summary: 'Markets are mixed. Tech rallying, energy weak.',
-      attentionItems: [
-        { label: 'AAPL earnings beat expectations', severity: 'HIGH', ticker: 'AAPL' },
-        { label: 'Oil prices declining', severity: 'MEDIUM' },
-        { label: 'Fed meeting minutes released', severity: 'LOW' },
+      intelSummary: 'Markets are mixed. Tech rallying, energy weak.',
+      actionItems: [
+        { text: 'AAPL earnings beat expectations', signalIds: ['sig-1'] },
+        { text: 'Oil prices declining', signalIds: [] },
+        { text: 'Fed meeting minutes released', signalIds: [] },
       ],
-      portfolioTickers: ['AAPL', 'MSFT', 'XOM'],
     };
 
     const result = formatSnap(snap);
     expect(result).toContain('<b>Snap Brief</b>');
     expect(result).toContain('AAPL earnings beat expectations');
-    expect(result).toContain('<code>AAPL</code>');
-    expect(result).toContain('\u{1F534}');
+    expect(result).toContain('Markets are mixed');
+    expect(result).toContain('<b>Actions:</b>');
   });
 });
 
