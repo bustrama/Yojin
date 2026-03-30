@@ -88,22 +88,21 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
   const marketOpen = isUSMarketOpen();
 
   // Parallel fetches: quotes + sparkline history per asset group
-  const fetchHistory = (tickers: string[], range: string, interval?: string) =>
-    client.priceHistory(tickers, range, interval).catch((err: unknown) => {
+  const fetchHistory = (tickers: string[], range: string) =>
+    client.priceHistory(tickers, range).catch((err: unknown) => {
       log.warn('Jintel priceHistory failed', { tickers, error: String(err) });
       return undefined;
     });
 
   const equityRange = marketOpen ? '1d' : '5d';
-  const equityInterval = marketOpen ? '5m' : undefined;
 
   const [result, equityHistory, cryptoHistory] = await Promise.all([
     client.quotes(symbols).catch((err: unknown) => {
       log.warn('Jintel quotes call failed', { error: String(err) });
       return undefined;
     }),
-    equitySymbols.length > 0 ? fetchHistory(equitySymbols, equityRange, equityInterval) : undefined,
-    cryptoSymbols.length > 0 ? fetchHistory(cryptoSymbols, '1d', '5m') : undefined,
+    equitySymbols.length > 0 ? fetchHistory(equitySymbols, equityRange) : undefined,
+    cryptoSymbols.length > 0 ? fetchHistory(cryptoSymbols, '1d') : undefined,
   ]);
 
   if (!result?.success) {
