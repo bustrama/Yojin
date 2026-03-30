@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { cn } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
 import { SymbolLogo } from '../common/symbol-logo';
@@ -10,6 +10,7 @@ import Spinner from '../common/spinner';
 import Button from '../common/button';
 import { DashboardCard } from '../common/dashboard-card';
 import { useAddPositionModal } from '../../lib/add-position-modal-context';
+import { useAssetDetailModal } from '../../lib/asset-detail-modal-context';
 import { useMarketStatus } from '../../hooks/use-market-status';
 import type { Position } from '../../api/types';
 
@@ -84,8 +85,8 @@ export default function PositionsPreview() {
   const { jintelConfigured } = useFeatureStatus();
   const [{ data: portfolioData, fetching, error }] = usePortfolio(undefined, { pollInterval: 30_000 });
   const data = portfolioData?.portfolio;
-  const navigate = useNavigate();
   const { openModal } = useAddPositionModal();
+  const { openAssetDetail } = useAssetDetailModal();
   const { status: marketStatus } = useMarketStatus();
 
   if (!jintelConfigured) {
@@ -171,7 +172,7 @@ export default function PositionsPreview() {
                 <tr
                   key={`${pos.symbol}:${pos.platform}`}
                   className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-bg-hover"
-                  onClick={() => navigate(`/portfolio/${pos.symbol.toLowerCase()}`)}
+                  onClick={() => openAssetDetail(pos.symbol)}
                 >
                   {/* Asset: logo + symbol + name */}
                   <td className="px-3 py-2">

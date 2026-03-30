@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useParams, useSearchParams } from 'react-router';
+import { Routes, Route, Navigate, useSearchParams } from 'react-router';
 import { Provider, useQuery } from 'urql';
 import { ChatProvider } from './lib/chat-context';
 import { ChatPanelProvider } from './lib/chat-panel-context';
@@ -12,9 +12,10 @@ import {
 } from './lib/onboarding-context';
 import { ThemeProvider } from './lib/theme';
 import { AddPositionModalProvider } from './lib/add-position-modal-context';
+import { AssetDetailModalProvider } from './lib/asset-detail-modal-context';
 import AddPositionModal from './components/portfolio/add-position-modal';
+import AssetDetailModal from './components/portfolio/asset-detail-modal';
 import AppShell from './components/layout/app-shell';
-import Position from './pages/position';
 import Chat from './pages/chat';
 import Profile from './pages/profile';
 import Settings from './pages/settings';
@@ -44,8 +45,7 @@ function DevFeedbackTool() {
 }
 
 function RedirectPositionSymbol() {
-  const { symbol } = useParams<{ symbol: string }>();
-  return <Navigate to={`/portfolio/${symbol}`} replace />;
+  return <Navigate to="/portfolio" replace />;
 }
 
 function SignalsRedirect() {
@@ -192,28 +192,30 @@ export default function App() {
         <ChatProvider>
           <ChatPanelProvider>
             <AddPositionModalProvider>
-              <Routes>
-                {/* Main app — guarded by onboarding check */}
-                <Route element={<OnboardingGuard />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="portfolio" element={<Positions />} />
-                  <Route path="portfolio/:symbol" element={<Position />} />
-                  <Route path="chat" element={<Chat />} />
-                  <Route path="insights" element={<Insights />} />
-                  <Route path="signals" element={<SignalsRedirect />} />
-                  <Route path="watchlist" element={<Watchlist />} />
-                  <Route path="profile" element={<Profile />} />
-                  <Route path="settings" element={<Settings />} />
+              <AssetDetailModalProvider>
+                <Routes>
+                  {/* Main app — guarded by onboarding check */}
+                  <Route element={<OnboardingGuard />}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="portfolio" element={<Positions />} />
+                    <Route path="chat" element={<Chat />} />
+                    <Route path="insights" element={<Insights />} />
+                    <Route path="signals" element={<SignalsRedirect />} />
+                    <Route path="watchlist" element={<Watchlist />} />
+                    <Route path="profile" element={<Profile />} />
+                    <Route path="settings" element={<Settings />} />
 
-                  {/* Redirects for old paths */}
-                  <Route path="positions" element={<Navigate to="/portfolio" replace />} />
-                  <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
-                  <Route path="skills" element={<Navigate to="/" replace />} />
-                  <Route path="alerts" element={<Navigate to="/" replace />} />
-                </Route>
-              </Routes>
-              <AddPositionModal />
-              {import.meta.env.VITE_AGENTATION_ENABLED === 'true' && <DevFeedbackTool />}
+                    {/* Redirects for old paths */}
+                    <Route path="positions" element={<Navigate to="/portfolio" replace />} />
+                    <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
+                    <Route path="skills" element={<Navigate to="/" replace />} />
+                    <Route path="alerts" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
+                <AddPositionModal />
+                <AssetDetailModal />
+                {import.meta.env.VITE_AGENTATION_ENABLED === 'true' && <DevFeedbackTool />}
+              </AssetDetailModalProvider>
             </AddPositionModalProvider>
           </ChatPanelProvider>
         </ChatProvider>

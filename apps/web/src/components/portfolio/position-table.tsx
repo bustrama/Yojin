@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link } from 'react-router';
 import type { KnownPlatform, Position } from '../../api';
 import { isKnownPlatform, useEditPosition, useRemovePosition } from '../../api';
 import { cn } from '../../lib/utils';
+import { useAssetDetailModal } from '../../lib/asset-detail-modal-context';
 import Button from '../common/button';
 import EmptyState from '../common/empty-state';
 import Input from '../common/input';
@@ -105,6 +105,7 @@ function collapsePositions(positions: Position[]): CollapsedPosition[] {
 }
 
 export default function PositionTable({ positions, onAdd }: { positions: Position[]; onAdd?: () => void }) {
+  const { openAssetDetail } = useAssetDetailModal();
   const totalValue = useMemo(() => positions.reduce((sum, p) => sum + p.marketValue, 0), [positions]);
   const [editing, setEditing] = useState<Position | null>(null);
   const [removing, setRemoving] = useState<Position | null>(null);
@@ -179,9 +180,13 @@ export default function PositionTable({ positions, onAdd }: { positions: Positio
                         size="md"
                       />
                       <div>
-                        <Link to={`/portfolio/${pos.symbol}`} className="font-medium text-text-primary">
+                        <button
+                          type="button"
+                          onClick={() => openAssetDetail(pos.symbol)}
+                          className="cursor-pointer font-medium text-text-primary hover:text-accent-primary"
+                        >
                           {pos.symbol}
-                        </Link>
+                        </button>
                       </div>
                     </div>
                   </td>

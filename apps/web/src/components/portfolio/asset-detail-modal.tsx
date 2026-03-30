@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router';
+import { Link } from 'react-router';
 import { useQuery } from 'urql';
-import { cn } from '../lib/utils';
-import { usePortfolio, useQuote, useOnPriceMove } from '../api';
-import type { Position as PositionType, Quote, PositionInsight, InsightRating } from '../api/types';
-import { LATEST_INSIGHT_REPORT_QUERY, SIGNALS_QUERY, PRICE_HISTORY_QUERY } from '../api/documents';
+import { cn } from '../../lib/utils';
+import { useAssetDetailModal } from '../../lib/asset-detail-modal-context';
+import { useFeatureStatus } from '../../lib/feature-status';
+import { usePortfolio, useQuote, useOnPriceMove } from '../../api';
+import type { Position, Quote, PositionInsight, InsightRating } from '../../api/types';
+import { LATEST_INSIGHT_REPORT_QUERY, SIGNALS_QUERY, PRICE_HISTORY_QUERY } from '../../api/documents';
 import type {
   LatestInsightReportQueryResult,
   SignalsQueryResult,
@@ -12,15 +14,16 @@ import type {
   Signal,
   PriceHistoryQueryResult,
   PriceHistoryQueryVariables,
-} from '../api/types';
-import { PriceChart } from '../components/charts/price-chart';
-import Card from '../components/common/card';
-import Badge from '../components/common/badge';
-import type { BadgeVariant } from '../components/common/badge';
-import { PageFeatureGate } from '../components/common/feature-gate';
-import Spinner from '../components/common/spinner';
-import { SymbolLogo } from '../components/common/symbol-logo';
-import { timeAgo } from '../lib/utils';
+} from '../../api/types';
+import { PriceChart } from '../charts/price-chart';
+import Card from '../common/card';
+import Badge from '../common/badge';
+import type { BadgeVariant } from '../common/badge';
+import Modal from '../common/modal';
+import Spinner from '../common/spinner';
+import { SymbolLogo } from '../common/symbol-logo';
+import { GateCard } from '../common/feature-gate';
+import { timeAgo } from '../../lib/utils';
 
 /** Stable 7-day lookback for signal queries (computed once at module load). */
 const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -119,7 +122,7 @@ function MetricCard({ label, value, sub, color }: { label: string; value: string
 }
 
 // ---------------------------------------------------------------------------
-// Day range bar — shows where current price sits between low and high
+// Day range bar
 // ---------------------------------------------------------------------------
 
 function DayRange({ low, high, current }: { low: number; high: number; current: number }) {
@@ -144,66 +147,72 @@ function DayRange({ low, high, current }: { low: number; high: number; current: 
 }
 
 // ---------------------------------------------------------------------------
-// Main component
+// Main modal
 // ---------------------------------------------------------------------------
 
-export default function Position() {
+export default function AssetDetailModal() {
+  const { open, symbol, closeAssetDetail } = useAssetDetailModal();
+
+  if (!open || !symbol) return null;
+
   return (
-    <PageFeatureGate requires="jintel">
-      <PositionContent />
-    </PageFeatureGate>
+    <Modal
+      open
+      onClose={closeAssetDetail}
+      maxWidth="max-w-4xl"
+      className="max-h-[90vh]"
+      aria-labelledby="asset-detail-title"
+    >
+      <AssetDetailContent symbol={symbol} onClose={closeAssetDetail} />
+    </Modal>
   );
 }
 
-function PositionContent() {
-  const { symbol } = useParams<{ symbol: string }>();
-  const upperSymbol = symbol?.toUpperCase();
+function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () => void }) {
+  const { jintelConfigured, loading: featureLoading } = useFeatureStatus();
 
-  // All data from BE — no client-side derivation
   const [portfolioResult] = usePortfolio();
-  const position = useMemo<PositionType | undefined>(
-    () => portfolioResult.data?.portfolio?.positions.find((p) => p.symbol === upperSymbol),
-    [portfolioResult.data, upperSymbol],
+  const position = useMemo<Position | undefined>(
+    () => portfolioResult.data?.portfolio?.positions.find((p) => p.symbol === symbol),
+    [portfolioResult.data, symbol],
   );
 
-  const [quoteResult] = useQuote(upperSymbol);
+  const [quoteResult] = useQuote(symbol);
   const quote = quoteResult.data?.quote ?? undefined;
 
   const [priceRange, setPriceRange] = useState<PriceRange>('1y');
   const historyVars = useMemo<PriceHistoryQueryVariables>(
-    () => ({ tickers: upperSymbol ? [upperSymbol] : [], range: priceRange }),
-    [upperSymbol, priceRange],
+    () => ({ tickers: [symbol], range: priceRange }),
+    [symbol, priceRange],
   );
   const [historyResult] = useQuery<PriceHistoryQueryResult, PriceHistoryQueryVariables>({
     query: PRICE_HISTORY_QUERY,
     variables: historyVars,
-    pause: !upperSymbol,
   });
   const priceHistory = historyResult.data?.priceHistory?.[0]?.history ?? [];
 
   // Real-time price stream
-  const [priceMoveSub] = useOnPriceMove(upperSymbol, 0);
+  const [priceMoveSub] = useOnPriceMove(symbol, 0);
   const latestTick = priceMoveSub.data?.[0];
   const isLive = priceMoveSub.fetching && !!latestTick;
 
   const [insightResult] = useQuery<LatestInsightReportQueryResult>({ query: LATEST_INSIGHT_REPORT_QUERY });
   const positionInsight = useMemo<PositionInsight | undefined>(
-    () => insightResult.data?.latestInsightReport?.positions.find((p) => p.symbol === upperSymbol),
-    [insightResult.data, upperSymbol],
+    () => insightResult.data?.latestInsightReport?.positions.find((p) => p.symbol === symbol),
+    [insightResult.data, symbol],
   );
 
   const signalsVars = useMemo<SignalsVariables>(
     () => ({
-      ticker: upperSymbol,
+      ticker: symbol,
       limit: 20,
       since: SEVEN_DAYS_AGO,
     }),
-    [upperSymbol],
+    [symbol],
   );
   const [signalsResult] = useQuery<SignalsQueryResult, SignalsVariables>({
     query: SIGNALS_QUERY,
     variables: signalsVars,
-    pause: !upperSymbol,
   });
   const allSignals = useMemo(() => signalsResult.data?.signals ?? [], [signalsResult.data?.signals]);
   const signals = useMemo(() => allSignals.filter((s) => s.type !== 'NEWS').slice(0, 10), [allSignals]);
@@ -211,26 +220,34 @@ function PositionContent() {
 
   const loading = portfolioResult.fetching && !portfolioResult.data;
 
+  if (featureLoading) return null;
+
+  if (!jintelConfigured) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <GateCard requires="jintel" />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Spinner label={`Loading ${upperSymbol}...`} />
+      <div className="flex items-center justify-center py-16">
+        <Spinner label={`Loading ${symbol}...`} />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <SymbolLogo
-          symbol={upperSymbol ?? ''}
-          assetClass={position?.assetClass === 'CRYPTO' ? 'crypto' : 'equity'}
-          size="md"
-        />
+        <SymbolLogo symbol={symbol} assetClass={position?.assetClass === 'CRYPTO' ? 'crypto' : 'equity'} size="md" />
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold text-text-primary">{upperSymbol}</h2>
+            <h2 id="asset-detail-title" className="text-xl font-semibold text-text-primary">
+              {symbol}
+            </h2>
             {positionInsight && (
               <Badge variant={ratingVariant[positionInsight.rating]} size="md">
                 {ratingLabel[positionInsight.rating]}
@@ -265,16 +282,21 @@ function PositionContent() {
                 {fmtPercent(latestTick?.changePercent ?? quote?.changePercent ?? 0)})
               </p>
             )}
-            {(latestTick?.timestamp ?? quote?.timestamp) && (
-              <p className="text-2xs text-text-muted mt-0.5">
-                {timeAgo(latestTick?.timestamp ?? quote?.timestamp ?? '')}
-              </p>
-            )}
           </div>
         )}
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="cursor-pointer rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-text-primary"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
-      {/* Key Metrics — all values straight from BE */}
+      {/* Key Metrics */}
       {position && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <MetricCard label="Market Value" value={fmtCurrency(position.marketValue)} />
@@ -300,10 +322,10 @@ function PositionContent() {
       {!position && !loading && (
         <Card>
           <p className="text-sm text-text-muted">
-            {upperSymbol} is not in your portfolio.{' '}
-            <Link to="/portfolio" className="text-accent-primary hover:underline">
-              View portfolio
-            </Link>
+            {symbol} is not in your portfolio.{' '}
+            <button onClick={onClose} className="cursor-pointer text-accent-primary hover:underline">
+              Close
+            </button>
           </p>
         </Card>
       )}
