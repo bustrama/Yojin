@@ -27,8 +27,8 @@ check_command() {
 check_command docker
 check_command curl
 
-if ! docker compose version &>/dev/null && ! docker-compose version &>/dev/null; then
-  echo "Error: Docker Compose is required but not installed."
+if ! docker compose version &>/dev/null; then
+  echo "Error: Docker Compose v2 is required. Install it via https://docs.docker.com/compose/install/"
   exit 1
 fi
 
@@ -133,6 +133,14 @@ elif auth.get('auth_mode') == 'chatgpt' and auth.get('tokens', {}).get('access_t
   # Vault passphrase
   read -rsp "  Vault passphrase (encrypts credentials, press Enter for none): " YOJIN_VAULT_PASSPHRASE
   echo ""
+  if [ -n "$YOJIN_VAULT_PASSPHRASE" ]; then
+    read -rsp "  Confirm vault passphrase: " YOJIN_VAULT_PASSPHRASE_CONFIRM
+    echo ""
+    if [ "$YOJIN_VAULT_PASSPHRASE" != "$YOJIN_VAULT_PASSPHRASE_CONFIRM" ]; then
+      echo "Error: Passphrases do not match."
+      exit 1
+    fi
+  fi
 
   cat > "$ENV_FILE" <<EOF
 # Yojin Docker Configuration

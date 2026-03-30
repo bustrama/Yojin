@@ -42,12 +42,8 @@ WORKDIR /app
 COPY --from=build /app/dist/ ./dist/
 COPY --from=build /app/node_modules/ ./node_modules/
 COPY --from=build /app/package.json ./
-COPY --from=build /app/pnpm-lock.yaml ./
-COPY --from=build /app/pnpm-workspace.yaml ./
 COPY --from=build /app/data/default/ ./data/default/
 COPY --from=build /app/apps/web/dist/ ./apps/web/dist/
-COPY --from=build /app/apps/web/package.json ./apps/web/
-COPY --from=build /app/apps/web/node_modules/ ./apps/web/node_modules/
 COPY --from=build /app/providers/ ./providers/
 COPY --from=build /app/channels/ ./channels/
 COPY yojin.mjs ./
