@@ -208,6 +208,7 @@ export default function App() {
                     {/* Redirects for old paths */}
                     <Route path="positions" element={<Navigate to="/portfolio" replace />} />
                     <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
+                    <Route path="portfolio/:symbol" element={<Navigate to="/portfolio" replace />} />
                     <Route path="skills" element={<Navigate to="/" replace />} />
                     <Route path="alerts" element={<Navigate to="/" replace />} />
                   </Route>

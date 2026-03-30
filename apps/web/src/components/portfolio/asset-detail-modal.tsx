@@ -220,7 +220,13 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
 
   const loading = portfolioResult.fetching && !portfolioResult.data;
 
-  if (featureLoading) return null;
+  if (featureLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Spinner label="Checking features..." />
+      </div>
+    );
+  }
 
   if (!jintelConfigured) {
     return (
@@ -288,6 +294,7 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
         {/* Close button */}
         <button
           onClick={onClose}
+          aria-label="Close"
           className="cursor-pointer rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-text-primary"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
