@@ -29,8 +29,10 @@ export default function Chat() {
 
 /** Banner shown inside chat when AI+Jintel are configured but no positions exist. */
 function ChatSetupBanner() {
-  const [{ data }] = usePortfolio();
+  const [{ data, fetching }] = usePortfolio();
   const { openModal: openAddPosition } = useAddPositionModal();
+
+  if (fetching) return null;
 
   const positions = data?.portfolio?.positions ?? [];
   if (positions.length > 0) return null;

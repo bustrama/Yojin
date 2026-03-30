@@ -100,7 +100,9 @@ export default function AddPositionModal({ onOpenAddAccount }: AddPositionModalP
   const resolvedName = lookupName(formData.symbol);
   const qty = parseFloat(formData.quantity);
   const price = parseFloat(formData.costBasis);
-  const totalValue = !isNaN(qty) && marketPrice ? qty * marketPrice : 0;
+  const hasMarketPrice = !isNaN(qty) && marketPrice != null;
+  const hasCostBasis = !isNaN(qty) && !isNaN(price);
+  const totalValue = hasMarketPrice ? qty * marketPrice : hasCostBasis ? qty * price : 0;
 
   const resetState = useCallback(() => {
     setScreen('form');
@@ -316,7 +318,7 @@ export default function AddPositionModal({ onOpenAddAccount }: AddPositionModalP
               {formData.entryDate && <SummaryRow label="Entry Date" value={formData.entryDate} />}
               <div className="border-t border-border/40 pt-3">
                 <SummaryRow
-                  label="Market Value"
+                  label={hasMarketPrice ? 'Market Value' : 'Market Value (est.)'}
                   value={`$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   bold
                 />
