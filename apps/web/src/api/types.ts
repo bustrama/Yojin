@@ -61,6 +61,30 @@ export type SignalVerdict = 'CRITICAL' | 'IMPORTANT' | 'NOISE';
 export type ThesisAlignment = 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL';
 
 // ---------------------------------------------------------------------------
+// Channels
+// ---------------------------------------------------------------------------
+
+export type ChannelStatus = 'CONNECTED' | 'NOT_CONNECTED' | 'ERROR';
+
+export interface Channel {
+  id: string;
+  name: string;
+  status: ChannelStatus;
+  description: string | null;
+  requiredCredentials: string[];
+}
+
+export interface ChannelResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface NotificationPreferences {
+  channelId: string;
+  enabledTypes: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Activity Log
 // ---------------------------------------------------------------------------
 
@@ -100,6 +124,10 @@ export interface Position {
   unrealizedPnlPercent: number;
   dayChange: number | null;
   dayChangePercent: number | null;
+  preMarketChange: number | null;
+  preMarketChangePercent: number | null;
+  postMarketChange: number | null;
+  postMarketChangePercent: number | null;
   sparkline: number[] | null;
   sector: string | null;
   assetClass: AssetClass;

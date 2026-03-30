@@ -24,7 +24,7 @@ export default function Dashboard() {
         <PortfolioOverview />
         <PositionsPreview />
         <IntelSummaryCard />
-        <YojinSnapCard />
+        <YojinSnapCard hasPositions={hasData} />
       </div>
 
       {/* Right panel — unified feed */}

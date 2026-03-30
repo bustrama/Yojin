@@ -23,6 +23,7 @@ import { emitProgress } from './agents/orchestrator.js';
 import { fetchAllEnabledSources } from './api/graphql/resolvers/fetch-data-source.js';
 import { AlertsConfigSchema } from './config/config.js';
 import type { EventLog } from './core/event-log.js';
+import type { NotificationBus } from './core/notification-bus.js';
 import type { InsightStore } from './insights/insight-store.js';
 import { fetchJintelSignals } from './jintel/signal-fetcher.js';
 import { createSubsystemLogger } from './logging/logger.js';
@@ -131,6 +132,8 @@ export interface SchedulerOptions {
   getJintelClient?: () => JintelClient | undefined;
   /** Signal ingestor — for ingesting Jintel signals. */
   signalIngestor?: SignalIngestor;
+  /** Notification bus — publishes domain events for channel delivery. */
+  notificationBus?: NotificationBus;
 }
 
 /** Minimum interval between curation runs (15 minutes). */
@@ -159,6 +162,7 @@ export class Scheduler {
   private readonly eventLog?: EventLog;
   private readonly getJintelClient?: () => JintelClient | undefined;
   private readonly signalIngestor?: SignalIngestor;
+  private readonly notificationBus?: NotificationBus;
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -176,6 +180,7 @@ export class Scheduler {
     this.eventLog = options.eventLog;
     this.getJintelClient = options.getJintelClient;
     this.signalIngestor = options.signalIngestor;
+    this.notificationBus = options.notificationBus;
   }
 
   /** Start the scheduler. Checks once per minute. */
@@ -477,6 +482,7 @@ export class Scheduler {
       const snap = snapFromInsight(report);
       await this.snapStore.save(snap);
       logger.info('Snap brief regenerated', { snapId: snap.id });
+      this.notificationBus?.publish({ type: 'snap.ready', snapId: snap.id });
 
       if (this.eventLog) {
         await this.eventLog.append({
@@ -571,6 +577,11 @@ export class Scheduler {
           skillId: evaluation.skillId,
           triggerType: evaluation.triggerType,
         });
+        this.notificationBus?.publish({
+          type: 'action.created',
+          actionId: result.data.id,
+          ticker: evaluation.context.ticker as string | undefined,
+        });
       } else {
         logger.warn('Failed to create action from skill trigger', {
           error: result.error,
@@ -654,6 +665,12 @@ export class Scheduler {
       });
 
       logger.info('Process-insights completed');
+
+      // Notify channels that a new insight report is available
+      const latestInsight = await this.insightStore?.getLatest();
+      if (latestInsight) {
+        this.notificationBus?.publish({ type: 'insight.ready', insightId: latestInsight.id });
+      }
 
       if (this.eventLog) {
         await this.eventLog.append({

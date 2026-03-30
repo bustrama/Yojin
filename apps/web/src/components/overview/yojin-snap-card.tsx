@@ -19,7 +19,7 @@ function stripPrefix(text: string): string {
   return text.replace(/^(CRITICAL|HIGH|MEDIUM|LOW):\s*/i, '');
 }
 
-export default function YojinSnapCard() {
+export default function YojinSnapCard({ hasPositions = false }: { hasPositions?: boolean }) {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
   const [result] = useQuery<SnapQueryResult>({ query: SNAP_QUERY });
   const [insightResult] = useQuery<LatestInsightReportQueryResult>({ query: LATEST_INSIGHT_REPORT_QUERY });
@@ -84,11 +84,15 @@ export default function YojinSnapCard() {
               </svg>
             }
             title="No actions yet"
-            description="Generated once your portfolio is loaded."
+            description={
+              hasPositions ? 'Your brief will be generated shortly.' : 'Generated once your portfolio is loaded.'
+            }
             action={
-              <Button variant="primary" size="sm" onClick={openModal}>
-                Add positions
-              </Button>
+              hasPositions ? undefined : (
+                <Button variant="primary" size="sm" onClick={openModal}>
+                  Add positions
+                </Button>
+              )
             }
           />
         </CardBlurGate>

@@ -128,7 +128,7 @@ function InsightIcon({ className }: { className?: string }) {
 
 /* -- Component ------------------------------------------------------------ */
 
-export default function ActivityLog() {
+export default function ActivityLog({ hasPositions = false }: { hasPositions?: boolean }) {
   const { jintelConfigured } = useFeatureStatus();
   const { openModal } = useAddPositionModal();
   const [result] = useQuery<ActivityLogQueryResult>({
@@ -195,9 +195,11 @@ export default function ActivityLog() {
             title="No activity yet"
             description="Events will appear here as you use Yojin."
             action={
-              <Button variant="primary" size="sm" onClick={openModal}>
-                Add position
-              </Button>
+              hasPositions ? undefined : (
+                <Button variant="primary" size="sm" onClick={openModal}>
+                  Add position
+                </Button>
+              )
             }
           />
         </CardBlurGate>
