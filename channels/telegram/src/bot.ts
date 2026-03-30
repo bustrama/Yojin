@@ -1,3 +1,4 @@
+import { apiThrottler } from '@grammyjs/transformer-throttler';
 import { Bot, InlineKeyboard } from 'grammy';
 
 import { createSubsystemLogger } from '../../../src/logging/logger.js';
@@ -47,12 +48,17 @@ export interface BotDeps {
 
 export function createBot(deps: BotDeps): Bot {
   const bot = new Bot(deps.token);
+  bot.api.config.use(apiThrottler());
 
   bot.command('start', async (ctx) => {
     logger.info('Telegram /start', { chatId: ctx.chat.id, userId: ctx.from?.id });
     await ctx.reply(
-      'Welcome to Yojin\\! Your chat is now linked\\.\n\nCommands:\n/snap — Latest brief\n/portfolio — Positions summary\n/actions — Pending actions\n/help — Show this message',
-      { parse_mode: 'MarkdownV2' },
+      '<b>Welcome to Yojin!</b> Your chat is now linked.\n\n' +
+        '/snap — Latest brief\n' +
+        '/portfolio — Positions summary\n' +
+        '/actions — Pending actions\n' +
+        '/help — Show this message',
+      { parse_mode: 'HTML' },
     );
   });
 

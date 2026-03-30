@@ -20,6 +20,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 0.80.0
         version: 0.80.0(zod@3.25.76)
+      '@grammyjs/transformer-throttler':
+        specifier: 1.2.1
+        version: 1.2.1(grammy@1.41.1)
       '@hono/node-server':
         specifier: 1.19.11
         version: 1.19.11(hono@4.12.8)
@@ -641,6 +644,12 @@ packages:
 
   '@fastify/busboy@3.2.0':
     resolution: {integrity: sha512-m9FVDXU3GT2ITSe0UaMA5rU3QkfC/UXtCU8y0gSN/GugTqtVldOBWIB5V6V3sbmenVZUIpU6f+mPEO2+m5iTaA==}
+
+  '@grammyjs/transformer-throttler@1.2.1':
+    resolution: {integrity: sha512-CpWB0F3rJdUiKsq7826QhQsxbZi4wqfz1ccKX+fr+AOC+o8K7ZvS+wqX0suSu1QCsyUq2MDpNiKhyL2ZOJUS4w==}
+    engines: {node: ^12.20.0 || >=14.13.1}
+    peerDependencies:
+      grammy: ^1.0.0
 
   '@grammyjs/types@3.25.0':
     resolution: {integrity: sha512-iN9i5p+8ZOu9OMxWNcguojQfz4K/PDyMPOnL7PPCON+SoA/F8OKMH3uR7CVUkYfdNe0GCz8QOzAWrnqusQYFOg==}
@@ -1763,6 +1772,9 @@ packages:
   boolean@3.2.0:
     resolution: {integrity: sha512-d0II/GO9uf9lfUHH2BQsjxzRJZBdsjgsBiW4BvhWk/3qoKwQFjIDVN19PfX8F2D/r9PCMTtLWjYVCFrpeYUzsw==}
     deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+
+  bottleneck@2.19.5:
+    resolution: {integrity: sha512-VHiNCbI1lKdl44tGrhNfU3lup0Tj/ZBMJB5/2ZbNXRCPuRCO7ed2mgcK4r17y+KB2EfuYuRaVlwNbAeaWGSpbw==}
 
   brace-expansion@5.0.4:
     resolution: {integrity: sha512-h+DEnpVvxmfVefa4jFbCf5HdH5YMDXRsmKflpf1pILZWRFlTbJpxeU55nJl4Smt5HQaGzg1o6RHFPJaOqnmBDg==}
@@ -4190,6 +4202,11 @@ snapshots:
 
   '@fastify/busboy@3.2.0': {}
 
+  '@grammyjs/transformer-throttler@1.2.1(grammy@1.41.1)':
+    dependencies:
+      bottleneck: 2.19.5
+      grammy: 1.41.1
+
   '@grammyjs/types@3.25.0': {}
 
   '@graphql-tools/executor@1.5.1(graphql@16.13.1)':
@@ -5327,6 +5344,8 @@ snapshots:
 
   boolean@3.2.0:
     optional: true
+
+  bottleneck@2.19.5: {}
 
   brace-expansion@5.0.4:
     dependencies:

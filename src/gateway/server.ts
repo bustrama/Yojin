@@ -108,6 +108,7 @@ export class Gateway {
         channelId,
         userId: msg.userId,
         threadId: msg.threadId,
+        onEvent: msg.onAgentEvent as import('../core/types.js').AgentLoopEventHandler | undefined,
       });
 
       await channel.messagingAdapter.sendMessage({

@@ -367,7 +367,7 @@ export const LIST_CHANNELS_QUERY = gql`
 `;
 
 export const CONNECT_CHANNEL_MUTATION = gql`
-  mutation ConnectChannel($id: String!, $credentials: [CredentialInput!]!) {
+  mutation ConnectChannel($id: ID!, $credentials: [CredentialInput!]!) {
     connectChannel(id: $id, credentials: $credentials) {
       success
       error
@@ -376,7 +376,7 @@ export const CONNECT_CHANNEL_MUTATION = gql`
 `;
 
 export const DISCONNECT_CHANNEL_MUTATION = gql`
-  mutation DisconnectChannel($id: String!) {
+  mutation DisconnectChannel($id: ID!) {
     disconnectChannel(id: $id) {
       success
       error
@@ -385,7 +385,7 @@ export const DISCONNECT_CHANNEL_MUTATION = gql`
 `;
 
 export const VALIDATE_CHANNEL_TOKEN_MUTATION = gql`
-  mutation ValidateChannelToken($id: String!, $credentials: [CredentialInput!]!) {
+  mutation ValidateChannelToken($id: ID!, $credentials: [CredentialInput!]!) {
     validateChannelToken(id: $id, credentials: $credentials) {
       success
       error

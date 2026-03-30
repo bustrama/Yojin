@@ -1,38 +1,39 @@
 import { describe, expect, it } from 'vitest';
 
-import { chunkMessage, escapeMarkdownV2, formatAction, formatSnap } from '../../channels/telegram/src/formatting.js';
+import {
+  chunkMessage,
+  escapeHtml,
+  formatAction,
+  formatInsight,
+  formatSnap,
+} from '../../channels/telegram/src/formatting.js';
 import type { Action } from '../../src/actions/types.js';
+import type { InsightReport } from '../../src/insights/types.js';
 import type { Snap } from '../../src/snap/types.js';
 
-describe('escapeMarkdownV2', () => {
-  it('escapes special characters', () => {
-    expect(escapeMarkdownV2('Hello_World')).toBe('Hello\\_World');
-    expect(escapeMarkdownV2('Price: $182.50')).toBe('Price: $182\\.50');
-    expect(escapeMarkdownV2('BRK.B (+2.3%)')).toBe('BRK\\.B \\(\\+2\\.3%\\)');
+describe('escapeHtml', () => {
+  it('escapes HTML special characters', () => {
+    expect(escapeHtml('a < b & c > d')).toBe('a &lt; b &amp; c &gt; d');
   });
 
   it('handles empty string', () => {
-    expect(escapeMarkdownV2('')).toBe('');
+    expect(escapeHtml('')).toBe('');
   });
 
-  it('escapes all MarkdownV2 special chars', () => {
-    const special = '_*[]()~`>#+-=|{}.!';
-    const escaped = escapeMarkdownV2(special);
-    expect(escaped).toBe('\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!');
+  it('leaves safe text unchanged', () => {
+    expect(escapeHtml('Hello World 123')).toBe('Hello World 123');
   });
 });
 
 describe('chunkMessage', () => {
   it('returns single chunk for short messages', () => {
-    const chunks = chunkMessage('Hello', 4096);
-    expect(chunks).toEqual(['Hello']);
+    expect(chunkMessage('Hello', 4096)).toEqual(['Hello']);
   });
 
   it('splits at paragraph boundaries', () => {
     const para1 = 'A'.repeat(3000);
     const para2 = 'B'.repeat(3000);
-    const text = `${para1}\n\n${para2}`;
-    const chunks = chunkMessage(text, 4096);
+    const chunks = chunkMessage(`${para1}\n\n${para2}`, 4096);
     expect(chunks).toHaveLength(2);
     expect(chunks[0]).toBe(para1);
     expect(chunks[1]).toBe(para2);
@@ -41,8 +42,7 @@ describe('chunkMessage', () => {
   it('splits at newline boundaries when no paragraph break fits', () => {
     const line1 = 'A'.repeat(3000);
     const line2 = 'B'.repeat(3000);
-    const text = `${line1}\n${line2}`;
-    const chunks = chunkMessage(text, 4096);
+    const chunks = chunkMessage(`${line1}\n${line2}`, 4096);
     expect(chunks).toHaveLength(2);
     expect(chunks[0]).toBe(line1);
     expect(chunks[1]).toBe(line2);
@@ -58,7 +58,7 @@ describe('chunkMessage', () => {
 });
 
 describe('formatSnap', () => {
-  it('formats a snap brief with attention items', () => {
+  it('formats with HTML and severity icons', () => {
     const snap: Snap = {
       id: 'snap-1',
       generatedAt: '2026-03-30T08:00:00Z',
@@ -72,14 +72,15 @@ describe('formatSnap', () => {
     };
 
     const result = formatSnap(snap);
-    expect(result).toContain('Snap Brief');
+    expect(result).toContain('<b>Snap Brief</b>');
     expect(result).toContain('AAPL earnings beat expectations');
+    expect(result).toContain('<code>AAPL</code>');
     expect(result).toContain('\u{1F534}');
   });
 });
 
 describe('formatAction', () => {
-  it('formats a pending action', () => {
+  it('formats with HTML tags', () => {
     const action: Action = {
       id: 'act-1',
       what: 'Review AAPL — bearish divergence detected',
@@ -91,8 +92,64 @@ describe('formatAction', () => {
     };
 
     const result = formatAction(action);
+    expect(result).toContain('<b>New Action</b>');
     expect(result).toContain('Review AAPL');
-    expect(result).toContain('RSI divergence');
-    expect(result).toContain('momentum');
+    expect(result).toContain('<i>Why:</i>');
+  });
+});
+
+describe('formatInsight', () => {
+  it('formats portfolio health and positions', () => {
+    const report = {
+      id: 'ins-1',
+      snapshotId: 'snap-1',
+      positions: [
+        {
+          symbol: 'AAPL',
+          name: 'Apple',
+          rating: 'BULLISH',
+          conviction: 0.8,
+          thesis: 'Strong earnings',
+          keySignals: [],
+          allSignalIds: [],
+          risks: [],
+          opportunities: [],
+          memoryContext: null,
+          priceTarget: null,
+        },
+        {
+          symbol: 'MSFT',
+          name: 'Microsoft',
+          rating: 'NEUTRAL',
+          conviction: 0.5,
+          thesis: 'Mixed signals',
+          keySignals: [],
+          allSignalIds: [],
+          risks: [],
+          opportunities: [],
+          memoryContext: null,
+          priceTarget: null,
+        },
+      ],
+      portfolio: {
+        overallHealth: 'HEALTHY',
+        summary: 'Portfolio is well positioned.',
+        sectorThemes: [],
+        macroContext: '',
+        topRisks: [],
+        topOpportunities: [],
+        actionItems: [],
+      },
+      agentOutputs: { researchAnalyst: '', riskManager: '', strategist: '' },
+      emotionState: { confidence: 0.7, riskAppetite: 0.5, reason: 'Stable market' },
+      createdAt: '2026-03-30T08:00:00Z',
+      durationMs: 5000,
+    } as InsightReport;
+
+    const result = formatInsight(report);
+    expect(result).toContain('<b>Daily Insights Report</b>');
+    expect(result).toContain('HEALTHY');
+    expect(result).toContain('<code>AAPL</code>');
+    expect(result).toContain('BULLISH');
   });
 });
