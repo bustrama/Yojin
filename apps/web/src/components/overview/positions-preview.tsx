@@ -165,6 +165,7 @@ export default function PositionsPreview() {
               const isDown = dc != null && dc < 0;
               const colorClass = isUp ? 'text-success' : isDown ? 'text-error' : 'text-text-muted';
               const arrow = isUp ? '\u25B2' : isDown ? '\u25BC' : '';
+              const ext = getExtendedHoursLabel(marketStatus, pos);
 
               return (
                 <tr
@@ -215,18 +216,22 @@ export default function PositionsPreview() {
                         <span className="text-text-muted/40">—</span>
                       )}
                     </div>
-                    {(() => {
-                      const ext = getExtendedHoursLabel(marketStatus, pos);
-                      if (!ext || ext.dollarChange == null) return null;
-                      const extColor =
-                        ext.dollarChange > 0 ? 'text-success' : ext.dollarChange < 0 ? 'text-error' : 'text-text-muted';
-                      return (
-                        <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
-                          {ext.prefix}: {ext.dollarChange >= 0 ? '+' : ''}
-                          {formatChange(ext.dollarChange)}
-                        </div>
-                      );
-                    })()}
+                    {ext &&
+                      ext.dollarChange != null &&
+                      (() => {
+                        const extColor =
+                          ext.dollarChange > 0
+                            ? 'text-success'
+                            : ext.dollarChange < 0
+                              ? 'text-error'
+                              : 'text-text-muted';
+                        return (
+                          <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
+                            {ext.prefix}: {ext.dollarChange >= 0 ? '+' : '-'}
+                            {formatChange(ext.dollarChange)}
+                          </div>
+                        );
+                      })()}
                   </td>
 
                   {/* Change % + extended-hours percent */}
@@ -241,17 +246,16 @@ export default function PositionsPreview() {
                         <span className="text-text-muted/40">—</span>
                       )}
                     </div>
-                    {(() => {
-                      const ext = getExtendedHoursLabel(marketStatus, pos);
-                      if (!ext) return null;
-                      const extColor =
-                        ext.value > 0 ? 'text-success' : ext.value < 0 ? 'text-error' : 'text-text-muted';
-                      return (
-                        <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
-                          {ext.prefix}: {formatExtendedPercent(ext.value)}
-                        </div>
-                      );
-                    })()}
+                    {ext &&
+                      (() => {
+                        const extColor =
+                          ext.value > 0 ? 'text-success' : ext.value < 0 ? 'text-error' : 'text-text-muted';
+                        return (
+                          <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
+                            {ext.prefix}: {formatExtendedPercent(ext.value)}
+                          </div>
+                        );
+                      })()}
                   </td>
                 </tr>
               );

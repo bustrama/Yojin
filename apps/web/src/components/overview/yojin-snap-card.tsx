@@ -4,7 +4,6 @@ import { SNAP_QUERY } from '../../api/documents';
 import type { SnapQueryResult, SnapSeverity } from '../../api/types';
 import { cn, timeAgo } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
-import { usePortfolio } from '../../api';
 import { CardEmptyState } from '../common/card-empty-state';
 import { CardBlurGate } from '../common/card-blur-gate';
 import { FeatureCardGate } from '../common/feature-gate';
@@ -19,13 +18,11 @@ const SEVERITY_STYLES: Record<SnapSeverity, { dot: string; text: string }> = {
   LOW: { dot: 'bg-info', text: 'text-info/80' },
 };
 
-export default function YojinSnapCard() {
+export default function YojinSnapCard({ hasPositions = false }: { hasPositions?: boolean }) {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
   const [result] = useQuery<SnapQueryResult>({ query: SNAP_QUERY });
-  const [{ data: portfolioData }] = usePortfolio();
   const { openModal } = useAddPositionModal();
   const snap = result.data?.snap;
-  const hasPositions = (portfolioData?.portfolio?.positions?.length ?? 0) > 0;
 
   if (!jintelConfigured) {
     return (
