@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Yojin Docker Setup ──────────────────────────────────────
+# Quick start: ./docker-setup.sh
+# This script builds the image, creates an .env file if needed,
+# and starts the services.
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$ROOT_DIR/.env.docker"
+
+echo ""
+echo "  ╭──────────────────────────────────────╮"
+echo "  │         Yojin — Docker Setup         │"
+echo "  │   Personal AI Finance Agent          │"
+echo "  ╰──────────────────────────────────────╯"
+echo ""
+
+# ── Step 1: Check prerequisites ──────────────────────────────
+check_command() {
+  if ! command -v "$1" &>/dev/null; then
+    echo "Error: $1 is required but not installed."
+    exit 1
+  fi
+}
+
+check_command docker
+check_command curl
+
+if ! docker compose version &>/dev/null; then
+  echo "Error: Docker Compose v2 is required. Install it via https://docs.docker.com/compose/install/"
+  exit 1
+fi
+
+echo "✓ Docker and Docker Compose found"
+
+# ── Step 2: Create .env.docker if it doesn't exist ───────────
+if [ ! -f "$ENV_FILE" ]; then
+  echo ""
+  echo "Creating .env.docker configuration file..."
+  echo ""
+
+  # AI credentials — try local Keychain / Codex before prompting
+  ANTHROPIC_API_KEY=""
+  CLAUDE_CODE_OAUTH_TOKEN=""
+  OPENAI_API_KEY=""
+  CREDENTIAL_FOUND=""
+
+  # ── Claude Code Keychain (macOS) ──
+  if [[ "$(uname)" == "Darwin" ]] && [ -z "$CREDENTIAL_FOUND" ]; then
+    KEYCHAIN_JSON=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)
+    if [ -n "$KEYCHAIN_JSON" ]; then
+      KEYCHAIN_TOKEN=$(echo "$KEYCHAIN_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('claudeAiOauth',{}).get('accessToken',''))" 2>/dev/null || true)
+      if [ -n "$KEYCHAIN_TOKEN" ]; then
+        echo "  Found Claude Code credentials in macOS Keychain!"
+        read -rp "  Use Keychain token? [Y/n]: " USE_KEYCHAIN
+        if [[ "${USE_KEYCHAIN:-Y}" =~ ^[Yy]?$ ]]; then
+          CLAUDE_CODE_OAUTH_TOKEN="$KEYCHAIN_TOKEN"
+          CREDENTIAL_FOUND="claude-keychain"
+          echo "  ✓ Using Claude Code Keychain token"
+          echo ""
+        fi
+      fi
+    fi
+  fi
+
+  # ── Codex credentials (~/.codex/auth.json or macOS Keychain) ──
+  if [ -z "$CREDENTIAL_FOUND" ]; then
+    CODEX_AUTH_FILE="${CODEX_HOME:-$HOME/.codex}/auth.json"
+    CODEX_TOKEN=""
+
+    # Try auth.json first
+    if [ -f "$CODEX_AUTH_FILE" ]; then
+      CODEX_TOKEN=$(python3 -c "
+import json, sys
+try:
+    auth = json.load(open('$CODEX_AUTH_FILE'))
+    if auth.get('auth_mode') == 'api_key' and auth.get('OPENAI_API_KEY'):
+        print(auth['OPENAI_API_KEY'])
+    elif auth.get('auth_mode') == 'chatgpt' and auth.get('tokens', {}).get('access_token'):
+        print(auth['tokens']['access_token'])
+except: pass
+" 2>/dev/null || true)
+    fi
+
+    # Try Codex Keychain on macOS if no file
+    if [ -z "$CODEX_TOKEN" ] && [[ "$(uname)" == "Darwin" ]]; then
+      CODEX_KEYCHAIN_JSON=$(security find-generic-password -s "Codex Auth" -w 2>/dev/null || true)
+      if [ -n "$CODEX_KEYCHAIN_JSON" ]; then
+        CODEX_TOKEN=$(echo "$CODEX_KEYCHAIN_JSON" | python3 -c "
+import json, sys
+auth = json.load(sys.stdin)
+if auth.get('auth_mode') == 'api_key' and auth.get('OPENAI_API_KEY'):
+    print(auth['OPENAI_API_KEY'])
+elif auth.get('auth_mode') == 'chatgpt' and auth.get('tokens', {}).get('access_token'):
+    print(auth['tokens']['access_token'])
+" 2>/dev/null || true)
+      fi
+    fi
+
+    if [ -n "$CODEX_TOKEN" ]; then
+      echo "  Found Codex credentials!"
+      read -rp "  Use Codex token? [Y/n]: " USE_CODEX
+      if [[ "${USE_CODEX:-Y}" =~ ^[Yy]?$ ]]; then
+        OPENAI_API_KEY="$CODEX_TOKEN"
+        CREDENTIAL_FOUND="codex"
+        echo "  ✓ Using Codex token"
+        echo ""
+      fi
+    fi
+  fi
+
+  # ── Manual entry fallback ──
+  if [ -z "$CREDENTIAL_FOUND" ]; then
+    read -rp "  Anthropic API Key (sk-ant-...): " ANTHROPIC_API_KEY
+  fi
+  echo ""
+
+  # Slack (optional)
+  read -rp "  Slack Bot Token (xoxb-..., or press Enter to skip): " SLACK_BOT_TOKEN
+  SLACK_APP_TOKEN=""
+  SLACK_SIGNING_SECRET=""
+  if [ -n "$SLACK_BOT_TOKEN" ]; then
+    read -rp "  Slack App Token (xapp-...): " SLACK_APP_TOKEN
+    read -rp "  Slack Signing Secret: " SLACK_SIGNING_SECRET
+  fi
+  echo ""
+
+  # Web port
+  read -rp "  Web UI port [8080]: " WEB_PORT
+  WEB_PORT="${WEB_PORT:-8080}"
+
+  # Vault passphrase
+  read -rsp "  Vault passphrase (encrypts credentials, press Enter for none): " YOJIN_VAULT_PASSPHRASE
+  echo ""
+  if [ -n "$YOJIN_VAULT_PASSPHRASE" ]; then
+    read -rsp "  Confirm vault passphrase: " YOJIN_VAULT_PASSPHRASE_CONFIRM
+    echo ""
+    if [ "$YOJIN_VAULT_PASSPHRASE" != "$YOJIN_VAULT_PASSPHRASE_CONFIRM" ]; then
+      echo "Error: Passphrases do not match."
+      exit 1
+    fi
+  fi
+
+  cat > "$ENV_FILE" <<EOF
+# Yojin Docker Configuration
+# Generated by docker-setup.sh
+
+# ── AI Provider (required — at least one) ────────
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
+CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN}"
+OPENAI_API_KEY="${OPENAI_API_KEY}"
+
+# ── Slack Channel (optional) ─────────────────────
+SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}"
+SLACK_APP_TOKEN="${SLACK_APP_TOKEN}"
+SLACK_SIGNING_SECRET="${SLACK_SIGNING_SECRET}"
+
+# ── Ports ────────────────────────────────────────
+WEB_PORT="${WEB_PORT}"
+YOJIN_PORT="3000"
+YOJIN_CORS_ORIGIN="http://localhost:${WEB_PORT}"
+
+# ── Security ─────────────────────────────────────
+YOJIN_VAULT_PASSPHRASE="${YOJIN_VAULT_PASSPHRASE}"
+
+# ── Logging ──────────────────────────────────────
+YOJIN_LOG_LEVEL="info"
+
+# ── Timezone ─────────────────────────────────────
+TZ="UTC"
+EOF
+
+  echo ""
+  echo "✓ Configuration saved to .env.docker"
+  echo "  (edit this file anytime to update settings)"
+else
+  echo "✓ Using existing .env.docker"
+fi
+
+# ── Step 3: Build the image ──────────────────────────────────
+echo ""
+echo "Building Yojin Docker image..."
+echo "(this may take a few minutes on first run)"
+echo ""
+
+docker compose --env-file "$ENV_FILE" build
+
+echo ""
+echo "✓ Image built successfully"
+
+# ── Step 4: Start services ───────────────────────────────────
+echo ""
+echo "Starting Yojin..."
+echo ""
+
+docker compose --env-file "$ENV_FILE" up -d
+
+echo ""
+echo "  ╭──────────────────────────────────────╮"
+echo "  │          Yojin is running!            │"
+echo "  │                                       │"
+echo "  │  Web UI:  http://localhost:${WEB_PORT:-8080}        │"
+echo "  │  API:     http://localhost:3000        │"
+echo "  │  Health:  http://localhost:3000/health │"
+echo "  │                                       │"
+echo "  │  Logs:    docker compose logs -f      │"
+echo "  │  Stop:    docker compose down         │"
+echo "  ╰──────────────────────────────────────╯"
+echo ""
+
+if [ -n "${SLACK_BOT_TOKEN:-}" ]; then
+  echo "  Slack bot is enabled — invite @Yojin to a channel."
+fi
+
+echo ""
