@@ -9,7 +9,10 @@ import {
 import type { Channel, ChannelResult } from '../types.js';
 
 export function useListChannels() {
-  return useQuery<{ listChannels: Channel[] }>({ query: LIST_CHANNELS_QUERY });
+  return useQuery<{ listChannels: Channel[] }>({
+    query: LIST_CHANNELS_QUERY,
+    requestPolicy: 'network-only',
+  });
 }
 
 export function useConnectChannel() {

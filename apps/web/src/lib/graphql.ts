@@ -51,6 +51,7 @@ const cache = cacheExchange({
     PricePoint: () => null, // embedded — nested under TickerPriceHistory
     TickerPriceHistory: () => null, // embedded — keyed by ticker in array
     Channel: (data) => data.id as string,
+    ChannelResult: () => null, // embedded — mutation result, no stable identity
     SessionSummary: (data) => data.id as string,
     SessionDetail: (data) => data.id as string,
   },

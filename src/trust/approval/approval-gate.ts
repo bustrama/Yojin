@@ -120,11 +120,6 @@ export class ApprovalGate {
     }
   }
 
-  /** Set notification bus after construction (for late wiring). */
-  setNotificationBus(bus: NotificationBus): void {
-    this.notificationBus = bus;
-  }
-
   private resolveRequest(requestId: string, approved: boolean, reason: string, timedOut: boolean): void {
     const entry = this.pending.get(requestId);
     if (!entry) return;

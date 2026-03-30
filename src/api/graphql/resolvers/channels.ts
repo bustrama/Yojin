@@ -66,6 +66,38 @@ interface ChannelResult {
   error?: string;
 }
 
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 60_000;
+
+let failedAttempts = 0;
+let lockoutUntil = 0;
+
+function checkRateLimit(): ChannelResult | null {
+  const now = Date.now();
+  if (lockoutUntil > 0 && now < lockoutUntil) {
+    const remainingSec = Math.ceil((lockoutUntil - now) / 1000);
+    return { success: false, error: `Too many attempts. Try again in ${remainingSec}s.` };
+  }
+  if (lockoutUntil > 0 && now >= lockoutUntil) {
+    failedAttempts = 0;
+    lockoutUntil = 0;
+  }
+  return null;
+}
+
+function recordFailure(): void {
+  failedAttempts++;
+  if (failedAttempts >= MAX_ATTEMPTS) {
+    lockoutUntil = Date.now() + LOCKOUT_DURATION_MS;
+    failedAttempts = 0;
+  }
+}
+
+function recordSuccess(): void {
+  failedAttempts = 0;
+  lockoutUntil = 0;
+}
+
 interface CredentialInput {
   key: string;
   value: string;
@@ -111,6 +143,9 @@ export async function connectChannelMutation(
 ): Promise<ChannelResult> {
   if (!vault) return { success: false, error: 'Vault not configured' };
 
+  const blocked = checkRateLimit();
+  if (blocked) return blocked;
+
   const def = findChannel(args.id);
   if (!def) return { success: false, error: `Unknown channel: ${args.id}` };
 
@@ -121,10 +156,14 @@ export async function connectChannelMutation(
   }
 
   const validation = await def.validate(credMap);
-  if (!validation.valid) return { success: false, error: validation.error ?? 'Validation failed' };
+  if (!validation.valid) {
+    recordFailure();
+    return { success: false, error: validation.error ?? 'Validation failed' };
+  }
 
   for (const c of args.credentials) await vault.set(c.key, c.value);
 
+  recordSuccess();
   return { success: true };
 }
 
@@ -146,11 +185,18 @@ export async function validateChannelTokenMutation(
   _parent: unknown,
   args: { id: string; credentials: CredentialInput[] },
 ): Promise<ChannelResult> {
+  const blocked = checkRateLimit();
+  if (blocked) return blocked;
+
   const def = findChannel(args.id);
   if (!def) return { success: false, error: `Unknown channel: ${args.id}` };
 
   const validation = await def.validate(toCredMap(args.credentials));
-  if (!validation.valid) return { success: false, error: validation.error ?? 'Invalid credentials' };
+  if (!validation.valid) {
+    recordFailure();
+    return { success: false, error: validation.error ?? 'Invalid credentials' };
+  }
 
+  recordSuccess();
   return { success: true };
 }

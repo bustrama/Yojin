@@ -110,7 +110,7 @@ export function Step5Briefing() {
     } finally {
       setSaving(false);
     }
-  }, [time, timezone, sections, updateState, nextStep, executeSave]);
+  }, [time, timezone, sections, channel, updateState, nextStep, executeSave]);
 
   return (
     <OnboardingShell currentStep={5}>

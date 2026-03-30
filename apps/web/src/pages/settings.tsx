@@ -346,6 +346,8 @@ function ModelPicker() {
 function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean }) {
   const [result] = useQuery<{ briefingConfig: BriefingConfig | null }>({ query: BRIEFING_CONFIG_QUERY });
   const [, saveBriefing] = useMutation(SAVE_BRIEFING_CONFIG_MUTATION);
+  const [channelsResult] = useListChannels();
+  const connectedChannels = (channelsResult.data?.listChannels ?? []).filter((ch) => ch.status === 'CONNECTED');
 
   const config = result.data?.briefingConfig;
   const loading = result.fetching;
@@ -457,9 +459,11 @@ function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean })
           onChange={(e) => handleChannelChange(e.target.value)}
           className="rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
         >
-          <option value="web">Web Dashboard</option>
-          <option value="telegram">Telegram</option>
-          <option value="slack">Slack</option>
+          {connectedChannels.map((ch) => (
+            <option key={ch.id} value={ch.id}>
+              {ch.name}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -503,6 +507,10 @@ function ChannelsSection() {
 
   if (result.fetching && channels.length === 0) {
     return <p className="text-sm text-text-muted">Loading channels...</p>;
+  }
+
+  if (result.error) {
+    return <p className="text-sm text-error">Failed to load channels.</p>;
   }
 
   return (

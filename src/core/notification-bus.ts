@@ -35,7 +35,12 @@ export class NotificationBus {
 
     for (const handler of set) {
       try {
-        (handler as (event: NotificationEvent) => void)(event);
+        const result = (handler as (event: NotificationEvent) => void | Promise<void>)(event);
+        if (result && typeof (result as Promise<void>).catch === 'function') {
+          (result as Promise<void>).catch((err) => {
+            logger.error('Notification handler error', { type: event.type, error: err });
+          });
+        }
       } catch (err) {
         logger.error('Notification handler error', { type: event.type, error: err });
       }

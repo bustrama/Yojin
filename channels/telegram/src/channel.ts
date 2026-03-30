@@ -83,6 +83,12 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
       bot = createBot({
         token,
         onTextMessage: async (chatId, userId, userName, text) => {
+          if (activeChatId !== undefined && activeChatId !== chatId) {
+            logger.warn('Telegram chat ID changed — notifications will go to new chat', {
+              previous: activeChatId,
+              current: chatId,
+            });
+          }
           activeChatId = chatId;
 
           const incoming: IncomingMessage = {

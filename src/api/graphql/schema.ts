@@ -655,7 +655,7 @@ export const typeDefs = /* GraphQL */ `
   }
 
   type Channel {
-    id: String!
+    id: ID!
     name: String!
     status: ChannelStatus!
     description: String
@@ -1075,9 +1075,9 @@ export const typeDefs = /* GraphQL */ `
     parsePortfolioScreenshot(input: ScreenshotInput!): ScreenshotResult!
     confirmPositions(input: ConfirmPositionsInput!): Boolean!
     saveBriefingConfig(input: BriefingConfigInput!): Boolean!
-    connectChannel(id: String!, credentials: [CredentialInput!]!): ChannelResult!
-    disconnectChannel(id: String!): ChannelResult!
-    validateChannelToken(id: String!, credentials: [CredentialInput!]!): ChannelResult!
+    connectChannel(id: ID!, credentials: [CredentialInput!]!): ChannelResult!
+    disconnectChannel(id: ID!): ChannelResult!
+    validateChannelToken(id: ID!, credentials: [CredentialInput!]!): ChannelResult!
     completeOnboarding: Boolean!
     resetOnboarding: Boolean!
     validateJintelKey(apiKey: String!): ValidateJintelKeyResult!
