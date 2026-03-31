@@ -1216,6 +1216,7 @@ export const INTEL_FEED_QUERY = gql`
         publishedAt
         ingestedAt
         confidence
+        link
         sources {
           name
           reliability

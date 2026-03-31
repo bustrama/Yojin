@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { useMutation, useQuery } from 'urql';
 import { DISMISS_SIGNAL_MUTATION, INTEL_FEED_QUERY } from '../../api/documents';
 import type { IntelFeedQueryResult, IntelFeedQueryVariables } from '../../api/types';
-import { cn, timeAgo } from '../../lib/utils';
+import { cn, safeHref, timeAgo } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
 import { CardBlurGate } from '../common/card-blur-gate';
 import { FeatureCardGate } from '../common/feature-gate';
@@ -33,8 +32,8 @@ interface IntelFeedItem {
   icon: IconName;
   description: string;
   source: string | null;
+  link: string | null;
   data?: DataRow[];
-  primaryAction: string;
   verdict: 'CRITICAL' | 'IMPORTANT' | 'NOISE' | null;
   thesisAlignment: 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL' | null;
 }
@@ -80,12 +79,6 @@ function classifySignal(signal: { outputType?: string | null }): ItemType {
   if (signal.outputType === 'ALERT') return 'alert';
   return 'insight';
 }
-
-/** Primary action label for each item type. */
-const primaryActionLabel: Record<ItemType, string> = {
-  alert: 'View Details',
-  insight: 'Explore',
-};
 
 const typeLabel: Record<ItemType, string> = {
   alert: 'ALERT',
@@ -406,14 +399,12 @@ function IntelFeedCard({
   isNew,
   onToggle,
   onDismiss,
-  onExplore,
 }: {
   item: IntelFeedItem;
   expanded: boolean;
   isNew?: boolean;
   onToggle: () => void;
   onDismiss: () => void;
-  onExplore: () => void;
 }) {
   return (
     <div
@@ -454,7 +445,7 @@ function IntelFeedCard({
           </div>
           <p className="text-xs font-medium leading-tight text-text-primary line-clamp-2">{item.title}</p>
         </div>
-        <span className="flex-shrink-0 text-2xs text-text-muted">{item.time}</span>
+        <span className="flex-shrink-0 text-2xs text-text-muted">{item.publishedTime}</span>
       </div>
 
       {/* Expanded content — show both dates */}
@@ -489,26 +480,35 @@ function IntelFeedCard({
               </div>
             )}
 
-            {/* Action buttons */}
-            <div className="mt-3 flex gap-2">
+            {/* Actions row */}
+            <div className="mt-3 flex items-center gap-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onDismiss();
                 }}
-                className="flex-1 cursor-pointer rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+                className="cursor-pointer rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
               >
                 Dismiss
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onExplore();
-                }}
-                className="flex-1 cursor-pointer rounded-lg bg-accent-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-secondary"
-              >
-                {item.primaryAction}
-              </button>
+              {item.link && (
+                <a
+                  href={safeHref(item.link, '#')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="ml-auto flex items-center gap-1 text-xs text-accent-primary transition-colors hover:text-accent-primary/80"
+                >
+                  View source
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                    />
+                  </svg>
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -541,7 +541,6 @@ const POLL_INTERVAL_MS = 30_000;
 const NEW_ITEM_GLOW_MS = 3_000;
 
 function IntelFeedContent() {
-  const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [collapsedTickers, setCollapsedTickers] = useState<Set<string>>(new Set());
@@ -611,6 +610,7 @@ function IntelFeedContent() {
         icon: signalTypeIcon[s.type] ?? 'trending',
         description: detail !== headline ? detail : '',
         source: sourceName ?? null,
+        link: s.link ?? null,
         data:
           s.tickers.length > 0
             ? [
@@ -626,7 +626,6 @@ function IntelFeedContent() {
                   : []),
               ]
             : undefined,
-        primaryAction: primaryActionLabel[itemType],
         verdict: cs.verdict ?? null,
         thesisAlignment: cs.thesisAlignment ?? null,
       };
@@ -787,7 +786,6 @@ function IntelFeedContent() {
                             reexecute({ requestPolicy: 'network-only' }),
                           );
                         }}
-                        onExplore={() => void navigate(`/signals?highlight=${item.id}&ticker=${section.ticker}`)}
                       />
                     ))}
                   </div>

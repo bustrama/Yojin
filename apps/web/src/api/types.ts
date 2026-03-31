@@ -1045,6 +1045,7 @@ export interface IntelFeedSignal {
   publishedAt: string;
   ingestedAt: string;
   confidence: number;
+  link: string | null;
   sources: { name: string; reliability: number }[];
   tier1: string | null;
   tier2: string | null;
