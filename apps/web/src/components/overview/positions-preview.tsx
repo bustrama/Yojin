@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { cn } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
@@ -89,6 +90,30 @@ export default function PositionsPreview() {
   const { openAssetDetail } = useAssetDetailModal();
   const { status: marketStatus } = useMarketStatus();
 
+  // Detect new positions and trigger glow animation
+  const [newPositionKeys, setNewPositionKeys] = useState<Set<string>>(new Set());
+  const knownKeysRef = useRef<Set<string>>(new Set());
+  const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detectNewPositions = useCallback((currentKeys: string[]) => {
+    if (knownKeysRef.current.size === 0) {
+      knownKeysRef.current = new Set(currentKeys);
+      return;
+    }
+    const fresh = currentKeys.filter((k) => !knownKeysRef.current.has(k));
+    if (fresh.length === 0) return;
+    knownKeysRef.current = new Set(currentKeys);
+    setNewPositionKeys(new Set(fresh));
+    if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+    glowTimerRef.current = setTimeout(() => setNewPositionKeys(new Set()), 3_000);
+  }, []);
+
+  useEffect(() => {
+    const positions = data?.positions ?? [];
+    if (positions.length > 0) {
+      detectNewPositions(positions.map((p) => `${p.symbol}:${p.platform}`));
+    }
+  }, [data?.positions, detectNewPositions]);
+
   if (!jintelConfigured) {
     return (
       <DashboardCard title="Portfolio">
@@ -154,7 +179,6 @@ export default function PositionsPreview() {
               <th className={TH}>Asset</th>
               <th className={cn(TH, 'w-[80px]')} />
               <th className={cn(TH, 'text-right')}>Price Today</th>
-              <th className={cn(TH, 'text-right')}>Change $</th>
               <th className={cn(TH, 'text-right')}>Change %</th>
             </tr>
           </thead>
@@ -168,10 +192,14 @@ export default function PositionsPreview() {
               const arrow = isUp ? '\u25B2' : isDown ? '\u25BC' : '';
               const ext = getExtendedHoursLabel(marketStatus, pos);
 
+              const posKey = `${pos.symbol}:${pos.platform}`;
               return (
                 <tr
-                  key={`${pos.symbol}:${pos.platform}`}
-                  className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-bg-hover"
+                  key={posKey}
+                  className={cn(
+                    'border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-bg-hover',
+                    newPositionKeys.has(posKey) && 'animate-new-item',
+                  )}
                   onClick={() => openAssetDetail(pos.symbol)}
                 >
                   {/* Asset: logo + symbol + name */}
@@ -205,58 +233,56 @@ export default function PositionsPreview() {
                     {formatCurrency(pos.currentPrice)}
                   </td>
 
-                  {/* Change $ + extended-hours dollar */}
+                  {/* Change % + extended-hours percent + hover tooltip for $ values */}
                   <td className="whitespace-nowrap px-3 py-2 text-right">
-                    <div className={cn('text-xs tabular-nums', colorClass)}>
-                      {dc != null ? (
-                        <>
-                          {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
-                          {formatChange(dc)}
-                        </>
-                      ) : (
-                        <span className="text-text-muted/40">—</span>
-                      )}
-                    </div>
-                    {ext &&
-                      ext.dollarChange != null &&
-                      (() => {
-                        const extColor =
-                          ext.dollarChange > 0
-                            ? 'text-success'
-                            : ext.dollarChange < 0
-                              ? 'text-error'
-                              : 'text-text-muted';
-                        return (
-                          <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
-                            {ext.prefix}: {ext.dollarChange >= 0 ? '+' : '-'}
-                            {formatChange(ext.dollarChange)}
-                          </div>
-                        );
-                      })()}
-                  </td>
+                    <div className="group relative inline-block text-right">
+                      <div className={cn('text-xs tabular-nums', colorClass)}>
+                        {dcp != null ? (
+                          <>
+                            {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
+                            {formatPercent(dcp)}
+                          </>
+                        ) : (
+                          <span className="text-text-muted/40">—</span>
+                        )}
+                      </div>
+                      {ext &&
+                        (() => {
+                          const extColor =
+                            ext.value > 0 ? 'text-success' : ext.value < 0 ? 'text-error' : 'text-text-muted';
+                          return (
+                            <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
+                              {ext.prefix}: {formatExtendedPercent(ext.value)}
+                            </div>
+                          );
+                        })()}
 
-                  {/* Change % + extended-hours percent */}
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
-                    <div className={cn('text-xs tabular-nums', colorClass)}>
-                      {dcp != null ? (
-                        <>
-                          {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
-                          {formatPercent(dcp)}
-                        </>
-                      ) : (
-                        <span className="text-text-muted/40">—</span>
+                      {/* Hover tooltip showing dollar changes */}
+                      {dc != null && (
+                        <div className="pointer-events-none absolute right-0 bottom-full mb-1.5 z-20 hidden rounded-md bg-bg-tertiary px-2.5 py-1.5 shadow-lg ring-1 ring-border group-hover:block">
+                          <div className={cn('text-xs tabular-nums whitespace-nowrap', colorClass)}>
+                            {arrow && <span className="mr-0.5 text-2xs">{arrow}</span>}
+                            {formatChange(dc)}
+                          </div>
+                          {ext &&
+                            ext.dollarChange != null &&
+                            (() => {
+                              const extColor =
+                                ext.dollarChange > 0
+                                  ? 'text-success'
+                                  : ext.dollarChange < 0
+                                    ? 'text-error'
+                                    : 'text-text-muted';
+                              return (
+                                <div className={cn('mt-0.5 text-2xs tabular-nums whitespace-nowrap', extColor)}>
+                                  {ext.prefix}: {ext.dollarChange >= 0 ? '+' : '-'}
+                                  {formatChange(ext.dollarChange)}
+                                </div>
+                              );
+                            })()}
+                        </div>
                       )}
                     </div>
-                    {ext &&
-                      (() => {
-                        const extColor =
-                          ext.value > 0 ? 'text-success' : ext.value < 0 ? 'text-error' : 'text-text-muted';
-                        return (
-                          <div className={cn('mt-0.5 text-2xs tabular-nums', extColor)}>
-                            {ext.prefix}: {formatExtendedPercent(ext.value)}
-                          </div>
-                        );
-                      })()}
                   </td>
                 </tr>
               );
@@ -285,7 +311,6 @@ function MockPositions() {
             <th className={TH}>Asset</th>
             <th className={cn(TH, 'w-[80px]')} />
             <th className={cn(TH, 'text-right')}>Price Today</th>
-            <th className={cn(TH, 'text-right')}>Change $</th>
             <th className={cn(TH, 'text-right')}>Change %</th>
           </tr>
         </thead>
@@ -309,10 +334,6 @@ function MockPositions() {
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right text-xs font-medium tabular-nums text-text-primary">
                   {pos.price}
-                </td>
-                <td className={cn('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', colorClass)}>
-                  <span className="mr-0.5 text-2xs">{arrow}</span>
-                  {pos.change}
                 </td>
                 <td className={cn('whitespace-nowrap px-3 py-2 text-right text-xs tabular-nums', colorClass)}>
                   <span className="mr-0.5 text-2xs">{arrow}</span>

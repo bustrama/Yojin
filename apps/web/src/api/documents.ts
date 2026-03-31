@@ -1208,6 +1208,7 @@ export const INTEL_FEED_QUERY = gql`
         outputType
         tickers
         publishedAt
+        ingestedAt
         confidence
         sources {
           name

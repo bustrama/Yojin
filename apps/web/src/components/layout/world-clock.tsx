@@ -70,24 +70,14 @@ const MARKETS: Market[] = [
     color: '#FB923C',
   },
   {
-    city: 'Sydney',
-    exchange: 'ASX',
-    timezone: 'Australia/Sydney',
-    hours: [600, 960],
-    flag: '\u{1F1E6}\u{1F1FA}',
+    city: 'India',
+    exchange: 'NSE',
+    timezone: 'Asia/Kolkata',
+    hours: [555, 930],
+    flag: '\u{1F1EE}\u{1F1F3}',
     color: '#34D399',
   },
 ];
-
-/* ── SVG Layout ──────────────────────────────── */
-
-const SVG = 300;
-const C = SVG / 2;
-const ARC_W = 8;
-const ARC_GAP = 5;
-const R_OUTER = 130;
-const RADII = MARKETS.map((_, i) => R_OUTER - i * (ARC_W + ARC_GAP));
-const TICK_R = R_OUTER + ARC_GAP + 4;
 
 /* ── Time Helpers ────────────────────────────── */
 
@@ -151,7 +141,7 @@ function fmtHr(min: number): string {
     .padStart(2, '0')}:${(min % 60).toString().padStart(2, '0')}`;
 }
 
-/* ── UTC / Arc Geometry ──────────────────────── */
+/* ── UTC Helpers ─────────────────────────────── */
 
 function utcOffset(tz: string): number {
   const now = new Date();
@@ -173,25 +163,9 @@ function toUtcMin(localMin: number, off: number): number {
   return (((localMin - off) % 1440) + 1440) % 1440;
 }
 
-function minToAngle(min: number): number {
-  return (min / 1440) * 360;
-}
-
-function arcPath(cx: number, cy: number, r: number, a1: number, a2: number): string {
-  const rad = (d: number) => ((d - 90) * Math.PI) / 180;
-  const x1 = cx + r * Math.cos(rad(a1));
-  const y1 = cy + r * Math.sin(rad(a1));
-  const x2 = cx + r * Math.cos(rad(a2));
-  const y2 = cy + r * Math.sin(rad(a2));
-  let span = a2 - a1;
-  if (span < 0) span += 360;
-  return `M ${x1} ${y1} A ${r} ${r} 0 ${span > 180 ? 1 : 0} 1 ${x2} ${y2}`;
-}
-
-function getArcLen(spanDeg: number, r: number): number {
-  let s = spanDeg;
-  if (s < 0) s += 360;
-  return (s / 360) * 2 * Math.PI * r;
+/** Convert minutes-in-day to percentage of 24h (0–100) */
+function minToPct(min: number): number {
+  return (min / 1440) * 100;
 }
 
 /* ── Phase Styles ────────────────────────────── */
@@ -203,6 +177,16 @@ const PH: Record<Phase, { label: string; dot: string; text: string }> = {
   closed: { label: 'Closed', dot: 'bg-text-muted/40', text: 'text-text-muted' },
 };
 
+/* ── UTC Axis Labels ─────────────────────────── */
+
+const UTC_LABELS = [
+  { label: '00', pct: 0 },
+  { label: '06', pct: 25 },
+  { label: '12', pct: 50 },
+  { label: '18', pct: 75 },
+  { label: '24', pct: 100 },
+];
+
 /* ── Component ───────────────────────────────── */
 
 interface WorldClockProps {
@@ -212,15 +196,15 @@ interface WorldClockProps {
 
 export default function WorldClock({ open, onClose }: WorldClockProps) {
   const [tick, setTick] = useState(0);
-  const [arcsReady, setArcsReady] = useState(false);
+  const [barsReady, setBarsReady] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     const id = setInterval(() => setTick((t) => t + 1), 1_000);
-    requestAnimationFrame(() => setArcsReady(true));
+    requestAnimationFrame(() => setBarsReady(true));
     return () => {
       clearInterval(id);
-      setArcsReady(false);
+      setBarsReady(false);
     };
   }, [open]);
 
@@ -228,7 +212,7 @@ export default function WorldClock({ open, onClose }: WorldClockProps) {
 
   const now = new Date();
   const utcFrac = now.getUTCHours() * 60 + now.getUTCMinutes() + now.getUTCSeconds() / 60;
-  const nowAngle = (utcFrac / 1440) * 360;
+  const nowPct = (utcFrac / 1440) * 100;
 
   const utcStr = new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
@@ -237,22 +221,24 @@ export default function WorldClock({ open, onClose }: WorldClockProps) {
     hour12: false,
   }).format(now);
 
-  const entries = MARKETS.map((market, i) => {
+  const entries = MARKETS.map((market) => {
     const clock = getClockData(market);
     const off = utcOffset(market.timezone);
     const uOpen = toUtcMin(market.hours[0], off);
     const uClose = toUtcMin(market.hours[1], off);
-    const a1 = minToAngle(uOpen);
-    const a2 = minToAngle(uClose);
-    let span = a2 - a1;
-    if (span < 0) span += 360;
-    return { market, clock, a1, a2, span, r: RADII[i], len: getArcLen(span, RADII[i]) };
+
+    const uPreOpen = market.preMarketHours ? toUtcMin(market.preMarketHours[0], off) : undefined;
+    const uPreClose = market.preMarketHours ? toUtcMin(market.preMarketHours[1], off) : undefined;
+    const uAfterOpen = market.afterHoursRange ? toUtcMin(market.afterHoursRange[0], off) : undefined;
+    const uAfterClose = market.afterHoursRange ? toUtcMin(market.afterHoursRange[1], off) : undefined;
+
+    return { market, clock, uOpen, uClose, uPreOpen, uPreClose, uAfterOpen, uAfterClose };
   });
 
   const openCount = entries.filter((e) => e.clock.phase === 'open').length;
 
   return (
-    <Modal open={open} onClose={onClose} maxWidth="max-w-2xl" aria-labelledby="wc-title">
+    <Modal open={open} onClose={onClose} maxWidth="max-w-3xl" aria-labelledby="wc-title">
       {/* ── Header ── */}
       <div className="mb-5 flex items-center justify-between">
         <div>
@@ -266,176 +252,145 @@ export default function WorldClock({ open, onClose }: WorldClockProps) {
             UTC {utcStr}
           </p>
         </div>
-        <button onClick={onClose} className="cursor-pointer text-text-muted transition-colors hover:text-text-primary">
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="cursor-pointer text-text-muted transition-colors hover:text-text-primary"
+        >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         </button>
       </div>
 
-      {/* ── 24-Hour Trading Dial ── */}
-      <div className="flex justify-center mb-6">
-        <svg
-          viewBox="-10 -10 320 320"
-          className="w-full max-w-[280px]"
-          role="img"
-          aria-label="24-hour trading session dial"
-        >
-          <defs>
-            <pattern id="wc-dots" width="10" height="10" patternUnits="userSpaceOnUse">
-              <circle cx="5" cy="5" r="0.4" fill="var(--color-text-muted)" opacity="0.12" />
-            </pattern>
-          </defs>
+      {/* ── 24-Hour Horizontal Timeline ── */}
+      <div className="mb-6" role="img" aria-label="24-hour trading session timeline">
+        {/* UTC axis labels */}
+        <div className="flex items-center">
+          <div className="w-[76px] shrink-0 mr-3" />
+          <div className="relative flex-1 h-4">
+            {UTC_LABELS.map(({ label, pct }) => (
+              <span
+                key={label}
+                className="absolute text-3xs text-text-muted/45 font-medium tabular-nums -translate-x-1/2"
+                style={{ left: `${pct}%` }}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
 
-          {/* Dot-grid background */}
-          <circle cx={C} cy={C} r={TICK_R + 2} fill="url(#wc-dots)" />
-
-          {/* Outer rim */}
-          <circle
-            cx={C}
-            cy={C}
-            r={TICK_R + 1}
-            fill="none"
-            stroke="var(--color-border)"
-            strokeWidth="0.5"
-            opacity="0.3"
-          />
-
-          {/* Quadrant guides (subtle cross-hairs) */}
-          {[0, 90, 180, 270].map((deg) => {
-            const rad = ((deg - 90) * Math.PI) / 180;
-            const inner = RADII[RADII.length - 1] - 8;
-            return (
-              <line
-                key={deg}
-                x1={C + inner * Math.cos(rad)}
-                y1={C + inner * Math.sin(rad)}
-                x2={C + TICK_R * Math.cos(rad)}
-                y2={C + TICK_R * Math.sin(rad)}
-                stroke="var(--color-border)"
-                strokeWidth="0.5"
-                opacity="0.15"
-              />
-            );
-          })}
-
-          {/* 24 hour ticks */}
-          {Array.from({ length: 24 }, (_, i) => {
-            const deg = (i / 24) * 360;
-            const rad = ((deg - 90) * Math.PI) / 180;
-            const major = i % 6 === 0;
-            const tickLen = major ? 6 : 3;
-            return (
-              <line
-                key={i}
-                x1={C + (TICK_R - tickLen) * Math.cos(rad)}
-                y1={C + (TICK_R - tickLen) * Math.sin(rad)}
-                x2={C + TICK_R * Math.cos(rad)}
-                y2={C + TICK_R * Math.sin(rad)}
-                stroke="var(--color-text-muted)"
-                strokeWidth={major ? 1.5 : 0.75}
-                opacity={major ? 0.5 : 0.2}
-                strokeLinecap="round"
-              />
-            );
-          })}
-
-          {/* Cardinal hour labels */}
-          {[
-            { label: '00', x: C, y: C - TICK_R - 6, anchor: 'middle' as const },
-            { label: '06', x: C + TICK_R + 8, y: C + 3, anchor: 'start' as const },
-            { label: '12', x: C, y: C + TICK_R + 12, anchor: 'middle' as const },
-            { label: '18', x: C - TICK_R - 8, y: C + 3, anchor: 'end' as const },
-          ].map(({ label, x, y, anchor }) => (
-            <text
-              key={label}
-              x={x}
-              y={y}
-              textAnchor={anchor}
-              fill="var(--color-text-muted)"
-              fontSize="9"
-              fontFamily="var(--font-body)"
-              fontWeight="500"
-              opacity="0.45"
-            >
-              {label}
-            </text>
-          ))}
-
-          {/* Market session arcs */}
-          {entries.map(({ market, clock, a1, a2, len, r }, i) => {
-            const active = clock.phase !== 'closed';
-            return (
-              <path
-                key={market.exchange}
-                d={arcPath(C, C, r, a1, a2)}
-                fill="none"
-                stroke={market.color}
-                strokeWidth={ARC_W}
-                strokeLinecap="round"
-                opacity={active ? 1 : 0.25}
-                style={{
-                  strokeDasharray: len,
-                  strokeDashoffset: arcsReady ? 0 : len,
-                  transition: `stroke-dashoffset 1s ease-out ${i * 80}ms, opacity 0.5s ease-out ${i * 80}ms`,
-                  filter: active ? `drop-shadow(0 0 4px ${market.color}50)` : undefined,
-                }}
-              />
-            );
-          })}
-
-          {/* "Now" hand */}
-          {(() => {
-            const rad = ((nowAngle - 90) * Math.PI) / 180;
-            const tipR = TICK_R - 1;
-            const tx = C + tipR * Math.cos(rad);
-            const ty = C + tipR * Math.sin(rad);
-            const bR = 12;
-            const bx = C + bR * Math.cos(rad);
-            const by = C + bR * Math.sin(rad);
-            return (
-              <g style={{ filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.2))' }}>
-                <line
-                  x1={bx}
-                  y1={by}
-                  x2={tx}
-                  y2={ty}
-                  stroke="var(--color-text-primary)"
-                  strokeWidth="1"
-                  opacity="0.45"
-                  strokeLinecap="round"
-                />
-                <circle
-                  cx={tx}
-                  cy={ty}
-                  r="2.5"
-                  fill="var(--color-text-primary)"
-                  opacity="0.85"
-                  className="animate-pulse"
-                />
-              </g>
-            );
-          })()}
-
-          {/* Center pivot */}
-          <circle cx={C} cy={C} r="4" fill="var(--color-text-muted)" opacity="0.12" />
-          <circle cx={C} cy={C} r="1.5" fill="var(--color-text-muted)" opacity="0.35" />
-
-          {/* UTC label */}
-          <text
-            x={C}
-            y={C + 18}
-            textAnchor="middle"
-            fill="var(--color-text-muted)"
-            fontSize="7"
-            fontFamily="var(--font-body)"
-            fontWeight="600"
-            letterSpacing="2"
-            opacity="0.25"
+        {/* Timeline rows */}
+        <div className="relative mt-1">
+          {/* Vertical "now" cursor — spans the track area only */}
+          <div
+            className="absolute top-0 bottom-0 z-10 pointer-events-none"
+            style={{ left: `calc(88px + (100% - 88px) * ${nowPct / 100})` }}
           >
-            UTC
-          </text>
-        </svg>
+            <div
+              className="absolute -top-1 -bottom-1 w-px bg-text-primary/50"
+              style={{ boxShadow: '0 0 6px rgba(255,255,255,0.15)' }}
+            />
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-text-primary/70" />
+          </div>
+
+          {/* Market rows */}
+          {entries.map(({ market, clock, uOpen, uClose, uPreOpen, uPreClose, uAfterOpen, uAfterClose }, i) => {
+            const active = clock.phase !== 'closed';
+
+            /* Compute segment positions as percentages */
+            const coreLeft = minToPct(uOpen);
+            let coreWidth = minToPct(uClose) - coreLeft;
+            if (coreWidth < 0) coreWidth += 100;
+
+            let preLeft: number | undefined;
+            let preWidth: number | undefined;
+            if (uPreOpen !== undefined && uPreClose !== undefined) {
+              preLeft = minToPct(uPreOpen);
+              preWidth = minToPct(uPreClose) - preLeft;
+              if (preWidth < 0) preWidth += 100;
+            }
+
+            let afterLeft: number | undefined;
+            let afterWidth: number | undefined;
+            if (uAfterOpen !== undefined && uAfterClose !== undefined) {
+              afterLeft = minToPct(uAfterOpen);
+              afterWidth = minToPct(uAfterClose) - afterLeft;
+              if (afterWidth < 0) afterWidth += 100;
+            }
+
+            return (
+              <div
+                key={market.exchange}
+                className="flex items-center gap-3 py-[7px]"
+                style={{
+                  animation: 'waterfall-in 0.3s ease-out both',
+                  animationDelay: `${i * 60}ms`,
+                }}
+              >
+                {/* Market label */}
+                <div className="w-[76px] shrink-0 text-right">
+                  <span
+                    className={cn(
+                      'text-2xs font-medium transition-opacity duration-300',
+                      active ? 'text-text-primary' : 'text-text-muted/50',
+                    )}
+                  >
+                    {market.city}
+                  </span>
+                </div>
+
+                {/* Track */}
+                <div className="relative flex-1 h-[6px]">
+                  {/* Background track line */}
+                  <div className="absolute inset-0 rounded-full bg-border/20" />
+
+                  {/* Pre-market segment (dimmer) */}
+                  {preLeft !== undefined && preWidth !== undefined && (
+                    <div
+                      className="absolute top-[1px] h-[4px] rounded-full transition-all duration-700"
+                      style={{
+                        left: `${preLeft}%`,
+                        width: barsReady ? `${preWidth}%` : '0%',
+                        backgroundColor: market.color,
+                        opacity: active && clock.phase === 'pre-market' ? 0.4 : 0.15,
+                        transitionDelay: `${i * 80}ms`,
+                      }}
+                    />
+                  )}
+
+                  {/* Core trading hours segment */}
+                  <div
+                    className="absolute inset-y-0 rounded-full transition-all duration-700"
+                    style={{
+                      left: `${coreLeft}%`,
+                      width: barsReady ? `${coreWidth}%` : '0%',
+                      backgroundColor: market.color,
+                      opacity: active ? 1 : 0.25,
+                      transitionDelay: `${i * 80}ms`,
+                      boxShadow: active ? `0 0 8px ${market.color}40` : undefined,
+                    }}
+                  />
+
+                  {/* After-hours segment (dimmer) */}
+                  {afterLeft !== undefined && afterWidth !== undefined && (
+                    <div
+                      className="absolute top-[1px] h-[4px] rounded-full transition-all duration-700"
+                      style={{
+                        left: `${afterLeft}%`,
+                        width: barsReady ? `${afterWidth}%` : '0%',
+                        backgroundColor: market.color,
+                        opacity: active && clock.phase === 'after-hours' ? 0.4 : 0.15,
+                        transitionDelay: `${i * 80}ms`,
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Market Grid ── */}
