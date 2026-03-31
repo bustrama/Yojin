@@ -4,7 +4,7 @@
  * 1. Fetch Jintel signals for the ticker
  * 2. Run curation pipeline
  * 3. Build DataBrief
- * 4. Call micro-analyzer (Haiku LLM)
+ * 4. Call micro-analyzer (Sonnet LLM)
  * 5. Save MicroInsight
  * 6. Create actions from assetActions
  */

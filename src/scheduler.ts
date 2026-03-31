@@ -426,6 +426,8 @@ export class Scheduler {
       }
 
       // Run micro research in parallel (up to MAX_MICRO_CONCURRENCY)
+      // Note: getJintelClient/signalIngestor are omitted here because the batch
+      // already fetched + curated Jintel signals above — no need to re-fetch per ticker.
       const results = await Promise.allSettled(
         assets.map((asset) =>
           runMicroResearch(asset.symbol, asset.source, {
@@ -438,8 +440,6 @@ export class Scheduler {
               memoryStores: this.memoryStores ?? new Map(),
               profileStore: this.profileStore,
             },
-            getJintelClient: this.getJintelClient,
-            signalIngestor: this.signalIngestor,
             actionStore: this.actionStore,
             eventLog: this.eventLog,
           }),

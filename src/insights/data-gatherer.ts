@@ -732,21 +732,23 @@ export async function buildSingleBrief(symbol: string, options: SingleBriefOptio
   const ticker = symbol.toUpperCase();
   const position = snapshot.positions.find((p) => p.symbol.toUpperCase() === ticker);
 
-  // For watchlist items that aren't in the portfolio, create a synthetic position
-  const pos: Position = position ?? {
-    symbol: ticker,
-    name: ticker,
-    quantity: 0,
-    costBasis: 0,
-    currentPrice: 0,
-    marketValue: 0,
-    dayChange: 0,
-    dayChangePercent: 0,
-    unrealizedPnl: 0,
-    unrealizedPnlPercent: 0,
-    assetClass: 'EQUITY' as AssetClass,
-    platform: 'WATCHLIST' as Platform,
-  };
+  // Spread to avoid mutating a cached snapshot position reference
+  const pos: Position = position
+    ? { ...position }
+    : {
+        symbol: ticker,
+        name: ticker,
+        quantity: 0,
+        costBasis: 0,
+        currentPrice: 0,
+        marketValue: 0,
+        dayChange: 0,
+        dayChangePercent: 0,
+        unrealizedPnl: 0,
+        unrealizedPnlPercent: 0,
+        assetClass: 'EQUITY' as AssetClass,
+        platform: 'WATCHLIST' as Platform,
+      };
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 

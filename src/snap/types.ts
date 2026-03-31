@@ -25,7 +25,7 @@ export const SnapSchema = z.object({
   id: z.string().min(1),
   generatedAt: z.string().min(1),
   intelSummary: z.string().optional().default(''),
-  actionItems: z.array(SnapActionItemSchema),
+  actionItems: z.array(SnapActionItemSchema).default([]),
   assetSnaps: z.array(AssetSnapSchema).default([]),
 });
 export type Snap = z.infer<typeof SnapSchema>;

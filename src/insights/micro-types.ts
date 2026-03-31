@@ -2,7 +2,7 @@
  * MicroInsight — per-asset AI research output.
  *
  * Produced every 5 minutes per tracked asset (portfolio + watchlist).
- * Lightweight Haiku LLM call analyzes a single ticker's DataBrief
+ * Sonnet LLM call analyzes a single ticker's DataBrief
  * and produces a structured research note.
  *
  * Macro research reads these outputs instead of re-analyzing raw data.
