@@ -134,22 +134,38 @@ export async function runAgentLoop(
 
     // ── Thought: ask the LLM (streaming when available) ───────────────
     const maxTokens = options.maxTokens;
-    const response = provider.streamWithTools
-      ? await provider.streamWithTools({
-          model,
-          system: systemPrompt,
-          messages,
-          tools: toolSchemas.length > 0 ? toolSchemas : undefined,
-          ...(maxTokens ? { maxTokens } : {}),
-          onTextDelta: (text) => emit(onEvent, { type: 'text_delta', text }),
-        })
-      : await provider.completeWithTools({
-          model,
-          system: systemPrompt,
-          messages,
-          tools: toolSchemas.length > 0 ? toolSchemas : undefined,
-          ...(maxTokens ? { maxTokens } : {}),
-        });
+    let response;
+    try {
+      const llmCall = provider.streamWithTools
+        ? provider.streamWithTools({
+            model,
+            system: systemPrompt,
+            messages,
+            tools: toolSchemas.length > 0 ? toolSchemas : undefined,
+            ...(maxTokens ? { maxTokens } : {}),
+            onTextDelta: (text) => emit(onEvent, { type: 'text_delta', text }),
+          })
+        : provider.completeWithTools({
+            model,
+            system: systemPrompt,
+            messages,
+            tools: toolSchemas.length > 0 ? toolSchemas : undefined,
+            ...(maxTokens ? { maxTokens } : {}),
+          });
+
+      const LLM_TIMEOUT_MS = 120_000;
+      response = await Promise.race([
+        llmCall,
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(() => reject(new Error('LLM request timed out after 2 minutes')), LLM_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error('LLM call failed', { agentId, iteration: iterations, error: errMsg });
+      emit(onEvent, { type: 'error', error: errMsg, iterations });
+      throw err;
+    }
 
     if (response.usage) {
       totalUsage.inputTokens += response.usage.inputTokens;

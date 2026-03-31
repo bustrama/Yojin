@@ -125,10 +125,19 @@ export class Gateway {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.log.error(`Error processing message: ${errMsg}`);
+
+      const isTimeout = errMsg.includes('timed out');
+      const isAuth = errMsg.includes('authentication_error') || errMsg.includes('401');
+      const userMessage = isTimeout
+        ? 'The AI provider did not respond in time. Please try again.'
+        : isAuth
+          ? 'Authentication expired. Please re-authenticate and try again.'
+          : `Something went wrong: ${errMsg}`;
+
       await channel.messagingAdapter.sendMessage({
         channelId: msg.channelId,
         threadId: msg.threadId,
-        text: 'Sorry, something went wrong processing your message.',
+        text: userMessage,
       });
     }
   }
