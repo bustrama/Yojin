@@ -103,6 +103,8 @@ export class Gateway {
     });
 
     try {
+      const hasStreamingHandler = !!msg.onAgentEvent;
+
       const responseText = await this.agentRuntime.handleMessage({
         message: msg.text,
         channelId,
@@ -111,11 +113,15 @@ export class Gateway {
         onEvent: msg.onAgentEvent as import('../core/types.js').AgentLoopEventHandler | undefined,
       });
 
-      await channel.messagingAdapter.sendMessage({
-        channelId: msg.channelId,
-        threadId: msg.threadId,
-        text: responseText,
-      });
+      // Skip sendMessage when the channel already streamed the response via onAgentEvent
+      // (e.g. Telegram edits a single message progressively and flushes on done)
+      if (!hasStreamingHandler) {
+        await channel.messagingAdapter.sendMessage({
+          channelId: msg.channelId,
+          threadId: msg.threadId,
+          text: responseText,
+        });
+      }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.log.error(`Error processing message: ${errMsg}`);
