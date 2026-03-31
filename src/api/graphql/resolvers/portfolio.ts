@@ -25,6 +25,12 @@ const log = getLogger().sub('portfolio-resolver');
 let snapshotStore: PortfolioSnapshotStore | undefined;
 let connectionManager: ConnectionManager | undefined;
 let jintelClient: JintelClient | undefined;
+let onPortfolioChangedCb: ((tickers: string[]) => void) | undefined;
+
+/** Register a callback fired after any position mutation (add/edit/remove). */
+export function setPortfolioChangedCallback(cb: (tickers: string[]) => void): void {
+  onPortfolioChangedCb = cb;
+}
 
 export function setPortfolioJintelClient(c: JintelClient | undefined): void {
   jintelClient = c;
@@ -82,22 +88,21 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
   const marketOpen = isUSMarketOpen();
 
   // Parallel fetches: quotes + sparkline history per asset group
-  const fetchHistory = (tickers: string[], range: string, interval?: string) =>
-    client.priceHistory(tickers, range, interval).catch((err: unknown) => {
+  const fetchHistory = (tickers: string[], range: string) =>
+    client.priceHistory(tickers, range).catch((err: unknown) => {
       log.warn('Jintel priceHistory failed', { tickers, error: String(err) });
       return undefined;
     });
 
   const equityRange = marketOpen ? '1d' : '5d';
-  const equityInterval = marketOpen ? '5m' : undefined;
 
   const [result, equityHistory, cryptoHistory] = await Promise.all([
     client.quotes(symbols).catch((err: unknown) => {
       log.warn('Jintel quotes call failed', { error: String(err) });
       return undefined;
     }),
-    equitySymbols.length > 0 ? fetchHistory(equitySymbols, equityRange, equityInterval) : undefined,
-    cryptoSymbols.length > 0 ? fetchHistory(cryptoSymbols, '1d', '5m') : undefined,
+    equitySymbols.length > 0 ? fetchHistory(equitySymbols, equityRange) : undefined,
+    cryptoSymbols.length > 0 ? fetchHistory(cryptoSymbols, '1d') : undefined,
   ]);
 
   if (!result?.success) {
@@ -151,10 +156,11 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
       marketValue,
       dayChange: quote.change,
       dayChangePercent: quote.changePercent,
-      preMarketChange: quote.preMarketChange ?? null,
-      preMarketChangePercent: quote.preMarketChangePercent ?? null,
-      postMarketChange: quote.postMarketChange ?? null,
-      postMarketChangePercent: quote.postMarketChangePercent ?? null,
+      // Pre/post market fields — available on some Jintel quote responses
+      preMarketChange: (quote as unknown as Record<string, number | null>).preMarketChange ?? null,
+      preMarketChangePercent: (quote as unknown as Record<string, number | null>).preMarketChangePercent ?? null,
+      postMarketChange: (quote as unknown as Record<string, number | null>).postMarketChange ?? null,
+      postMarketChangePercent: (quote as unknown as Record<string, number | null>).postMarketChangePercent ?? null,
       unrealizedPnl: hasCostBasis ? marketValue - totalCost : 0,
       unrealizedPnlPercent: hasCostBasis ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
       sparkline,
@@ -349,6 +355,7 @@ export async function addManualPositionMutation(
   });
   const enriched = await enrichWithLiveQuotes(snapshot);
   pubsub.publish('portfolioUpdate', enriched);
+  onPortfolioChangedCb?.([newPosition.symbol]);
   return enriched;
 }
 
@@ -401,6 +408,7 @@ export async function editPositionMutation(
   });
   const enriched = await enrichWithLiveQuotes(snapshot);
   pubsub.publish('portfolioUpdate', enriched);
+  onPortfolioChangedCb?.([updatedPosition.symbol]);
   return enriched;
 }
 
@@ -432,6 +440,7 @@ export async function removePositionMutation(
   });
   const enriched = await enrichWithLiveQuotes(snapshot);
   pubsub.publish('portfolioUpdate', enriched);
+  onPortfolioChangedCb?.([targetSymbol]);
   return enriched;
 }
 

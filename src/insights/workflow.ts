@@ -14,12 +14,15 @@
 import type { DataGathererOptions } from './data-gatherer.js';
 import { formatBriefsForContext, formatRiskMetrics, gatherDataBriefs } from './data-gatherer.js';
 import type { InsightStore } from './insight-store.js';
+import { gatherMacroData } from './macro-data-gatherer.js';
+import type { MacroGathererOptions } from './macro-data-gatherer.js';
 import { storeInsightMemories } from './memory-bridge.js';
 import { mergeColdPositions } from './merge.js';
 import type { ColdPosition } from './triage.js';
 import { triagePositions } from './triage.js';
 import type { Orchestrator } from '../agents/orchestrator.js';
 import { emitProgress } from '../agents/orchestrator.js';
+import type { AgentStepResult } from '../agents/types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
 import { extractProfileEntries } from '../profiles/profile-bridge.js';
@@ -32,6 +35,8 @@ const logger = createSubsystemLogger('process-insights');
 export interface ProcessInsightsOptions {
   insightStore: InsightStore;
   gathererOptions?: DataGathererOptions;
+  /** Macro gatherer — reads micro insights for portfolio-wide synthesis. */
+  macroGathererOptions?: MacroGathererOptions;
   /** Memory store for the analyst role — used to store insight predictions for future reflection. */
   memoryStore?: SignalMemoryStore;
   /** Snap store — when provided, a snap brief is derived from the insight report. */
@@ -99,8 +104,8 @@ const STRATEGIST_DISABLED_TOOLS = [
 ];
 
 export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, options: ProcessInsightsOptions): void {
-  const { insightStore, gathererOptions, memoryStore, snapStore, profileStore } = options;
-  const hasGatherer = !!gathererOptions;
+  const { insightStore, gathererOptions, macroGathererOptions, memoryStore, snapStore, profileStore } = options;
+  const hasGatherer = !!gathererOptions || !!macroGathererOptions;
 
   // Shared state between beforeWorkflow and afterWorkflow hooks
   let pendingColdPositions: ColdPosition[] = [];
@@ -297,7 +302,7 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
             `Call save_insight_report with snapshotId="${snapshotId}":\n` +
             `- positions[]: symbol, name, rating (sentiment: VERY_BULLISH/BULLISH/NEUTRAL/BEARISH/VERY_BEARISH), conviction, thesis (2-3 sentences: explain WHY — cite macro forces, geopolitical events, sector trends that drive this sentiment. When a concrete evidence-based link exists between positions — shared supply chain, same macro driver, correlated sector — cite it and estimate magnitude of impact. Do NOT invent connections), keySignals[] (top 2 per position), risks[] (1-2 items), opportunities[] (1-2 items), memoryContext: null, priceTarget: null\n` +
             `- keySignals: { signalId: "sig-xxx" (copy EXACT ID), type, title (short), impact: "POSITIVE"|"NEGATIVE"|"NEUTRAL", confidence, url: null }\n` +
-            `- portfolio: overallHealth, summary (2 sentences MAX — include the most important cross-cutting theme), sectorThemes[], macroContext (1-2 sentences: current macro environment and how it affects the portfolio — cite real data like GDP, rates, inflation, market P/E when available), topRisks[], topOpportunities[], actionItems[]\n` +
+            `- portfolio: overallHealth, summary (2 sentences MAX — include the most important cross-cutting theme), intelSummary (2-3 sentences: synthesize what the latest signals are saying across all positions — what patterns, themes, or shifts are the signals collectively pointing to?), sectorThemes[], macroContext (1-2 sentences: current macro environment and how it affects the portfolio — cite real data like GDP, rates, inflation, market P/E when available), topRisks[], topOpportunities[], actionItems[] (IMPORTANT: these are observations that surface relevant info — NOT action advisory. Frame as "X is at Y" or "X shows Y", NEVER as "Reduce X", "Increase Y", "Buy/Sell Z". You inform, the user decides.)\n` +
             `- emotionState: { confidence, riskAppetite, reason (1 sentence) }\n` +
             `Also call brain_update_memory and brain_update_emotion in the SAME batch.\n` +
             `Keep ALL string values SHORT. Do NOT write lengthy prose.`;
@@ -308,18 +313,72 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
     ],
 
     // Pre-aggregate data before the workflow stages run
-    beforeWorkflow: gathererOptions
+    beforeWorkflow: hasGatherer
       ? async (outputs) => {
           const wfId = 'process-insights';
           emitProgress({
             workflowId: wfId,
             stage: 'activity',
-            message: 'Gathering portfolio data, market quotes, and signals...',
+            message: 'Gathering portfolio data and micro research outputs...',
             timestamp: new Date().toISOString(),
           });
 
           logger.info('Running data pre-aggregation...');
           pendingColdPositions = []; // Reset for this run
+
+          // Try macro gatherer first (reads micro insights) — faster + cheaper
+          if (macroGathererOptions) {
+            const macroResult = await gatherMacroData(macroGathererOptions);
+
+            if (macroResult && !macroResult.usedFallback) {
+              logger.info('Using micro insights for macro workflow', {
+                microCoverage: macroResult.microCoverage,
+                totalPositions: macroResult.totalPositions,
+                gatherMs: macroResult.gatherDurationMs,
+              });
+
+              emitProgress({
+                workflowId: wfId,
+                stage: 'activity',
+                message: `Macro data gathered in ${(macroResult.gatherDurationMs / 1000).toFixed(1)}s — ${macroResult.microCoverage}/${macroResult.totalPositions} positions with micro research`,
+                timestamp: new Date().toISOString(),
+              });
+
+              injectPseudoOutput(outputs, '__data_briefs', macroResult.microSummaries);
+              injectPseudoOutput(outputs, '__risk_metrics', macroResult.riskMetrics);
+              injectPseudoOutput(outputs, '__snapshot_id', macroResult.snapshotId);
+              return;
+            }
+
+            // macroResult.usedFallback — briefs are available, do triage
+            if (macroResult?.usedFallback && macroResult.briefs) {
+              const triage = triagePositions(macroResult.briefs, null);
+              pendingColdPositions = triage.cold;
+
+              emitProgress({
+                workflowId: wfId,
+                stage: 'activity',
+                message: `Data gathered in ${(macroResult.gatherDurationMs / 1000).toFixed(1)}s (fallback) — ${triage.hot.length} hot, ${triage.warm.length} warm, ${triage.cold.length} cold`,
+                timestamp: new Date().toISOString(),
+              });
+
+              injectPseudoOutput(outputs, '__data_briefs', formatBriefsForContext(triage.hot));
+              if (triage.warm.length > 0) {
+                injectPseudoOutput(outputs, '__warm_briefs', formatBriefsForContext(triage.warm));
+              }
+              injectColdSummary(outputs, triage.cold);
+              injectPseudoOutput(outputs, '__risk_metrics', macroResult.riskMetrics);
+              injectPseudoOutput(outputs, '__snapshot_id', macroResult.snapshotId);
+              return;
+            }
+          }
+
+          // Direct raw data gathering (no macro gatherer or it returned null)
+          if (!gathererOptions) {
+            logger.warn('No gatherer options — workflow will use fallback mode');
+            return;
+          }
+
           const result = await gatherDataBriefs(gathererOptions);
 
           if (result.briefs.length === 0) {
@@ -343,69 +402,20 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
             timestamp: new Date().toISOString(),
           });
 
-          // Inject pre-aggregated data as pseudo-agent outputs
-          outputs.set('__data_briefs', {
-            agentId: '__data_briefs',
-            text: formatBriefsForContext(triage.hot),
-            messages: [],
-            iterations: 0,
-            usage: { inputTokens: 0, outputTokens: 0 },
-            compactions: 0,
-          });
+          injectPseudoOutput(outputs, '__data_briefs', formatBriefsForContext(triage.hot));
 
           if (triage.warm.length > 0) {
-            outputs.set('__warm_briefs', {
-              agentId: '__warm_briefs',
-              text: formatBriefsForContext(triage.warm),
-              messages: [],
-              iterations: 0,
-              usage: { inputTokens: 0, outputTokens: 0 },
-              compactions: 0,
-            });
+            injectPseudoOutput(outputs, '__warm_briefs', formatBriefsForContext(triage.warm));
           }
 
-          if (triage.cold.length > 0) {
-            const coldLines = triage.cold.map((c) => {
-              const prev = c.previousInsight;
-              if (prev) {
-                return `- ${c.brief.symbol}: ${prev.rating} (conviction: ${prev.conviction}) — ${prev.thesis.slice(0, 80)}`;
-              }
-              return `- ${c.brief.symbol}: No previous assessment (new position, minimal activity)`;
-            });
-            outputs.set('__cold_summary', {
-              agentId: '__cold_summary',
-              text: coldLines.join('\n'),
-              messages: [],
-              iterations: 0,
-              usage: { inputTokens: 0, outputTokens: 0 },
-              compactions: 0,
-            });
-          }
-
-          // Pre-compute risk metrics so RM doesn't waste iterations on arithmetic
-          outputs.set('__risk_metrics', {
-            agentId: '__risk_metrics',
-            text: formatRiskMetrics(result.briefs),
-            messages: [],
-            iterations: 0,
-            usage: { inputTokens: 0, outputTokens: 0 },
-            compactions: 0,
-          });
-
-          // Store snapshot ID for the insight report
-          outputs.set('__snapshot_id', {
-            agentId: '__snapshot_id',
-            text: result.snapshotId,
-            messages: [],
-            iterations: 0,
-            usage: { inputTokens: 0, outputTokens: 0 },
-            compactions: 0,
-          });
+          injectColdSummary(outputs, triage.cold);
+          injectPseudoOutput(outputs, '__risk_metrics', formatRiskMetrics(result.briefs));
+          injectPseudoOutput(outputs, '__snapshot_id', result.snapshotId);
         }
       : undefined,
 
     // Merge cold positions and store insight memories for future reflection
-    afterWorkflow: gathererOptions
+    afterWorkflow: hasGatherer
       ? async () => {
           // 1. Merge cold positions into the final report
           if (pendingColdPositions.length > 0) {
@@ -430,7 +440,10 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
           // 3. Derive a snap brief from the latest insight report
           if (latestReport && snapStore) {
             try {
-              const snap = snapFromInsight(latestReport);
+              const microInsights = macroGathererOptions?.microInsightStore
+                ? await macroGathererOptions.microInsightStore.getAllLatest()
+                : undefined;
+              const snap = snapFromInsight(latestReport, microInsights ? { microInsights } : undefined);
               await snapStore.save(snap);
               logger.info('Snap brief derived from insight report', { snapId: snap.id });
             } catch (err) {
@@ -461,4 +474,33 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
   });
 
   logger.info('ProcessInsights workflow registered');
+}
+
+// ---------------------------------------------------------------------------
+// Helpers — reduce duplication in beforeWorkflow pseudo-output injection
+// ---------------------------------------------------------------------------
+
+type OutputMap = Map<string, AgentStepResult>;
+
+function injectPseudoOutput(outputs: OutputMap, key: string, text: string): void {
+  outputs.set(key, {
+    agentId: key,
+    text,
+    messages: [],
+    iterations: 0,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    compactions: 0,
+  });
+}
+
+function injectColdSummary(outputs: OutputMap, cold: ColdPosition[]): void {
+  if (cold.length === 0) return;
+  const coldLines = cold.map((c) => {
+    const prev = c.previousInsight;
+    if (prev) {
+      return `- ${c.brief.symbol}: ${prev.rating} (conviction: ${prev.conviction}) — ${prev.thesis.slice(0, 80)}`;
+    }
+    return `- ${c.brief.symbol}: No previous assessment (new position, minimal activity)`;
+  });
+  injectPseudoOutput(outputs, '__cold_summary', coldLines.join('\n'));
 }

@@ -739,24 +739,59 @@ export interface InsightsWorkflowStatusQueryResult {
 // Snap (Strategist brief)
 // ---------------------------------------------------------------------------
 
-export type SnapSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export interface SnapActionItem {
+  text: string;
+  signalIds: string[];
+}
 
-export interface SnapAttentionItem {
-  label: string;
-  severity: SnapSeverity;
-  ticker: string | null;
+export interface AssetSnap {
+  symbol: string;
+  snap: string;
+  rating: string;
+  generatedAt: string;
 }
 
 export interface Snap {
   id: string;
   generatedAt: string;
-  summary: string;
-  attentionItems: SnapAttentionItem[];
-  portfolioTickers: string[];
+  intelSummary: string;
+  actionItems: SnapActionItem[];
+  assetSnaps: AssetSnap[];
 }
 
 export interface SnapQueryResult {
   snap: Snap | null;
+}
+
+// ---------------------------------------------------------------------------
+// Micro Insights (per-asset AI research)
+// ---------------------------------------------------------------------------
+
+export interface MicroInsight {
+  id: string;
+  symbol: string;
+  name: string;
+  source: string;
+  rating: InsightRating;
+  conviction: number;
+  thesis: string;
+  keyDevelopments: string[];
+  risks: string[];
+  opportunities: string[];
+  sentiment: string;
+  signalCount: number;
+  assetSnap: string;
+  assetActions: string[];
+  generatedAt: string;
+  durationMs: number;
+}
+
+export interface MicroInsightQueryResult {
+  microInsight: MicroInsight | null;
+}
+
+export interface MicroInsightsQueryResult {
+  microInsights: MicroInsight[];
 }
 
 // ---------------------------------------------------------------------------

@@ -949,13 +949,67 @@ export const SNAP_QUERY = gql`
     snap {
       id
       generatedAt
-      summary
-      attentionItems {
-        label
-        severity
-        ticker
+      intelSummary
+      actionItems {
+        text
+        signalIds
       }
-      portfolioTickers
+      assetSnaps {
+        symbol
+        snap
+        rating
+        generatedAt
+      }
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Micro Insights
+// ---------------------------------------------------------------------------
+
+export const MICRO_INSIGHT_QUERY = gql`
+  query MicroInsight($symbol: String!) {
+    microInsight(symbol: $symbol) {
+      id
+      symbol
+      name
+      source
+      rating
+      conviction
+      thesis
+      keyDevelopments
+      risks
+      opportunities
+      sentiment
+      signalCount
+      assetSnap
+      assetActions
+      generatedAt
+      durationMs
+    }
+  }
+`;
+
+export const MICRO_INSIGHTS_QUERY = gql`
+  query MicroInsights {
+    microInsights {
+      id
+      symbol
+      name
+      source
+      rating
+      conviction
+      thesis
+      keyDevelopments
+      risks
+      opportunities
+      sentiment
+      signalCount
+      assetSnap
+      assetActions
+      generatedAt
+      durationMs
     }
   }
 `;

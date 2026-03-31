@@ -30,21 +30,15 @@ export interface SlackChannelDeps {
   actionStore?: ActionStore;
 }
 
-function formatSnap(snap: {
-  summary: string;
-  attentionItems: { label: string; severity: string; ticker?: string }[];
-}): string {
-  const lines = [':clipboard: *Snap Brief*', '', snap.summary, ''];
-  if (snap.attentionItems.length > 0) {
-    for (const item of snap.attentionItems) {
-      const icon =
-        item.severity === 'HIGH'
-          ? ':red_circle:'
-          : item.severity === 'MEDIUM'
-            ? ':large_orange_circle:'
-            : ':large_green_circle:';
-      const ticker = item.ticker ? ` [${item.ticker}]` : '';
-      lines.push(`${icon} ${item.label}${ticker}`);
+function formatSnap(snap: { intelSummary: string; actionItems: { text: string; signalIds: string[] }[] }): string {
+  const lines = [':clipboard: *Snap Brief*'];
+  if (snap.intelSummary) {
+    lines.push('', snap.intelSummary, '');
+  }
+  if (snap.actionItems.length > 0) {
+    lines.push('*Actions:*');
+    for (const item of snap.actionItems) {
+      lines.push(`• ${item.text}`);
     }
   }
   return lines.join('\n');

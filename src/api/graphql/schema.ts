@@ -66,12 +66,6 @@ export const typeDefs = /* GraphQL */ `
     ENRICHMENT
   }
 
-  enum SnapSeverity {
-    LOW
-    MEDIUM
-    HIGH
-  }
-
   enum SignalVerdict {
     CRITICAL
     IMPORTANT
@@ -773,18 +767,47 @@ export const typeDefs = /* GraphQL */ `
   # Snap (Strategist brief)
   # ---------------------------------------------------------------------------
 
-  type SnapAttentionItem {
-    label: String!
-    severity: SnapSeverity!
-    ticker: String
+  type SnapActionItem {
+    text: String!
+    signalIds: [String!]!
+  }
+
+  type AssetSnap {
+    symbol: String!
+    snap: String!
+    rating: String!
+    generatedAt: String!
   }
 
   type Snap {
     id: ID!
     generatedAt: String!
-    summary: String!
-    attentionItems: [SnapAttentionItem!]!
-    portfolioTickers: [String!]!
+    intelSummary: String!
+    actionItems: [SnapActionItem!]!
+    assetSnaps: [AssetSnap!]!
+  }
+
+  # ---------------------------------------------------------------------------
+  # Micro Research (per-asset AI analysis)
+  # ---------------------------------------------------------------------------
+
+  type MicroInsight {
+    id: ID!
+    symbol: String!
+    name: String!
+    source: String!
+    rating: InsightRating!
+    conviction: Float!
+    thesis: String!
+    keyDevelopments: [String!]!
+    risks: [String!]!
+    opportunities: [String!]!
+    sentiment: SignalSentiment!
+    signalCount: Int!
+    assetSnap: String!
+    assetActions: [String!]!
+    generatedAt: String!
+    durationMs: Int!
   }
 
   # ---------------------------------------------------------------------------
@@ -1038,6 +1061,8 @@ export const typeDefs = /* GraphQL */ `
     skill(id: ID!): Skill
     tickerProfile(ticker: String!): TickerProfile
     tickerProfiles(tickers: [String!]!): [TickerProfile!]!
+    microInsight(symbol: String!): MicroInsight
+    microInsights: [MicroInsight!]!
     aiConfig: AiConfig!
   }
 

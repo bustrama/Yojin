@@ -38,20 +38,17 @@ export function chunkMessage(text: string, limit = 4096): string[] {
   return chunks;
 }
 
-const SEVERITY_ICON: Record<string, string> = {
-  HIGH: '\u{1F534}',
-  MEDIUM: '\u{1F7E0}',
-  LOW: '\u{1F7E2}',
-};
-
 export function formatSnap(snap: Snap): string {
-  const lines: string[] = ['\u{1F4CB} <b>Snap Brief</b>', '', escapeHtml(snap.summary), ''];
+  const lines: string[] = ['\u{1F4CB} <b>Snap Brief</b>'];
 
-  if (snap.attentionItems.length > 0) {
-    for (const item of snap.attentionItems) {
-      const icon = SEVERITY_ICON[item.severity] ?? '\u{2022}';
-      const ticker = item.ticker ? ` <code>${escapeHtml(item.ticker)}</code>` : '';
-      lines.push(`${icon} ${escapeHtml(item.label)}${ticker}`);
+  if (snap.intelSummary) {
+    lines.push('', escapeHtml(snap.intelSummary), '');
+  }
+
+  if (snap.actionItems.length > 0) {
+    lines.push('<b>Actions:</b>');
+    for (const item of snap.actionItems) {
+      lines.push(`\u{2022} ${escapeHtml(item.text)}`);
     }
   }
 
