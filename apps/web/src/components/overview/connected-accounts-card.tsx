@@ -130,7 +130,10 @@ export default function ConnectedAccountsCard() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-1">
                   <span className="truncate text-2xs font-medium text-text-primary">{account.name}</span>
-                  <span className="flex-shrink-0 rounded-full bg-error/15 px-1.5 py-px text-3xs font-medium tabular-nums text-error">
+                  <span
+                    className="flex-shrink-0 rounded-full bg-bg-tertiary px-1.5 py-px text-3xs font-medium tabular-nums text-text-muted"
+                    aria-label={`${account.positionCount} ${account.positionCount === 1 ? 'position' : 'positions'}`}
+                  >
                     {account.positionCount}
                   </span>
                 </div>
@@ -166,7 +169,10 @@ function MockConnectedAccounts() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-1">
                 <span className="truncate text-2xs font-medium text-text-primary">{a.name}</span>
-                <span className="flex-shrink-0 rounded-full bg-error/15 px-1.5 py-px text-3xs font-medium tabular-nums text-error">
+                <span
+                  className="flex-shrink-0 rounded-full bg-bg-tertiary px-1.5 py-px text-3xs font-medium tabular-nums text-text-muted"
+                  aria-label={`${a.positions} positions`}
+                >
                   {a.positions}
                 </span>
               </div>
