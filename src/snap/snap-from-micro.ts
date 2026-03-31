@@ -138,7 +138,7 @@ export async function snapFromMicro(
       id: `snap-${randomUUID().slice(0, 8)}`,
       generatedAt: new Date().toISOString(),
       intelSummary: typeof parsed.intelSummary === 'string' ? parsed.intelSummary : '',
-      actionItems: actionItems.map((text) => ({ text, signalIds: [] })),
+      actionItems: actionItems.map((text) => ({ text, signalIds: matchSignalIds(text, insights) })),
       assetSnaps,
     };
   } catch (err) {
@@ -152,8 +152,34 @@ export async function snapFromMicro(
       id: `snap-${randomUUID().slice(0, 8)}`,
       generatedAt: new Date().toISOString(),
       intelSummary: top.assetSnap,
-      actionItems: top.assetActions.slice(0, 5).map((text) => ({ text, signalIds: [] })),
+      actionItems: top.assetActions.slice(0, 5).map((text) => ({ text, signalIds: top.topSignalIds })),
       assetSnaps,
     };
   }
+}
+
+/**
+ * Match an action item's text to micro insights by ticker mention,
+ * returning the union of their topSignalIds.
+ * Uses word-boundary matching to avoid false positives on short tickers.
+ */
+function matchSignalIds(text: string, insights: MicroInsight[]): string[] {
+  const upper = text.toUpperCase();
+  const ids = new Set<string>();
+  for (const mi of insights) {
+    const escaped = mi.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`).test(upper)) {
+      for (const id of mi.topSignalIds) ids.add(id);
+    }
+  }
+  // Also match by entity name if the ticker didn't match
+  // (e.g. "UnitedHealth" in action text → UNH micro insight)
+  if (ids.size === 0) {
+    for (const mi of insights) {
+      if (mi.name && mi.name.length > 3 && upper.includes(mi.name.toUpperCase())) {
+        for (const id of mi.topSignalIds) ids.add(id);
+      }
+    }
+  }
+  return [...ids];
 }
