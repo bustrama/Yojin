@@ -381,11 +381,16 @@ export class SignalIngestor {
    * Skips signals that already have summaries (from a previous run or manual override).
    * Best-effort — LLM failures leave the signal unchanged.
    */
+  /** Minimum quality score (0-100) for a signal to pass ingestion. Below this = dropped. */
+  private static readonly MIN_QUALITY_SCORE = 40;
+
   private async enrichWithSummaries(signals: Signal[]): Promise<Signal[]> {
     if (!this.summaryGenerator) return signals;
 
     const results: Signal[] = [];
     let irrelevantDropped = 0;
+    let falseMatchDropped = 0;
+    let lowQualityDropped = 0;
     for (const signal of signals) {
       // Skip if already has LLM-generated summaries
       if (signal.tier1 && signal.tier2) {
@@ -399,6 +404,27 @@ export class SignalIngestor {
         if (summary.isIrrelevant) {
           irrelevantDropped++;
           logger.info('Dropped irrelevant signal', { signalId: signal.id, title: signal.title, tier1: summary.tier1 });
+          continue;
+        }
+        // Drop signals where the ticker association is wrong
+        // (e.g. Apple Music page tagged under AXTI, a person's name matching a ticker)
+        if (summary.isFalseMatch) {
+          falseMatchDropped++;
+          logger.info('Dropped false-match signal', {
+            signalId: signal.id,
+            title: signal.title,
+            tickers: signal.assets.map((a) => a.ticker),
+          });
+          continue;
+        }
+        // Drop low-quality signals that add noise without material value
+        if (summary.qualityScore < SignalIngestor.MIN_QUALITY_SCORE) {
+          lowQualityDropped++;
+          logger.info('Dropped low-quality signal', {
+            signalId: signal.id,
+            title: signal.title,
+            qualityScore: summary.qualityScore,
+          });
           continue;
         }
         results.push({
@@ -416,8 +442,11 @@ export class SignalIngestor {
         results.push(signal);
       }
     }
-    if (irrelevantDropped > 0) {
-      logger.info(`Dropped ${irrelevantDropped} irrelevant signals during summary enrichment`);
+    const totalDropped = irrelevantDropped + falseMatchDropped + lowQualityDropped;
+    if (totalDropped > 0) {
+      logger.info(
+        `Dropped ${totalDropped} signals during enrichment (irrelevant: ${irrelevantDropped}, false-match: ${falseMatchDropped}, low-quality: ${lowQualityDropped})`,
+      );
     }
     return results;
   }
