@@ -84,7 +84,8 @@ export class BrainStore implements BrainInterface {
       return null;
     }
 
+    const result = await this.commit(`rollback to ${hash}: ${target.message}`, target.type, target.snapshot);
     logger.info('Rolling back brain state', { targetHash: hash, targetMessage: target.message });
-    return this.commit(`rollback to ${hash}: ${target.message}`, target.type, target.snapshot);
+    return result;
   }
 }

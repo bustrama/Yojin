@@ -194,7 +194,7 @@ export class DataSourceRegistry {
     }
 
     if (skipped.length > 0) {
-      logger.warn('Data sources skipped (no config)', { skipped });
+      logger.debug('Data sources skipped (no config)', { skipped });
     }
 
     return skipped;

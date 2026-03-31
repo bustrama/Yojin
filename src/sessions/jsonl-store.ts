@@ -152,8 +152,8 @@ export class JsonlSessionStore implements SessionStore {
   }
 
   async delete(id: string): Promise<void> {
-    logger.info('Session deleted', { sessionId: id });
     await rm(this.filePath(id), { force: true });
+    logger.info('Session deleted', { sessionId: id });
     this.sequenceCounters.delete(id);
 
     for (const [key, sessionId] of this.threadIndex) {
