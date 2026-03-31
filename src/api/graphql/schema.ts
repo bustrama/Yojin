@@ -1131,6 +1131,7 @@ export const typeDefs = /* GraphQL */ `
     disconnectChannel(id: ID!): ChannelResult!
     validateChannelToken(id: ID!, credentials: [CredentialInput!]!): ChannelResult!
     initiateChannelPairing(id: ID!): PairingResult!
+    cancelChannelPairing(id: ID!): ChannelResult!
     saveNotificationPreferences(channelId: ID!, enabledTypes: [String!]!): Boolean!
     completeOnboarding: Boolean!
     resetOnboarding: Boolean!

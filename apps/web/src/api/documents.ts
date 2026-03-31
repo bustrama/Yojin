@@ -426,6 +426,14 @@ export const INITIATE_CHANNEL_PAIRING_MUTATION = gql`
   }
 `;
 
+export const CANCEL_CHANNEL_PAIRING_MUTATION = gql`
+  mutation CancelChannelPairing($id: ID!) {
+    cancelChannelPairing(id: $id) {
+      success
+    }
+  }
+`;
+
 export const ON_CHANNEL_PAIRING_SUBSCRIPTION = gql`
   subscription OnChannelPairing($id: ID!) {
     onChannelPairing(id: $id) {

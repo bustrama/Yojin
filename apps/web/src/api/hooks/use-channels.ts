@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useSubscription } from 'urql';
 
 import {
+  CANCEL_CHANNEL_PAIRING_MUTATION,
   CONNECT_CHANNEL_MUTATION,
   DISCONNECT_CHANNEL_MUTATION,
   INITIATE_CHANNEL_PAIRING_MUTATION,
@@ -51,6 +52,10 @@ export function useSaveNotificationPreferences() {
 
 export function useInitiateChannelPairing() {
   return useMutation<{ initiateChannelPairing: PairingResult }, { id: string }>(INITIATE_CHANNEL_PAIRING_MUTATION);
+}
+
+export function useCancelChannelPairing() {
+  return useMutation<{ cancelChannelPairing: ChannelResult }, { id: string }>(CANCEL_CHANNEL_PAIRING_MUTATION);
 }
 
 export function useChannelPairing(channelId: string | null) {

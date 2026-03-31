@@ -248,6 +248,7 @@ export async function disconnectChannelMutation(_parent: unknown, args: { id: st
   if (def.id === 'web') return { success: false, error: 'Cannot disconnect the web channel' };
 
   if (def.id === 'whatsapp') {
+    await cleanupPairingSession();
     await stopChannel('whatsapp');
     if (oauthDir) {
       await rm(join(oauthDir, 'whatsapp'), { recursive: true, force: true });
@@ -329,16 +330,19 @@ let activePairingSession: import('../../../../channels/whatsapp/src/session.js')
 const PAIRING_TIMEOUT_MS = 120_000;
 let pairingTimer: ReturnType<typeof setTimeout> | undefined;
 
-function cleanupPairingSession(): void {
+async function cleanupPairingSession(): Promise<void> {
   if (pairingTimer) {
     clearTimeout(pairingTimer);
     pairingTimer = undefined;
   }
   if (activePairingSession) {
-    activePairingSession.disconnect().catch((err) => {
-      logger.error('Failed to cleanup pairing session', { error: err });
-    });
+    const session = activePairingSession;
     activePairingSession = undefined;
+    try {
+      await session.disconnect();
+    } catch (err) {
+      logger.error('Failed to cleanup pairing session', { error: err });
+    }
   }
 }
 
@@ -352,7 +356,7 @@ export async function initiateChannelPairingMutation(
 
   if (!oauthDir) return { success: false, error: 'OAuth directory not configured' };
 
-  cleanupPairingSession();
+  await cleanupPairingSession();
 
   const authDir = join(oauthDir, 'whatsapp');
 
@@ -367,20 +371,19 @@ export async function initiateChannelPairingMutation(
       },
       onConnected: () => {
         pubsub.publish(`channelPairing:${args.id}`, { status: 'CONNECTED' });
-        // Must disconnect pairing session before starting channel plugin —
-        // two concurrent sockets with the same creds cause a 440 conflict.
-        cleanupPairingSession();
-        startChannel('whatsapp').catch((err) => {
-          logger.error('Failed to start WhatsApp after pairing', { error: err });
+        cleanupPairingSession().then(() => {
+          startChannel('whatsapp').catch((err) => {
+            logger.error('Failed to start WhatsApp after pairing', { error: err });
+          });
         });
       },
       onDisconnected: (reason) => {
         pubsub.publish(`channelPairing:${args.id}`, { status: 'FAILED', error: reason });
-        cleanupPairingSession();
+        cleanupPairingSession().catch(() => {});
       },
       onLoggedOut: () => {
         pubsub.publish(`channelPairing:${args.id}`, { status: 'FAILED', error: 'Logged out' });
-        cleanupPairingSession();
+        cleanupPairingSession().catch(() => {});
       },
     });
 
@@ -390,7 +393,7 @@ export async function initiateChannelPairingMutation(
       if (activePairingSession === session) {
         logger.warn('Pairing timed out after 2 minutes');
         pubsub.publish(`channelPairing:${args.id}`, { status: 'EXPIRED', error: 'Pairing timed out' });
-        cleanupPairingSession();
+        cleanupPairingSession().catch(() => {});
       }
     }, PAIRING_TIMEOUT_MS);
 
@@ -398,9 +401,20 @@ export async function initiateChannelPairingMutation(
     return { success: true };
   } catch (e) {
     logger.error('Failed to initiate WhatsApp pairing', { error: e });
-    cleanupPairingSession();
+    await cleanupPairingSession();
     return { success: false, error: 'Failed to initiate pairing — check server logs' };
   }
+}
+
+export async function cancelChannelPairingMutation(
+  _parent: unknown,
+  args: { id: string },
+): Promise<{ success: boolean }> {
+  if (args.id !== 'whatsapp') {
+    return { success: false };
+  }
+  await cleanupPairingSession();
+  return { success: true };
 }
 
 const QR_PAIRING_CHANNELS = new Set(['whatsapp']);

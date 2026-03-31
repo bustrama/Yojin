@@ -12,6 +12,7 @@ import { activityLogQuery } from './resolvers/activity-log.js';
 import { aiConfigQuery, saveAiConfigMutation } from './resolvers/ai-config.js';
 import { alertsQuery, createAlertMutation, dismissAlertMutation } from './resolvers/alerts.js';
 import {
+  cancelChannelPairingMutation,
   connectChannelMutation,
   disconnectChannelMutation,
   initiateChannelPairingMutation,
@@ -209,6 +210,7 @@ const schema = createSchema({
       disconnectChannel: disconnectChannelMutation,
       validateChannelToken: validateChannelTokenMutation,
       initiateChannelPairing: initiateChannelPairingMutation,
+      cancelChannelPairing: cancelChannelPairingMutation,
       saveNotificationPreferences: saveNotificationPreferencesMutation,
       completeOnboarding: completeOnboardingMutation,
       resetOnboarding: resetOnboardingMutation,

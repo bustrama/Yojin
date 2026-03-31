@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
 import {
+  useCancelChannelPairing,
   useChannelPairing,
   useConnectChannel,
   useInitiateChannelPairing,
@@ -35,9 +36,10 @@ function QrPairingFlow({ channelId, channelLabel, setupInstructions, onConnected
   const [initiated, setInitiated] = useState(false);
 
   const [, initiatePairing] = useInitiateChannelPairing();
+  const [, cancelPairing] = useCancelChannelPairing();
   const [pairingResult] = useChannelPairing(initiated ? channelId : null);
 
-  // Kick off pairing on mount
+  // Kick off pairing on mount, cancel on unmount
   useEffect(() => {
     let cancelled = false;
 
@@ -67,6 +69,7 @@ function QrPairingFlow({ channelId, channelLabel, setupInstructions, onConnected
 
     return () => {
       cancelled = true;
+      void cancelPairing({ id: channelId });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);

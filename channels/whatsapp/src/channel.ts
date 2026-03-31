@@ -23,6 +23,7 @@ import type {
   TypingHandle,
 } from '../../../src/plugins/types.js';
 import type { SnapStore } from '../../../src/snap/snap-store.js';
+import type { ApprovalGate } from '../../../src/trust/approval/approval-gate.js';
 import type { PiiRedactor } from '../../../src/trust/pii/types.js';
 
 const logger = createSubsystemLogger('whatsapp-channel');
@@ -34,6 +35,7 @@ type MessageHandler = (msg: IncomingMessage) => Promise<void>;
 export interface WhatsAppChannelDeps {
   notificationBus?: NotificationBus;
   piiRedactor?: PiiRedactor;
+  approvalGate?: ApprovalGate;
   snapStore?: SnapStore;
   insightStore?: InsightStore;
   actionStore?: ActionStore;
@@ -83,7 +85,7 @@ function redactSensitiveText(text: string, redactor?: PiiRedactor): string {
 interface SelfChatSocket {
   sendMessage(text: string): Promise<string | undefined>;
   sendPresenceUpdate(type: 'composing' | 'paused' | 'available'): Promise<void>;
-  onSelfChatMessage(handler: (msg: WAMessage) => void): void;
+  onSelfChatMessage(handler: (msg: WAMessage) => void): () => void;
 }
 
 function createSelfChatProxy(sock: WASocket, selfJid: string, recentOutbound: Set<string>): SelfChatSocket {
@@ -101,15 +103,19 @@ function createSelfChatProxy(sock: WASocket, selfJid: string, recentOutbound: Se
       }
     },
 
-    onSelfChatMessage(handler: (msg: WAMessage) => void): void {
-      sock.ev.on('messages.upsert', ({ messages }) => {
+    onSelfChatMessage(handler: (msg: WAMessage) => void): () => void {
+      const listener = ({ messages }: { messages: WAMessage[] }) => {
         for (const msg of messages) {
           const jid = msg.key.remoteJid;
           if (!jid || jid !== selfJid) continue;
           if (msg.key.id && recentOutbound.has(msg.key.id)) continue;
           handler(msg);
         }
-      });
+      };
+      sock.ev.on('messages.upsert', listener);
+      return () => {
+        sock.ev.off('messages.upsert', listener);
+      };
     },
   };
 }
@@ -118,6 +124,7 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
   let session: WhatsAppSession | undefined;
   let selfJid: string | undefined;
   let proxy: SelfChatSocket | undefined;
+  let messageListenerCleanup: (() => void) | undefined;
   const messageHandlers: MessageHandler[] = [];
   const unsubscribers: Array<() => void> = [];
   const recentOutbound: Set<string> = new Set();
@@ -194,12 +201,17 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
         },
         onConnected: () => {
           logger.info('WhatsApp connected (self-chat only)');
+          rewireProxy();
         },
         onDisconnected: (reason) => {
           logger.warn('WhatsApp disconnected', { reason });
         },
         onLoggedOut: () => {
           logger.warn('WhatsApp session logged out — re-pairing required');
+          if (messageListenerCleanup) {
+            messageListenerCleanup();
+            messageListenerCleanup = undefined;
+          }
           session = undefined;
           proxy = undefined;
         },
@@ -207,18 +219,17 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
 
       await session.connect();
 
-      const sock = session.getSocket();
-      if (sock && selfJid) {
-        proxy = createSelfChatProxy(sock, selfJid, recentOutbound);
-        wireMessageHandler(proxy);
-      }
-
       if (deps.notificationBus) {
         subscribeToNotifications(deps.notificationBus);
       }
     },
 
     async teardown(): Promise<void> {
+      if (messageListenerCleanup) {
+        messageListenerCleanup();
+        messageListenerCleanup = undefined;
+      }
+
       for (const unsub of unsubscribers) {
         unsub();
       }
@@ -252,11 +263,32 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
     },
   };
 
-  function wireMessageHandler(selfChat: SelfChatSocket): void {
-    selfChat.onSelfChatMessage(async (msg) => {
+  function rewireProxy(): void {
+    if (!session || !selfJid) return;
+    const sock = session.getSocket();
+    if (!sock) return;
+
+    if (messageListenerCleanup) {
+      messageListenerCleanup();
+      messageListenerCleanup = undefined;
+    }
+
+    proxy = createSelfChatProxy(sock, selfJid, recentOutbound);
+    messageListenerCleanup = wireMessageHandler(proxy);
+  }
+
+  function wireMessageHandler(selfChat: SelfChatSocket): () => void {
+    return selfChat.onSelfChatMessage(async (msg) => {
       try {
         const text = msg.message?.conversation ?? msg.message?.extendedTextMessage?.text;
         if (!text || !selfJid) return;
+
+        const approvalMatch = text.match(/^(APPROVE|REJECT)\s+(\S+)/i);
+        if (approvalMatch?.[1] && approvalMatch[2] && deps.approvalGate) {
+          const approved = approvalMatch[1].toUpperCase() === 'APPROVE';
+          deps.approvalGate.resolve(approvalMatch[2], approved);
+          return;
+        }
 
         const incoming: IncomingMessage = {
           channelId: 'whatsapp',
@@ -345,9 +377,9 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
 
   const capabilities: ChannelCapabilities = {
     supportsThreading: false,
-    supportsReactions: true,
+    supportsReactions: false,
     supportsTyping: true,
-    supportsFiles: true,
+    supportsFiles: false,
     supportsEditing: false,
     maxMessageLength: 65536,
   };

@@ -35,16 +35,18 @@ vi.mock('../../../src/api/graphql/resolvers/channels.js', () => ({
 }));
 
 vi.mock('../../../channels/whatsapp/src/session.js', () => ({
-  createWhatsAppSession: vi.fn().mockReturnValue({
-    connect: vi.fn().mockResolvedValue(undefined),
+  createWhatsAppSession: vi.fn().mockImplementation((opts: { onConnected: () => void }) => ({
+    connect: vi.fn().mockImplementation(async () => {
+      opts.onConnected();
+    }),
     disconnect: vi.fn().mockResolvedValue(undefined),
     isConnected: vi.fn().mockReturnValue(true),
     getSocket: vi.fn().mockReturnValue({
       sendMessage: vi.fn().mockResolvedValue({ key: { id: 'msg-id-123' } }),
       sendPresenceUpdate: vi.fn().mockResolvedValue(undefined),
-      ev: { on: vi.fn() },
+      ev: { on: vi.fn(), off: vi.fn() },
     }),
-  }),
+  })),
 }));
 
 interface MockSession {
@@ -57,7 +59,7 @@ interface MockSession {
 interface MockSocket {
   sendMessage: ReturnType<typeof vi.fn>;
   sendPresenceUpdate: ReturnType<typeof vi.fn>;
-  ev: { on: ReturnType<typeof vi.fn> };
+  ev: { on: ReturnType<typeof vi.fn>; off: ReturnType<typeof vi.fn> };
 }
 
 function getMockSession(): MockSession {
@@ -79,15 +81,20 @@ describe('buildWhatsAppChannel', () => {
       JSON.stringify({ me: { id: '1234567890:5@s.whatsapp.net' } }),
     );
 
-    vi.mocked(sessionModule.createWhatsAppSession).mockReturnValue({
-      connect: vi.fn().mockResolvedValue(undefined),
-      disconnect: vi.fn().mockResolvedValue(undefined),
-      isConnected: vi.fn().mockReturnValue(true),
-      getSocket: vi.fn().mockReturnValue({
+    vi.mocked(sessionModule.createWhatsAppSession).mockImplementation((opts) => {
+      const socket: MockSocket = {
         sendMessage: vi.fn().mockResolvedValue({ key: { id: 'msg-id-123' } }),
         sendPresenceUpdate: vi.fn().mockResolvedValue(undefined),
-        ev: { on: vi.fn() },
-      }),
+        ev: { on: vi.fn(), off: vi.fn() },
+      };
+      return {
+        connect: vi.fn().mockImplementation(async () => {
+          opts.onConnected();
+        }),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        isConnected: vi.fn().mockReturnValue(true),
+        getSocket: vi.fn().mockReturnValue(socket),
+      };
     });
   });
 
@@ -109,9 +116,9 @@ describe('buildWhatsAppChannel', () => {
       const channel = buildWhatsAppChannel();
       expect(channel.capabilities).toEqual({
         supportsThreading: false,
-        supportsReactions: true,
+        supportsReactions: false,
         supportsTyping: true,
-        supportsFiles: true,
+        supportsFiles: false,
         supportsEditing: false,
         maxMessageLength: 65536,
       });
@@ -258,6 +265,135 @@ describe('buildWhatsAppChannel', () => {
       vi.mocked(fsp.access).mockRejectedValueOnce(new Error('ENOENT'));
       const channel = buildWhatsAppChannel();
       expect(await channel.authAdapter.validateToken('')).toBe(false);
+    });
+  });
+
+  describe('reconnect handling', () => {
+    it('re-wires proxy when session reconnects', async () => {
+      const channel = buildWhatsAppChannel();
+      await channel.initialize?.({});
+
+      const firstSocket = getMockSocket();
+      expect(firstSocket.ev.on).toHaveBeenCalledWith('messages.upsert', expect.any(Function));
+
+      const sessionConfig = vi.mocked(sessionModule.createWhatsAppSession).mock.calls[0]?.[0];
+      expect(sessionConfig).toBeDefined();
+
+      const newSocket: MockSocket = {
+        sendMessage: vi.fn().mockResolvedValue({ key: { id: 'new-msg-id' } }),
+        sendPresenceUpdate: vi.fn().mockResolvedValue(undefined),
+        ev: { on: vi.fn(), off: vi.fn() },
+      };
+      const mockSession = getMockSession();
+      vi.mocked(mockSession.getSocket).mockReturnValue(
+        newSocket as unknown as ReturnType<typeof mockSession.getSocket>,
+      );
+
+      sessionConfig!.onConnected();
+
+      expect(newSocket.ev.on).toHaveBeenCalledWith('messages.upsert', expect.any(Function));
+
+      await channel.messagingAdapter.sendMessage({ channelId: 'whatsapp', text: 'after reconnect' });
+      expect(newSocket.sendMessage).toHaveBeenCalledWith('1234567890@s.whatsapp.net', { text: 'after reconnect' });
+    });
+
+    it('cleans up old listener when reconnecting', async () => {
+      const channel = buildWhatsAppChannel();
+      await channel.initialize?.({});
+
+      const firstSocket = getMockSocket();
+
+      const sessionConfig = vi.mocked(sessionModule.createWhatsAppSession).mock.calls[0]?.[0];
+
+      const newSocket: MockSocket = {
+        sendMessage: vi.fn().mockResolvedValue({ key: { id: 'new-msg-id' } }),
+        sendPresenceUpdate: vi.fn().mockResolvedValue(undefined),
+        ev: { on: vi.fn(), off: vi.fn() },
+      };
+      const mockSession = getMockSession();
+      vi.mocked(mockSession.getSocket).mockReturnValue(
+        newSocket as unknown as ReturnType<typeof mockSession.getSocket>,
+      );
+
+      sessionConfig!.onConnected();
+
+      expect(firstSocket.ev.off).toHaveBeenCalledWith('messages.upsert', expect.any(Function));
+    });
+  });
+
+  describe('approval gate', () => {
+    it('parses APPROVE command and resolves approval', async () => {
+      const mockGate = { resolve: vi.fn(), getPending: vi.fn().mockReturnValue([]) };
+      const channel = buildWhatsAppChannel({
+        approvalGate: mockGate as unknown as import('../../../src/trust/approval/approval-gate.js').ApprovalGate,
+      });
+      await channel.initialize?.({});
+
+      const sock = getMockSocket();
+      const upsertHandler = sock.ev.on.mock.calls.find(
+        (call: unknown[]) => call[0] === 'messages.upsert',
+      )?.[1] as (arg: { messages: unknown[] }) => Promise<void>;
+
+      await upsertHandler({
+        messages: [
+          {
+            key: { remoteJid: SELF_JID, fromMe: true, id: 'approve-msg' },
+            message: { conversation: 'APPROVE req-123' },
+            messageTimestamp: Math.floor(Date.now() / 1000),
+          },
+        ],
+      });
+
+      expect(mockGate.resolve).toHaveBeenCalledWith('req-123', true);
+    });
+
+    it('parses REJECT command and resolves rejection', async () => {
+      const mockGate = { resolve: vi.fn(), getPending: vi.fn().mockReturnValue([]) };
+      const channel = buildWhatsAppChannel({
+        approvalGate: mockGate as unknown as import('../../../src/trust/approval/approval-gate.js').ApprovalGate,
+      });
+      await channel.initialize?.({});
+
+      const sock = getMockSocket();
+      const upsertHandler = sock.ev.on.mock.calls.find(
+        (call: unknown[]) => call[0] === 'messages.upsert',
+      )?.[1] as (arg: { messages: unknown[] }) => Promise<void>;
+
+      await upsertHandler({
+        messages: [
+          {
+            key: { remoteJid: SELF_JID, fromMe: true, id: 'reject-msg' },
+            message: { conversation: 'REJECT req-456' },
+            messageTimestamp: Math.floor(Date.now() / 1000),
+          },
+        ],
+      });
+
+      expect(mockGate.resolve).toHaveBeenCalledWith('req-456', false);
+    });
+
+    it('does not intercept approval commands when no gate is configured', async () => {
+      const channel = buildWhatsAppChannel();
+      const handler = vi.fn();
+      channel.messagingAdapter.onMessage(handler);
+      await channel.initialize?.({});
+
+      const sock = getMockSocket();
+      const upsertHandler = sock.ev.on.mock.calls.find(
+        (call: unknown[]) => call[0] === 'messages.upsert',
+      )?.[1] as (arg: { messages: unknown[] }) => Promise<void>;
+
+      await upsertHandler({
+        messages: [
+          {
+            key: { remoteJid: SELF_JID, fromMe: true, id: 'approve-msg' },
+            message: { conversation: 'APPROVE req-789' },
+            messageTimestamp: Math.floor(Date.now() / 1000),
+          },
+        ],
+      });
+
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ text: 'APPROVE req-789' }));
     });
   });
 
