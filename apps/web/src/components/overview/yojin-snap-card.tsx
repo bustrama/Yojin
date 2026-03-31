@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from 'urql';
 
@@ -12,8 +12,12 @@ import { FeatureCardGate } from '../common/feature-gate';
 import { DashboardCard } from '../common/dashboard-card';
 import Spinner from '../common/spinner';
 import Button from '../common/button';
+import { cn } from '../../lib/utils';
 import { useAddPositionModal } from '../../lib/add-position-modal-context';
 import { SignalChips } from './signal-chips';
+
+const POLL_INTERVAL_MS = 30_000;
+const UPDATED_GLOW_MS = 3_000;
 
 function stripPrefix(text: string): string {
   return text.replace(/^(CRITICAL|HIGH|MEDIUM|LOW):\s*/i, '');
@@ -21,12 +25,32 @@ function stripPrefix(text: string): string {
 
 export default function YojinSnapCard({ hasPositions = false }: { hasPositions?: boolean }) {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
-  const [result] = useQuery<SnapQueryResult>({ query: SNAP_QUERY });
+  const [result, reexecute] = useQuery<SnapQueryResult>({ query: SNAP_QUERY, requestPolicy: 'network-only' });
   const [insightResult] = useQuery<LatestInsightReportQueryResult>({ query: LATEST_INSIGHT_REPORT_QUERY });
   const { openModal } = useAddPositionModal();
   const navigate = useNavigate();
   const snap = result.data?.snap;
   const report = insightResult.data?.latestInsightReport;
+
+  // Poll for snap updates
+  useEffect(() => {
+    const id = setInterval(() => reexecute({ requestPolicy: 'network-only' }), POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [reexecute]);
+
+  // Detect snap regeneration — pulse when generatedAt changes
+  const [prevGeneratedAt, setPrevGeneratedAt] = useState<string | null>(null);
+  const [justUpdated, setJustUpdated] = useState(false);
+  const currentGeneratedAt = snap?.generatedAt ?? null;
+  if (currentGeneratedAt !== null && currentGeneratedAt !== prevGeneratedAt) {
+    if (prevGeneratedAt !== null) setJustUpdated(true);
+    setPrevGeneratedAt(currentGeneratedAt);
+  }
+  useEffect(() => {
+    if (!justUpdated) return;
+    const timer = setTimeout(() => setJustUpdated(false), UPDATED_GLOW_MS);
+    return () => clearTimeout(timer);
+  }, [justUpdated]);
 
   const signalMap = useMemo(() => {
     const map = new Map<string, { title: string; url: string | null; sourceCount?: number }>();
@@ -104,7 +128,7 @@ export default function YojinSnapCard({ hasPositions = false }: { hasPositions?:
     <DashboardCard
       title="Actions"
       variant="feature"
-      className="flex-1"
+      className={cn('flex-1', justUpdated && 'animate-new-item')}
       headerAction={
         <span className="text-xs text-text-muted">
           {snap.actionItems.length} items &middot; {timeAgo(snap.generatedAt)}

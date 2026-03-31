@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { useQuery } from 'urql';
 
 import { SNAP_QUERY } from '../../api/documents';
 import type { SnapQueryResult } from '../../api/types';
-import { timeAgo } from '../../lib/utils';
+import { cn, timeAgo } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
+import { usePortfolio } from '../../api/hooks';
 import { CardEmptyState } from '../common/card-empty-state';
 import { CardBlurGate } from '../common/card-blur-gate';
 import { FeatureCardGate } from '../common/feature-gate';
@@ -12,11 +14,36 @@ import Spinner from '../common/spinner';
 import Button from '../common/button';
 import { useAddPositionModal } from '../../lib/add-position-modal-context';
 
+const POLL_INTERVAL_MS = 30_000;
+const UPDATED_GLOW_MS = 3_000;
+
 export default function IntelSummaryCard() {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
-  const [result] = useQuery<SnapQueryResult>({ query: SNAP_QUERY });
+  const [result, reexecute] = useQuery<SnapQueryResult>({ query: SNAP_QUERY, requestPolicy: 'network-only' });
+  const [portfolioResult] = usePortfolio();
   const { openModal } = useAddPositionModal();
   const snap = result.data?.snap;
+  const hasPositions = (portfolioResult.data?.portfolio?.positions?.length ?? 0) > 0;
+
+  // Poll for snap updates
+  useEffect(() => {
+    const id = setInterval(() => reexecute({ requestPolicy: 'network-only' }), POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [reexecute]);
+
+  // Detect snap regeneration — pulse when generatedAt changes
+  const [prevGeneratedAt, setPrevGeneratedAt] = useState<string | null>(null);
+  const [justUpdated, setJustUpdated] = useState(false);
+  const currentGeneratedAt = snap?.generatedAt ?? null;
+  if (currentGeneratedAt !== null && currentGeneratedAt !== prevGeneratedAt) {
+    if (prevGeneratedAt !== null) setJustUpdated(true);
+    setPrevGeneratedAt(currentGeneratedAt);
+  }
+  useEffect(() => {
+    if (!justUpdated) return;
+    const timer = setTimeout(() => setJustUpdated(false), UPDATED_GLOW_MS);
+    return () => clearTimeout(timer);
+  }, [justUpdated]);
 
   if (!jintelConfigured) {
     return (
@@ -62,12 +89,18 @@ export default function IntelSummaryCard() {
                 />
               </svg>
             }
-            title="No intel summary yet"
-            description="Generated once insights are produced."
+            title={hasPositions ? 'Researching your portfolio...' : 'No intel summary yet'}
+            description={
+              hasPositions
+                ? 'Micro research is running. Your first snap will appear shortly.'
+                : 'Generated once insights are produced.'
+            }
             action={
-              <Button variant="primary" size="sm" onClick={openModal}>
-                Add positions
-              </Button>
+              hasPositions ? undefined : (
+                <Button variant="primary" size="sm" onClick={openModal}>
+                  Add positions
+                </Button>
+              )
             }
           />
         </CardBlurGate>
@@ -79,7 +112,7 @@ export default function IntelSummaryCard() {
     <DashboardCard
       title="Snap"
       variant="feature"
-      className="flex-1"
+      className={cn('flex-1', justUpdated && 'animate-new-item')}
       headerAction={<span className="text-xs text-text-muted">{timeAgo(snap.generatedAt)}</span>}
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-auto px-5 pb-5">
