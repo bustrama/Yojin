@@ -171,11 +171,6 @@ export async function signalsResolver(
 
 export async function signalsByIdsResolver(_parent: unknown, args: { ids: string[] }): Promise<SignalGql[]> {
   if (!archive || args.ids.length === 0) return [];
-
-  const results: SignalGql[] = [];
-  for (const id of args.ids) {
-    const signal = await archive.getById(id);
-    if (signal) results.push(toGql(signal));
-  }
-  return results;
+  const signals = await archive.getByIds(args.ids);
+  return signals.map(toGql);
 }

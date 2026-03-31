@@ -44,6 +44,8 @@ export function SignalsModal() {
         <div className="flex items-center justify-center py-8">
           <Spinner size="md" label="Loading signals..." />
         </div>
+      ) : result.error ? (
+        <p className="py-6 text-center text-sm text-error">Failed to load signals. Please try again.</p>
       ) : signals.length === 0 ? (
         <p className="py-6 text-center text-sm text-text-muted">No signals found.</p>
       ) : (
