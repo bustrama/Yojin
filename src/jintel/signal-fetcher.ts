@@ -137,14 +137,14 @@ function mentionsEntity(text: string, tickers: string[], entityName: string | un
 }
 
 const JUNK_TITLE_PATTERN =
-  /stock price|in real time$|tradingview|quote & history|commission-free|buy and sell|spy vs\.? spy|song and lyrics|official music video|official video|official audio|full album/i;
+  /stock price|in real time$|tradingview|quote & history|commission-free|buy and sell|spy vs\.? spy|song and lyrics|official music video|official video|official audio|full album|definition and meaning|definition of\b|meaning of\b|\bdefinition\b.*\bdictionary\b/i;
 
 /**
- * Domains that produce entertainment/non-financial content.
+ * Domains that produce entertainment/non-financial or reference content.
  * These frequently match short tickers as substrings (e.g. "Unh Unh" → UNH).
  */
 const JUNK_DOMAIN_PATTERN =
-  /\b(spotify\.com|soundcloud\.com|genius\.com|bandcamp\.com|deezer\.com|tidal\.com|shazam\.com)\b/i;
+  /\b(spotify\.com|soundcloud\.com|genius\.com|bandcamp\.com|deezer\.com|tidal\.com|shazam\.com|collinsdictionary\.com|merriam-webster\.com|dictionary\.com|wiktionary\.org|urbandictionary\.com|cambridge\.org\/dictionary|oxforddictionaries\.com)\b/i;
 
 /** Titles that are just entity names with optional ticker suffix (e.g. "Invesco QQQ ETF | ICVT") */
 function isEntityNameTitle(title: string, entityName: string | undefined): boolean {

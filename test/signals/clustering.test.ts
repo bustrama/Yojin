@@ -38,6 +38,7 @@ const DEFAULT_SUMMARY = {
   tier2: 'Apple reported record earnings this quarter, beating analyst expectations.',
   sentiment: 'BULLISH' as const,
   outputType: 'INSIGHT' as const,
+  isIrrelevant: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -211,7 +212,83 @@ describe('SignalClustering', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 5. Clustering failure doesn't throw
+  // 5. Irrelevant signal filtering
+  // -------------------------------------------------------------------------
+
+  it('drops irrelevant signal in enrichAndStore (no candidates)', async () => {
+    const irrelevantSummary = {
+      ...DEFAULT_SUMMARY,
+      tier1: 'Irrelevant Dictionary Page, Not Financial News',
+      isIrrelevant: true,
+    };
+    const generator = { generate: vi.fn().mockResolvedValue(irrelevantSummary) };
+    const classify = vi.fn();
+
+    const clustering = new SignalClustering({ archive, groupArchive, classify, generator });
+    const signal = makeSignal();
+
+    await clustering.processSignals([signal]);
+
+    // Signal should NOT be stored in the archive
+    const stored = await archive.query({ tickers: ['AAPL'] });
+    expect(stored).toHaveLength(0);
+  });
+
+  it('drops irrelevant signal on SAME merge', async () => {
+    const existingSignal = makeSignal({ id: 'existing-irr1', contentHash: 'hash-e-irr1', version: 1 });
+    await archive.append(existingSignal);
+
+    const incomingSignal = makeSignal({
+      id: 'incoming-irr1',
+      contentHash: 'hash-i-irr1',
+      title: existingSignal.title,
+      sources: [{ id: 'reuters', name: 'Reuters', type: 'RSS', reliability: 0.9 }],
+    });
+
+    const irrelevantSummary = { ...DEFAULT_SUMMARY, isIrrelevant: true };
+    const generator = { generate: vi.fn().mockResolvedValue(irrelevantSummary) };
+    const classify = vi.fn().mockResolvedValue('SAME');
+
+    const clustering = new SignalClustering({ archive, groupArchive, classify, generator });
+    await clustering.processSignals([incomingSignal]);
+
+    // Existing signal should remain unchanged (no merge update written)
+    const stored = await archive.query({ tickers: ['AAPL'] });
+    expect(stored).toHaveLength(1);
+    expect(stored[0].id).toBe('existing-irr1');
+    expect(stored[0].version).toBe(1); // not bumped
+  });
+
+  it('drops irrelevant signal on RELATED link', async () => {
+    const existingSignal = makeSignal({ id: 'existing-irr2', contentHash: 'hash-e-irr2', version: 1 });
+    await archive.append(existingSignal);
+
+    const incomingSignal = makeSignal({
+      id: 'incoming-irr2',
+      contentHash: 'hash-i-irr2',
+      title: 'Dictionary definition of uh-huh',
+    });
+
+    const irrelevantSummary = { ...DEFAULT_SUMMARY, isIrrelevant: true };
+    const generator = { generate: vi.fn().mockResolvedValue(irrelevantSummary) };
+    const classify = vi.fn().mockResolvedValue('RELATED');
+
+    const clustering = new SignalClustering({ archive, groupArchive, classify, generator });
+    await clustering.processSignals([incomingSignal]);
+
+    // No group should be created
+    const groups = await groupArchive.query({});
+    expect(groups).toHaveLength(0);
+
+    // Only the original signal should remain
+    const stored = await archive.query({ tickers: ['AAPL'] });
+    expect(stored).toHaveLength(1);
+    expect(stored[0].id).toBe('existing-irr2');
+    expect(stored[0].groupId).toBeUndefined(); // not linked
+  });
+
+  // -------------------------------------------------------------------------
+  // 6. Clustering failure doesn't throw
   // -------------------------------------------------------------------------
 
   it('does not throw when processSignals encounters an error', async () => {

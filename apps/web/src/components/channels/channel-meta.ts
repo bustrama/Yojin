@@ -9,6 +9,7 @@ export interface ChannelMeta {
   label: string;
   initials: string;
   color: string;
+  logo?: string;
   description: string;
   setupInstructions: string;
   credentialFields: ChannelCredentialField[];
@@ -20,6 +21,7 @@ const CHANNEL_META: Record<string, ChannelMeta> = {
     label: 'Web Dashboard',
     initials: 'WB',
     color: 'bg-accent-primary/20 text-accent-primary',
+    logo: '/brand/yojin_icon_color.png',
     description: 'Built-in web interface',
     setupInstructions: '',
     credentialFields: [],
@@ -28,6 +30,7 @@ const CHANNEL_META: Record<string, ChannelMeta> = {
     label: 'Telegram',
     initials: 'TG',
     color: 'bg-info/20 text-info',
+    logo: '/channels/telegram.svg',
     description: 'Bot notifications, approval buttons, daily briefings',
     setupInstructions:
       'Open Telegram, message @BotFather, send /newbot and follow the prompts. Paste the bot token below.',
@@ -44,6 +47,7 @@ const CHANNEL_META: Record<string, ChannelMeta> = {
     label: 'Slack',
     initials: 'SL',
     color: 'bg-platform-violet/20 text-platform-violet',
+    logo: '/channels/slack.svg',
     description: 'Workspace messaging and notifications',
     setupInstructions: 'Create a Slack app at api.slack.com/apps, enable Socket Mode, and install to your workspace.',
     credentialFields: [
@@ -65,6 +69,7 @@ const CHANNEL_META: Record<string, ChannelMeta> = {
     label: 'WhatsApp',
     initials: 'WA',
     color: 'bg-success/20 text-success',
+    logo: '/channels/whatsapp.svg',
     description: 'Direct-to-phone alerts for critical portfolio events',
     setupInstructions:
       'Scan the QR code below with your WhatsApp app. Go to Settings \u2192 Linked Devices \u2192 Link a Device.',

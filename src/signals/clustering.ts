@@ -202,6 +202,17 @@ export class SignalClustering {
     };
 
     const summary = await this.generateWithSemaphore(merged);
+
+    // Drop signals the LLM identified as non-financial content
+    if (summary.isIrrelevant) {
+      logger.info('Dropped irrelevant merged signal via clustering', {
+        existingId: existing.id,
+        incomingId: incoming.id,
+        tier1: summary.tier1,
+      });
+      return;
+    }
+
     const enriched: Signal = { ...merged, ...summary };
 
     await this.options.archive.appendUpdate(enriched);
@@ -220,6 +231,17 @@ export class SignalClustering {
   private async linkRelated(existing: Signal, incoming: Signal): Promise<void> {
     // Generate summary for the incoming signal (without storing yet)
     const summary = await this.generateWithSemaphore(incoming);
+
+    // Drop signals the LLM identified as non-financial content
+    if (summary.isIrrelevant) {
+      logger.info('Dropped irrelevant related signal via clustering', {
+        signalId: incoming.id,
+        title: incoming.title,
+        tier1: summary.tier1,
+      });
+      return;
+    }
+
     const now = new Date().toISOString();
 
     // Determine if either signal already belongs to a group
@@ -326,6 +348,17 @@ export class SignalClustering {
 
   private async enrichAndStore(signal: Signal): Promise<SummaryResult> {
     const summary = await this.generateWithSemaphore(signal);
+
+    // Drop signals the LLM identified as non-financial content
+    if (summary.isIrrelevant) {
+      logger.info('Dropped irrelevant signal via clustering', {
+        signalId: signal.id,
+        title: signal.title,
+        tier1: summary.tier1,
+      });
+      return summary;
+    }
+
     const enriched: Signal = {
       ...signal,
       ...summary,

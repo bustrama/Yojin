@@ -32,6 +32,8 @@ export function setChannelOAuthDir(dir: string): void {
 }
 
 const ALL_NOTIFICATION_TYPES = ['snap.ready', 'insight.ready', 'action.created', 'approval.requested'];
+/** Notification types enabled by default when user has no explicit preferences. */
+const DEFAULT_ENABLED_TYPES = ['insight.ready', 'action.created', 'approval.requested'];
 
 interface ChannelDef {
   id: string;
@@ -310,7 +312,7 @@ async function savePreferences(prefs: Record<string, string[]>): Promise<void> {
 
 export async function isNotificationEnabled(channelId: string, notificationType: string): Promise<boolean> {
   const prefs = await loadPreferences();
-  if (!(channelId in prefs)) return true; // default: all enabled
+  if (!(channelId in prefs)) return DEFAULT_ENABLED_TYPES.includes(notificationType);
   return prefs[channelId].includes(notificationType);
 }
 
@@ -319,7 +321,7 @@ export async function notificationPreferencesQuery(): Promise<{ channelId: strin
   const results: { channelId: string; enabledTypes: string[] }[] = [];
 
   for (const def of CHANNEL_DEFS) {
-    const enabled = prefs[def.id] ?? ALL_NOTIFICATION_TYPES;
+    const enabled = prefs[def.id] ?? DEFAULT_ENABLED_TYPES;
     results.push({ channelId: def.id, enabledTypes: enabled });
   }
 

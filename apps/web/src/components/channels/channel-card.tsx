@@ -32,7 +32,7 @@ export function ChannelCard({ channel, onConnect, onDisconnect, disconnecting = 
     <>
       <div className="flex items-center gap-4 rounded-xl border border-border bg-bg-card p-4">
         <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold', meta.color)}>
-          {meta.initials}
+          {meta.logo ? <img src={meta.logo} alt={meta.label} className="h-6 w-6 object-contain" /> : meta.initials}
         </div>
 
         <div className="flex-1 min-w-0">

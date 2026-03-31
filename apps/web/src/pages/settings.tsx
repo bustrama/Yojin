@@ -517,6 +517,8 @@ const NOTIFICATION_TYPES = [
   { key: 'action.created', label: 'Action alerts', description: 'Skill-triggered trade recommendations' },
   { key: 'approval.requested', label: 'Approval requests', description: 'Actions requiring your approval' },
 ];
+/** Types enabled by default when user has no explicit preferences (matches backend DEFAULT_ENABLED_TYPES). */
+const DEFAULT_ENABLED_TYPES = ['insight.ready', 'action.created', 'approval.requested'];
 
 function NotificationPreferencesEditor() {
   const [channelsResult] = useListChannels();
@@ -528,7 +530,7 @@ function NotificationPreferencesEditor() {
 
   const isEnabled = (channelId: string, notificationType: string): boolean => {
     const channelPrefs = prefs.find((p) => p.channelId === channelId);
-    if (!channelPrefs) return true; // default: all enabled
+    if (!channelPrefs) return DEFAULT_ENABLED_TYPES.includes(notificationType);
     return channelPrefs.enabledTypes.includes(notificationType);
   };
 
@@ -536,7 +538,7 @@ function NotificationPreferencesEditor() {
 
   const handleToggle = async (channelId: string, notificationType: string) => {
     const channelPrefs = prefs.find((p) => p.channelId === channelId);
-    const currentTypes = channelPrefs?.enabledTypes ?? NOTIFICATION_TYPES.map((t) => t.key);
+    const currentTypes = channelPrefs?.enabledTypes ?? DEFAULT_ENABLED_TYPES;
 
     const newTypes = currentTypes.includes(notificationType)
       ? currentTypes.filter((t) => t !== notificationType)
