@@ -416,6 +416,26 @@ export const SAVE_NOTIFICATION_PREFERENCES_MUTATION = gql`
   }
 `;
 
+export const INITIATE_CHANNEL_PAIRING_MUTATION = gql`
+  mutation InitiateChannelPairing($id: ID!) {
+    initiateChannelPairing(id: $id) {
+      success
+      error
+      qrData
+    }
+  }
+`;
+
+export const ON_CHANNEL_PAIRING_SUBSCRIPTION = gql`
+  subscription OnChannelPairing($id: ID!) {
+    onChannelPairing(id: $id) {
+      status
+      qrData
+      error
+    }
+  }
+`;
+
 export const AI_CONFIG_QUERY = gql`
   query AiConfig {
     aiConfig {

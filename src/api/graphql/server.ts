@@ -14,8 +14,10 @@ import { alertsQuery, createAlertMutation, dismissAlertMutation } from './resolv
 import {
   connectChannelMutation,
   disconnectChannelMutation,
+  initiateChannelPairingMutation,
   listChannelsQuery,
   notificationPreferencesQuery,
+  onChannelPairingSubscription,
   saveNotificationPreferencesMutation,
   validateChannelTokenMutation,
 } from './resolvers/channels.js';
@@ -206,6 +208,7 @@ const schema = createSchema({
       connectChannel: connectChannelMutation,
       disconnectChannel: disconnectChannelMutation,
       validateChannelToken: validateChannelTokenMutation,
+      initiateChannelPairing: initiateChannelPairingMutation,
       saveNotificationPreferences: saveNotificationPreferencesMutation,
       completeOnboarding: completeOnboardingMutation,
       resetOnboarding: resetOnboardingMutation,
@@ -229,6 +232,7 @@ const schema = createSchema({
       onChatMessage: onChatMessageSubscription,
       onConnectionStatus: onConnectionStatusSubscription,
       onWorkflowProgress: onWorkflowProgressSubscription,
+      onChannelPairing: onChannelPairingSubscription,
     },
   },
 });
