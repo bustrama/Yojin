@@ -72,6 +72,7 @@ const mockPortfolio: PortfolioSnapshot = {
   totalDayChangePercent: 1.03,
   timestamp: '2026-03-19T12:00:00Z',
   platform: 'MANUAL',
+  warnings: [],
   history: [],
   sectorExposure: [],
 };

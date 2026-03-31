@@ -155,6 +155,28 @@ export class SignalArchive {
     return null;
   }
 
+  /** Find multiple signals by ID in a single pass over the archive files. */
+  async getByIds(ids: string[]): Promise<Signal[]> {
+    if (ids.length === 0) return [];
+    const remaining = new Set(ids);
+    const found = new Map<string, Signal>();
+    const files = (await this.listFiles()).reverse();
+
+    for (const file of files) {
+      if (remaining.size === 0) break;
+      const signals = await this.readFile(file);
+      for (const signal of signals) {
+        if (remaining.has(signal.id)) {
+          found.set(signal.id, signal);
+          remaining.delete(signal.id);
+        }
+      }
+    }
+
+    // Return in the original request order
+    return ids.map((id) => found.get(id)).filter((s): s is Signal => s != null);
+  }
+
   /** List all available date keys (YYYY-MM-DD). */
   async listDates(): Promise<string[]> {
     try {

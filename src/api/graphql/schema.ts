@@ -116,6 +116,10 @@ export const typeDefs = /* GraphQL */ `
     timestamp: String!
     platform: String
     """
+    Warnings from live quote enrichment (e.g. rate limit exceeded).
+    """
+    warnings: [String!]!
+    """
     Nested: historical portfolio values (delegates to PortfolioSnapshotStore).
     Optional days param limits the lookback window (e.g. 7, 30, 90).
     """
@@ -665,6 +669,25 @@ export const typeDefs = /* GraphQL */ `
     error: String
   }
 
+  enum PairingStatusCode {
+    WAITING_FOR_SCAN
+    CONNECTED
+    FAILED
+    EXPIRED
+  }
+
+  type PairingResult {
+    success: Boolean!
+    error: String
+    qrData: String
+  }
+
+  type PairingEvent {
+    status: PairingStatusCode!
+    qrData: String
+    error: String
+  }
+
   type NotificationPreferences {
     channelId: ID!
     enabledTypes: [String!]!
@@ -1033,6 +1056,7 @@ export const typeDefs = /* GraphQL */ `
       outputType: SignalOutputType
       limit: Int
     ): [Signal!]!
+    signalsByIds(ids: [ID!]!): [Signal!]!
     signalGroups(ticker: String, since: String, limit: Int): [SignalGroup!]!
     curatedSignals(ticker: String, since: String, limit: Int, offset: Int): [CuratedSignal!]!
     curationStatus: CurationStatus!
@@ -1115,6 +1139,8 @@ export const typeDefs = /* GraphQL */ `
     connectChannel(id: ID!, credentials: [CredentialInput!]!): ChannelResult!
     disconnectChannel(id: ID!): ChannelResult!
     validateChannelToken(id: ID!, credentials: [CredentialInput!]!): ChannelResult!
+    initiateChannelPairing(id: ID!): PairingResult!
+    cancelChannelPairing(id: ID!): ChannelResult!
     saveNotificationPreferences(channelId: ID!, enabledTypes: [String!]!): Boolean!
     completeOnboarding: Boolean!
     resetOnboarding: Boolean!
@@ -1158,5 +1184,6 @@ export const typeDefs = /* GraphQL */ `
     onChatMessage(threadId: String!): ChatEvent!
     onConnectionStatus(platform: String!): ConnectionEvent!
     onWorkflowProgress(workflowId: String!): WorkflowProgressEvent!
+    onChannelPairing(id: ID!): PairingEvent!
   }
 `;

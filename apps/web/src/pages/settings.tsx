@@ -5,6 +5,7 @@ import Button from '../components/common/button';
 import Toggle from '../components/common/toggle';
 import { GateCard } from '../components/common/feature-gate';
 import { useOnboardingStatus } from '../lib/onboarding-context';
+import { SecurityModal } from '../components/settings/security-modal';
 import { TimePicker } from '../components/onboarding/time-picker';
 import { TimezonePicker } from '../components/onboarding/timezone-picker';
 import { ChannelCard } from '../components/channels/channel-card';
@@ -73,12 +74,15 @@ export default function Settings() {
     auditLogging: true,
   });
 
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const closeSecurityModal = useCallback(() => setSecurityOpen(false), []);
+
   const updatePrivacy = (key: keyof typeof privacy) => (value: boolean) => {
     setPrivacy((prev) => ({ ...prev, [key]: value }));
   };
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6 max-w-4xl mx-auto w-full">
+    <div className="flex-1 overflow-auto p-6 max-w-4xl mx-auto w-full flex flex-col gap-6">
       <div className="relative rounded-xl border border-border bg-bg-card">
         <div className="p-5 space-y-4">
           <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">AI Provider</h3>
@@ -101,19 +105,26 @@ export default function Settings() {
         )}
       </div>
 
-      {/* Unified Intelligence Features — gated on Jintel API key */}
+      {/* Daily Insights */}
       <div className="relative rounded-xl border border-border bg-bg-card">
-        {/* Section: Daily Insights */}
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Daily Insights</h3>
           </div>
-          <BriefingEditor disabled={!jintelConfigured} />
+          <BriefingEditor />
         </div>
+        {!jintelConfigured && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-bg-primary/70 backdrop-blur-[3px]">
+            <GateCard
+              requires="jintel"
+              subtitle="Jintel is free to use. Connect it to unlock live market data and analytics."
+            />
+          </div>
+        )}
+      </div>
 
-        <div className="border-t border-border" />
-
-        {/* Section: Channels */}
+      {/* Delivery Channels */}
+      <div className="relative rounded-xl border border-border bg-bg-card">
         <div className="p-5 space-y-4">
           <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Delivery Channels</h3>
           <p className="text-sm text-text-muted">
@@ -121,19 +132,35 @@ export default function Settings() {
           </p>
           <ChannelsSection />
         </div>
+        {!jintelConfigured && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-bg-primary/70 backdrop-blur-[3px]">
+            <GateCard
+              requires="jintel"
+              subtitle="Jintel is free to use. Connect it to unlock live market data and analytics."
+            />
+          </div>
+        )}
+      </div>
 
-        <div className="border-t border-border" />
-
-        {/* Section: Notification Preferences */}
+      {/* Notification Routing */}
+      <div className="relative rounded-xl border border-border bg-bg-card">
         <div className="p-5 space-y-4">
           <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Notification Routing</h3>
           <p className="text-sm text-text-muted">Choose which notifications each channel receives.</p>
           <NotificationPreferencesEditor />
         </div>
+        {!jintelConfigured && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-bg-primary/70 backdrop-blur-[3px]">
+            <GateCard
+              requires="jintel"
+              subtitle="Jintel is free to use. Connect it to unlock live market data and analytics."
+            />
+          </div>
+        )}
+      </div>
 
-        <div className="border-t border-border" />
-
-        {/* Section: Data & Privacy */}
+      {/* Data & Privacy */}
+      <div className="relative rounded-xl border border-border bg-bg-card">
         <div className="p-5 space-y-4">
           <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Data & Privacy</h3>
           <div className="space-y-4">
@@ -152,9 +179,20 @@ export default function Settings() {
               disabled={!jintelConfigured}
             />
           </div>
+          <button
+            onClick={() => setSecurityOpen(true)}
+            className="flex cursor-pointer items-center gap-1 text-sm text-success transition-colors hover:text-success/80"
+          >
+            How Yojin protects your data
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"
+              />
+            </svg>
+          </button>
         </div>
-
-        {/* Locked overlay when Jintel is not configured */}
         {!jintelConfigured && (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-bg-primary/70 backdrop-blur-[3px]">
             <GateCard
@@ -164,6 +202,7 @@ export default function Settings() {
           </div>
         )}
       </div>
+      <SecurityModal open={securityOpen} onClose={closeSecurityModal} />
     </div>
   );
 }
@@ -356,7 +395,7 @@ function ModelPicker() {
 // Briefing schedule editor
 // ---------------------------------------------------------------------------
 
-function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean }) {
+function BriefingEditor() {
   const [result] = useQuery<{ briefingConfig: BriefingConfig | null }>({ query: BRIEFING_CONFIG_QUERY });
   const [, saveBriefing] = useMutation(SAVE_BRIEFING_CONFIG_MUTATION);
 

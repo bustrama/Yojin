@@ -71,6 +71,7 @@ export const PORTFOLIO_QUERY = gql`
       totalDayChangePercent
       timestamp
       platform
+      warnings
       history(days: $historyDays) {
         timestamp
         totalValue
@@ -420,6 +421,34 @@ export const SAVE_NOTIFICATION_PREFERENCES_MUTATION = gql`
   }
 `;
 
+export const INITIATE_CHANNEL_PAIRING_MUTATION = gql`
+  mutation InitiateChannelPairing($id: ID!) {
+    initiateChannelPairing(id: $id) {
+      success
+      error
+      qrData
+    }
+  }
+`;
+
+export const CANCEL_CHANNEL_PAIRING_MUTATION = gql`
+  mutation CancelChannelPairing($id: ID!) {
+    cancelChannelPairing(id: $id) {
+      success
+    }
+  }
+`;
+
+export const ON_CHANNEL_PAIRING_SUBSCRIPTION = gql`
+  subscription OnChannelPairing($id: ID!) {
+    onChannelPairing(id: $id) {
+      status
+      qrData
+      error
+    }
+  }
+`;
+
 export const AI_CONFIG_QUERY = gql`
   query AiConfig {
     aiConfig {
@@ -483,6 +512,7 @@ export const REFRESH_POSITIONS_MUTATION = gql`
       totalPnlPercent
       timestamp
       platform
+      warnings
     }
   }
   ${POSITION_FIELDS}
@@ -519,6 +549,7 @@ export const ADD_MANUAL_POSITION_MUTATION = gql`
       totalPnlPercent
       timestamp
       platform
+      warnings
     }
   }
   ${POSITION_FIELDS}
@@ -537,6 +568,7 @@ export const EDIT_POSITION_MUTATION = gql`
       totalPnlPercent
       timestamp
       platform
+      warnings
     }
   }
   ${POSITION_FIELDS}
@@ -555,6 +587,7 @@ export const REMOVE_POSITION_MUTATION = gql`
       totalPnlPercent
       timestamp
       platform
+      warnings
     }
   }
   ${POSITION_FIELDS}
@@ -737,6 +770,32 @@ export const SIGNALS_QUERY = gql`
       outputType
       groupId
       version
+    }
+  }
+`;
+
+export const SIGNALS_BY_IDS_QUERY = gql`
+  query SignalsByIds($ids: [ID!]!) {
+    signalsByIds(ids: $ids) {
+      id
+      type
+      title
+      content
+      publishedAt
+      confidence
+      tickers
+      sources {
+        id
+        name
+        type
+        reliability
+      }
+      sourceCount
+      link
+      tier1
+      tier2
+      sentiment
+      outputType
     }
   }
 `;
@@ -1135,6 +1194,7 @@ export const ON_PORTFOLIO_UPDATE_SUBSCRIPTION = gql`
       totalDayChangePercent
       timestamp
       platform
+      warnings
     }
   }
   ${POSITION_FIELDS}
@@ -1196,6 +1256,7 @@ export const INTEL_FEED_QUERY = gql`
         publishedAt
         ingestedAt
         confidence
+        link
         sources {
           name
           reliability

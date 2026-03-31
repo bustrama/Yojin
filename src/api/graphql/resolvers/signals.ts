@@ -168,3 +168,9 @@ export async function signalsResolver(
   deduped.sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0));
   return deduped.map(toGql);
 }
+
+export async function signalsByIdsResolver(_parent: unknown, args: { ids: string[] }): Promise<SignalGql[]> {
+  if (!archive || args.ids.length === 0) return [];
+  const signals = await archive.getByIds(args.ids);
+  return signals.map(toGql);
+}

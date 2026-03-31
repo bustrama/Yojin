@@ -84,6 +84,20 @@ export interface NotificationPreferences {
   enabledTypes: string[];
 }
 
+export type PairingStatusCode = 'WAITING_FOR_SCAN' | 'CONNECTED' | 'FAILED' | 'EXPIRED';
+
+export interface PairingResult {
+  success: boolean;
+  error?: string;
+  qrData?: string;
+}
+
+export interface PairingEvent {
+  status: PairingStatusCode;
+  qrData?: string;
+  error?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Activity Log
 // ---------------------------------------------------------------------------
@@ -146,6 +160,7 @@ export interface PortfolioSnapshot {
   totalDayChangePercent: number;
   timestamp: string;
   platform: Platform | null;
+  warnings: string[];
   history: PortfolioHistoryPoint[];
   sectorExposure: SectorWeight[];
 }
@@ -617,6 +632,10 @@ export interface SignalsQueryResult {
   signals: Signal[];
 }
 
+export interface SignalsByIdsQueryResult {
+  signalsByIds: Signal[];
+}
+
 // ---------------------------------------------------------------------------
 // Signal Groups
 // ---------------------------------------------------------------------------
@@ -1045,6 +1064,7 @@ export interface IntelFeedSignal {
   publishedAt: string;
   ingestedAt: string;
   confidence: number;
+  link: string | null;
   sources: { name: string; reliability: number }[];
   tier1: string | null;
   tier2: string | null;

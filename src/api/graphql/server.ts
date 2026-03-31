@@ -12,10 +12,13 @@ import { activityLogQuery } from './resolvers/activity-log.js';
 import { aiConfigQuery, saveAiConfigMutation } from './resolvers/ai-config.js';
 import { alertsQuery, createAlertMutation, dismissAlertMutation } from './resolvers/alerts.js';
 import {
+  cancelChannelPairingMutation,
   connectChannelMutation,
   disconnectChannelMutation,
+  initiateChannelPairingMutation,
   listChannelsQuery,
   notificationPreferencesQuery,
+  onChannelPairingSubscription,
   saveNotificationPreferencesMutation,
   validateChannelTokenMutation,
 } from './resolvers/channels.js';
@@ -100,7 +103,7 @@ import { tickerProfileQuery, tickerProfilesQuery } from './resolvers/profiles.js
 import { riskReportQuery } from './resolvers/risk.js';
 import { assessmentStatusResolver, signalAssessmentsResolver } from './resolvers/signal-assessments.js';
 import { signalGroupFieldResolvers, signalGroupResolver, signalGroupsResolver } from './resolvers/signal-groups.js';
-import { signalsResolver } from './resolvers/signals.js';
+import { signalsByIdsResolver, signalsResolver } from './resolvers/signals.js';
 import { resolveSkill, resolveSkills, resolveToggleSkill } from './resolvers/skills.js';
 import { snapQuery } from './resolvers/snap.js';
 import {
@@ -130,6 +133,7 @@ const schema = createSchema({
       checkDataSourceHealth: checkDataSourceHealthResolver,
       checkCliCommands: checkCliCommandsResolver,
       signals: signalsResolver,
+      signalsByIds: signalsByIdsResolver,
       signalGroups: signalGroupsResolver,
       curatedSignals: curatedSignalsResolver,
       curationStatus: curationStatusResolver,
@@ -206,6 +210,8 @@ const schema = createSchema({
       connectChannel: connectChannelMutation,
       disconnectChannel: disconnectChannelMutation,
       validateChannelToken: validateChannelTokenMutation,
+      initiateChannelPairing: initiateChannelPairingMutation,
+      cancelChannelPairing: cancelChannelPairingMutation,
       saveNotificationPreferences: saveNotificationPreferencesMutation,
       completeOnboarding: completeOnboardingMutation,
       resetOnboarding: resetOnboardingMutation,
@@ -229,6 +235,7 @@ const schema = createSchema({
       onChatMessage: onChatMessageSubscription,
       onConnectionStatus: onConnectionStatusSubscription,
       onWorkflowProgress: onWorkflowProgressSubscription,
+      onChannelPairing: onChannelPairingSubscription,
     },
   },
 });

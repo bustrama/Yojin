@@ -81,6 +81,7 @@ export interface PortfolioSnapshot {
   totalDayChangePercent: number;
   timestamp: string;
   platform: Platform | null;
+  warnings?: string[];
 }
 
 export interface PortfolioHistoryPoint {
