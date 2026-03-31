@@ -69,11 +69,12 @@ export function SecurityModal({ open, onClose }: SecurityModalProps) {
     <Modal
       open={open}
       onClose={onClose}
-      maxWidth="max-w-2xl"
+      maxWidth="max-w-3xl"
       wrapperClassName="pl-(--spacing-sidebar-width)"
+      className="min-h-[70vh] px-10 py-8 flex items-center"
       aria-labelledby="security-modal-title"
     >
-      <div className="space-y-6">
+      <div className="mx-auto max-w-2xl space-y-6">
         {/* Intro */}
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 mt-0.5 text-accent-primary">
