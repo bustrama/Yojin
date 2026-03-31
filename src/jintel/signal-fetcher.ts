@@ -154,7 +154,7 @@ function isEntityNameTitle(title: string, entityName: string | undefined): boole
   return cleaned.toLowerCase() === entityName.toLowerCase();
 }
 
-function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[] {
+export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[] {
   // Day-precision timestamp — stable hash prevents duplicate signals across re-runs
   const now = new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z';
   const signals: RawSignalInput[] = [];
@@ -231,7 +231,7 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
       content: filing.description ?? undefined,
       link: filing.url,
       publishedAt: filing.date.includes('T') ? filing.date : `${filing.date}T00:00:00Z`,
-      type: 'FUNDAMENTAL',
+      type: 'FILINGS',
       tickers,
       confidence: 0.95,
     });
@@ -271,6 +271,7 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
       content: article.snippet ?? undefined,
       link: article.link,
       publishedAt: article.date ?? now,
+      type: 'NEWS',
       tickers,
       confidence: 0.8,
       metadata: { source: article.source, link: article.link },
@@ -294,6 +295,7 @@ function enrichmentToSignals(entity: Entity, tickers: string[]): RawSignalInput[
       content: article.text ?? undefined,
       link: article.url,
       publishedAt: article.publishedDate ?? now,
+      type: 'NEWS',
       tickers,
       confidence: Math.min(0.95, article.score ?? 0.7),
       metadata: { author: article.author, score: article.score },
