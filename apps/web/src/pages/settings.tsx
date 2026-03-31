@@ -107,7 +107,7 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-medium uppercase tracking-wider text-text-secondary">Daily Insights</h3>
           </div>
-          <BriefingEditor disabled={!jintelConfigured} />
+          <BriefingEditor />
         </div>
         {!jintelConfigured && (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-bg-primary/70 backdrop-blur-[3px]">
@@ -377,7 +377,7 @@ function ModelPicker() {
 // Briefing schedule editor
 // ---------------------------------------------------------------------------
 
-function BriefingEditor({ disabled: _disabled = false }: { disabled?: boolean }) {
+function BriefingEditor() {
   const [result] = useQuery<{ briefingConfig: BriefingConfig | null }>({ query: BRIEFING_CONFIG_QUERY });
   const [, saveBriefing] = useMutation(SAVE_BRIEFING_CONFIG_MUTATION);
 
