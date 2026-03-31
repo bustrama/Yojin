@@ -85,8 +85,8 @@ export async function runMicroResearch(
     const expiresAt = new Date(Date.now() + ACTION_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
     const now = new Date().toISOString();
 
-    for (const actionText of insight.assetActions) {
-      await deps.actionStore.create({
+    for (const actionText of insight.assetActions.filter((t) => t.trim().length > 0)) {
+      const result = await deps.actionStore.create({
         id: randomUUID(),
         what: actionText,
         why: `Observation from ${ticker} research: ${insight.thesis.slice(0, 100)}`,
@@ -95,6 +95,9 @@ export async function runMicroResearch(
         expiresAt,
         createdAt: now,
       });
+      if (!result.success) {
+        logger.warn('Failed to create action from micro observation', { symbol: ticker, error: result.error });
+      }
     }
   }
 

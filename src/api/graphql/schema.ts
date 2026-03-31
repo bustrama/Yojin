@@ -802,7 +802,7 @@ export const typeDefs = /* GraphQL */ `
     keyDevelopments: [String!]!
     risks: [String!]!
     opportunities: [String!]!
-    sentiment: String!
+    sentiment: SignalSentiment!
     signalCount: Int!
     assetSnap: String!
     assetActions: [String!]!

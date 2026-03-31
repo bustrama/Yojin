@@ -440,7 +440,10 @@ export function registerProcessInsightsWorkflow(orchestrator: Orchestrator, opti
           // 3. Derive a snap brief from the latest insight report
           if (latestReport && snapStore) {
             try {
-              const snap = snapFromInsight(latestReport);
+              const microInsights = macroGathererOptions?.microInsightStore
+                ? await macroGathererOptions.microInsightStore.getAllLatest()
+                : undefined;
+              const snap = snapFromInsight(latestReport, microInsights ? { microInsights } : undefined);
               await snapStore.save(snap);
               logger.info('Snap brief derived from insight report', { snapId: snap.id });
             } catch (err) {

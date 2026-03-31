@@ -1,7 +1,7 @@
 /**
  * Lightweight job scheduler — runs a unified intelligence pipeline:
  *
- * 1. Micro research: per-asset AI analysis every 5 minutes (Haiku LLM call).
+ * 1. Micro research: per-asset AI analysis every 5 minutes (Sonnet LLM call).
  *    Triggered immediately on position/watchlist add, then on a 5-min cadence.
  * 2. Every 15 minutes: fetch data sources → Tier 1 curation → skill evaluation.
  * 3. Macro research: portfolio-wide multi-agent analysis triggered when enough
@@ -146,7 +146,7 @@ export interface SchedulerOptions {
   notificationBus?: NotificationBus;
 
   // --- Micro research dependencies ---
-  /** Provider router — for micro research Haiku LLM calls. */
+  /** Provider router — for micro research LLM calls. */
   providerRouter?: ProviderRouter;
   /** Micro insight store — per-ticker JSONL storage for micro research outputs. */
   microInsightStore?: MicroInsightStore;
@@ -285,7 +285,7 @@ export class Scheduler {
   }
 
   // ---------------------------------------------------------------------------
-  // Micro research — per-asset AI analysis (Haiku LLM call)
+  // Micro research — per-asset AI analysis (Sonnet LLM call)
   // ---------------------------------------------------------------------------
 
   /**
@@ -389,7 +389,11 @@ export class Scheduler {
     const { providerRouter, microInsightStore } = this;
     if (!providerRouter || !microInsightStore || assets.length === 0) return;
     if (this.microRunning) {
-      logger.info('Skipping micro research — already running', { assets: assets.map((a) => a.symbol) });
+      // Re-queue tickers so they're picked up on the next micro tick
+      for (const a of assets) this.pendingMicroTickers.set(a.symbol, a.source);
+      logger.info('Micro research deferred — already running, tickers re-queued', {
+        assets: assets.map((a) => a.symbol),
+      });
       return;
     }
 
@@ -503,7 +507,6 @@ export class Scheduler {
       }
 
       // Fetch Jintel signals for ALL portfolio tickers
-      let totalJintelIngested = 0;
       const jintelClient = this.getJintelClient?.();
       if (jintelClient && this.signalIngestor) {
         const store = this.snapshotStore ?? this.curationPipeline.snapshotStore;
@@ -512,7 +515,6 @@ export class Scheduler {
           const allTickers = snapshot.positions.map((p) => p.symbol);
           const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
           const jintelResult = await fetchJintelSignals(jintelClient, this.signalIngestor, allTickers, { since });
-          totalJintelIngested = jintelResult.ingested;
           logger.info('Macro flow Jintel fetch complete', {
             ingested: jintelResult.ingested,
             duplicates: jintelResult.duplicates,
@@ -533,9 +535,9 @@ export class Scheduler {
       await this.evaluateSkillsAfterCuration();
 
       // Trigger insights if enough new data
-      const totalCurated = result.signalsCurated + (totalJintelIngested > 0 ? totalJintelIngested : 0);
-      if (totalCurated >= MIN_SIGNALS_FOR_INSIGHTS) {
-        await this.maybeRunInsights(totalCurated);
+      // signalsCurated already includes Jintel signals that passed curation — don't double-count
+      if (result.signalsCurated >= MIN_SIGNALS_FOR_INSIGHTS) {
+        await this.maybeRunInsights(result.signalsCurated);
       }
     } catch (err) {
       logger.error('Macro flow failed', { error: err });

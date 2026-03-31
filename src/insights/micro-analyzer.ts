@@ -75,7 +75,7 @@ export async function analyzeTicker(
     const analysis = parsed as Record<string, unknown>;
 
     const insight = MicroInsightSchema.parse({
-      id: `micro-${randomUUID().slice(0, 8)}`,
+      id: `micro-${randomUUID()}`,
       symbol: brief.symbol,
       name: brief.name,
       source: options.source,
@@ -100,7 +100,7 @@ export async function analyzeTicker(
     // Fallback: return a neutral micro insight on parse failure
     logger.warn('Failed to parse micro analysis — using fallback', { symbol: brief.symbol, error: String(err) });
     return {
-      id: `micro-${randomUUID().slice(0, 8)}`,
+      id: `micro-${randomUUID()}`,
       symbol: brief.symbol,
       name: brief.name,
       source: options.source,

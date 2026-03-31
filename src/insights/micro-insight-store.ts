@@ -72,11 +72,29 @@ export class MicroInsightStore {
       return result;
     }
 
-    for (const entry of entries) {
-      if (!entry.endsWith('.jsonl')) continue;
-      const symbol = entry.replace('.jsonl', '');
-      const latest = await this.getLatest(symbol);
-      if (latest) result.set(symbol, latest);
+    // Read all files in parallel to avoid N+1 sequential reads
+    const jsonlFiles = entries.filter((e) => e.endsWith('.jsonl'));
+    const reads = await Promise.allSettled(
+      jsonlFiles.map(async (entry) => {
+        const symbol = entry.replace('.jsonl', '');
+        const filePath = join(this.dir, entry);
+        const raw = await readFile(filePath, 'utf-8');
+        return { symbol, raw };
+      }),
+    );
+
+    for (const read of reads) {
+      if (read.status !== 'fulfilled') continue;
+      const { symbol, raw } = read.value;
+      const lines = raw.trim().split('\n').filter(Boolean);
+      const lastLine = lines[lines.length - 1];
+      if (!lastLine) continue;
+      try {
+        const parsed: unknown = JSON.parse(lastLine);
+        result.set(symbol, MicroInsightSchema.parse(parsed));
+      } catch (err) {
+        logger.warn('Failed to parse micro insight in getAllLatest', { symbol, error: String(err) });
+      }
     }
 
     return result;
