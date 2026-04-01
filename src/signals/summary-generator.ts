@@ -129,7 +129,7 @@ Respond with a JSON object only — no markdown, no extra text:
 
 Set "isIrrelevant" to true if the content is NOT about finance, markets, or the company/asset the ticker represents. Examples: music, entertainment, sports, recipes, games, or scraped website boilerplate (navigation menus, login pages, cookie notices).
 
-Set "isFalseMatch" to true if the tagged ticker(s) do NOT actually relate to the content. Examples: an Apple Music page tagged under a stock ticker, a generic article mentioning "apple" the fruit, or a news article about a person whose name matches a ticker symbol.
+Set "isFalseMatch" to true if the tagged ticker(s) do NOT actually relate to the content, OR if the data is clearly anomalous for the asset. Examples: an Apple Music page tagged under a stock ticker, a generic article mentioning "apple" the fruit, a news article about a person whose name matches a ticker symbol, or a price/quote that is obviously wrong for the asset (e.g. ETH at $19 when Ethereum trades in the thousands, BTC at $50 when Bitcoin trades in the tens of thousands).
 
 Set "qualityScore" (0-100) based on how useful this signal is for investment decisions:
 - 90-100: Direct material impact on the asset (earnings, FDA approval, merger)
