@@ -4,6 +4,7 @@
  * Delegates to WatchlistStore for persistence and WatchlistEnrichment for quote data.
  */
 
+import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import type { WatchlistEnrichment } from '../../../watchlist/watchlist-enrichment.js';
 import type { WatchlistStore } from '../../../watchlist/watchlist-store.js';
 import type { AssetClass } from '../types.js';
@@ -11,6 +12,7 @@ import type { AssetClass } from '../types.js';
 let store: WatchlistStore | undefined;
 let enrichment: WatchlistEnrichment | undefined;
 let watchlistChangedCallback: ((tickers: string[]) => void) | undefined;
+let snapshotStore: PortfolioSnapshotStore | undefined;
 
 export function setWatchlistStore(s: WatchlistStore): void {
   store = s;
@@ -22,6 +24,10 @@ export function setWatchlistEnrichment(e: WatchlistEnrichment): void {
 
 export function setWatchlistChangedCallback(cb: (tickers: string[]) => void): void {
   watchlistChangedCallback = cb;
+}
+
+export function setWatchlistSnapshotStore(s: PortfolioSnapshotStore): void {
+  snapshotStore = s;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +67,13 @@ export async function addToWatchlistMutation(
   args: { symbol: string; name: string; assetClass: AssetClass },
 ) {
   if (!store) return { success: false, error: 'Watchlist not initialized' };
+
+  if (snapshotStore) {
+    const snapshot = await snapshotStore.getLatest();
+    if (snapshot?.positions.some((p) => p.symbol.toUpperCase() === args.symbol.toUpperCase())) {
+      return { success: false, error: 'Symbol already in portfolio' };
+    }
+  }
 
   const result = await store.add({
     symbol: args.symbol.toUpperCase(),

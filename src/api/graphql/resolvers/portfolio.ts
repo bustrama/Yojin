@@ -10,6 +10,7 @@ import type { JintelClient, MarketQuote, TickerPriceHistory } from '@yojinhq/jin
 import { getLogger } from '../../../logging/index.js';
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import type { ConnectionManager } from '../../../scraper/connection-manager.js';
+import type { WatchlistStore } from '../../../watchlist/watchlist-store.js';
 import { pubsub } from '../pubsub.js';
 import type {
   AssetClass,
@@ -26,6 +27,7 @@ let snapshotStore: PortfolioSnapshotStore | undefined;
 let connectionManager: ConnectionManager | undefined;
 let jintelClient: JintelClient | undefined;
 let onPortfolioChangedCb: ((tickers: string[]) => void) | undefined;
+let portfolioWatchlistStore: WatchlistStore | undefined;
 
 /** Register a callback fired after any position mutation (add/edit/remove). */
 export function setPortfolioChangedCallback(cb: (tickers: string[]) => void): void {
@@ -34,6 +36,10 @@ export function setPortfolioChangedCallback(cb: (tickers: string[]) => void): vo
 
 export function setPortfolioJintelClient(c: JintelClient | undefined): void {
   jintelClient = c;
+}
+
+export function setPortfolioWatchlistStore(s: WatchlistStore): void {
+  portfolioWatchlistStore = s;
 }
 
 // ---------------------------------------------------------------------------
@@ -444,6 +450,15 @@ export async function addManualPositionMutation(
   const enriched = await enrichWithLiveQuotes(snapshot);
   pubsub.publish('portfolioUpdate', enriched);
   onPortfolioChangedCb?.([newPosition.symbol]);
+
+  if (portfolioWatchlistStore?.has(newPosition.symbol)) {
+    try {
+      await portfolioWatchlistStore.remove(newPosition.symbol);
+    } catch (err) {
+      log.warn('Failed to auto-remove from watchlist', { symbol: newPosition.symbol, error: err });
+    }
+  }
+
   return enriched;
 }
 

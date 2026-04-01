@@ -801,8 +801,8 @@ export const SIGNALS_BY_IDS_QUERY = gql`
 `;
 
 export const CURATED_SIGNALS_QUERY = gql`
-  query CuratedSignals($ticker: String, $since: String, $limit: Int) {
-    curatedSignals(ticker: $ticker, since: $since, limit: $limit) {
+  query CuratedSignals($ticker: String, $since: String, $limit: Int, $feedTarget: FeedTarget) {
+    curatedSignals(ticker: $ticker, since: $since, limit: $limit, feedTarget: $feedTarget) {
       signal {
         id
         type
@@ -836,6 +836,7 @@ export const CURATED_SIGNALS_QUERY = gql`
         compositeScore
       }
       curatedAt
+      feedTarget
     }
   }
 `;
@@ -1244,8 +1245,8 @@ export const ON_WORKFLOW_PROGRESS_SUBSCRIPTION = gql`
 // ---------------------------------------------------------------------------
 
 export const INTEL_FEED_QUERY = gql`
-  query IntelFeed($limit: Int, $offset: Int) {
-    curatedSignals(limit: $limit, offset: $offset) {
+  query IntelFeed($limit: Int, $offset: Int, $feedTarget: FeedTarget) {
+    curatedSignals(limit: $limit, offset: $offset, feedTarget: $feedTarget) {
       signal {
         id
         title
@@ -1269,6 +1270,7 @@ export const INTEL_FEED_QUERY = gql`
         compositeScore
       }
       curatedAt
+      feedTarget
       verdict
       thesisAlignment
       actionability

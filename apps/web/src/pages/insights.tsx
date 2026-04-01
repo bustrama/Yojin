@@ -227,7 +227,11 @@ function InsightsContent() {
 
   // Curated signals — one query, all tickers, 7-day window; filter client-side
   const curatedVars: CuratedSignalsVariables = useMemo(
-    () => ({ limit: 500, since: new Date(Date.now() - 7 * 86_400_000).toISOString() }),
+    () => ({
+      limit: 500,
+      since: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      feedTarget: 'PORTFOLIO' as const,
+    }),
     [],
   );
   const [curatedResult, reexecuteCurated] = useQuery<CuratedSignalsQueryResult, CuratedSignalsVariables>({

@@ -59,6 +59,7 @@ export type SignalSentiment = 'BULLISH' | 'BEARISH' | 'MIXED' | 'NEUTRAL';
 export type SourceType = 'API' | 'RSS' | 'SCRAPER' | 'ENRICHMENT';
 export type SignalVerdict = 'CRITICAL' | 'IMPORTANT' | 'NOISE';
 export type ThesisAlignment = 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL';
+export type FeedTarget = 'PORTFOLIO' | 'WATCHLIST';
 
 // ---------------------------------------------------------------------------
 // Channels
@@ -1007,6 +1008,7 @@ export interface CuratedSignal {
   signal: Signal;
   scores: PortfolioRelevanceScore[];
   curatedAt: string;
+  feedTarget: FeedTarget;
 }
 
 export interface CuratedSignalsQueryResult {
@@ -1017,6 +1019,7 @@ export interface CuratedSignalsVariables {
   ticker?: string;
   since?: string;
   limit?: number;
+  feedTarget?: FeedTarget;
 }
 
 export interface RunFullCurationMutationResult {
@@ -1075,6 +1078,7 @@ export interface IntelFeedCuratedSignal {
   signal: IntelFeedSignal;
   scores: { ticker: string; compositeScore: number }[];
   curatedAt: string;
+  feedTarget: FeedTarget;
   verdict: 'CRITICAL' | 'IMPORTANT' | 'NOISE' | null;
   thesisAlignment: 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL' | null;
   actionability: number | null;
@@ -1087,6 +1091,7 @@ export interface IntelFeedQueryResult {
 export interface IntelFeedQueryVariables {
   limit?: number;
   offset?: number;
+  feedTarget?: FeedTarget;
 }
 
 export interface RefreshIntelFeedResult {

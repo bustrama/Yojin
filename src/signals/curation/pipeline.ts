@@ -10,6 +10,7 @@
 import type { AssetClass } from '../../api/graphql/types.js';
 import { createSubsystemLogger } from '../../logging/logger.js';
 import type { PortfolioSnapshotStore } from '../../portfolio/snapshot-store.js';
+import type { WatchlistEntry } from '../../watchlist/types.js';
 import type { SignalArchive } from '../archive.js';
 import type { PortfolioRelevanceScore, Signal, SignalOutputType, SignalType } from '../types.js';
 import type { CuratedSignalStore } from './curated-signal-store.js';
@@ -61,6 +62,7 @@ export interface CurationPipelineOptions {
   curatedStore: CuratedSignalStore;
   snapshotStore: PortfolioSnapshotStore;
   config: CurationConfig;
+  watchlistEntries?: WatchlistEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +186,49 @@ export function classifyOutputType(signal: Signal): SignalOutputType {
 }
 
 // ---------------------------------------------------------------------------
+// Shared rank, trim, and title-dedup logic
+// ---------------------------------------------------------------------------
+
+function rankTrimAndDedup(curatedSignals: CuratedSignal[], topNPerPosition: number): CuratedSignal[] {
+  const scoresByTicker = new Map<string, Array<{ signalId: string; compositeScore: number }>>();
+  for (const cs of curatedSignals) {
+    for (const score of cs.scores) {
+      const group = scoresByTicker.get(score.ticker);
+      if (group) {
+        group.push({ signalId: cs.signal.id, compositeScore: score.compositeScore });
+      } else {
+        scoresByTicker.set(score.ticker, [{ signalId: cs.signal.id, compositeScore: score.compositeScore }]);
+      }
+    }
+  }
+
+  const keptIds = new Set<string>();
+  for (const [, entries] of scoresByTicker) {
+    entries.sort((a, b) => b.compositeScore - a.compositeScore);
+    for (const entry of entries.slice(0, topNPerPosition)) {
+      keptIds.add(entry.signalId);
+    }
+  }
+
+  const ranked = curatedSignals.filter((cs) => keptIds.has(cs.signal.id));
+
+  const byTitle = new Map<string, CuratedSignal>();
+  for (const cs of ranked) {
+    const key = cs.signal.title.trim().toLowerCase();
+    const existing = byTitle.get(key);
+    if (!existing) {
+      byTitle.set(key, cs);
+    } else {
+      const maxExisting = Math.max(...existing.scores.map((s) => s.compositeScore));
+      const maxCurrent = Math.max(...cs.scores.map((s) => s.compositeScore));
+      if (maxCurrent > maxExisting) byTitle.set(key, cs);
+    }
+  }
+
+  return [...byTitle.values()];
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline
 // ---------------------------------------------------------------------------
 
@@ -193,13 +238,18 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
 
   // 0. Get current portfolio
   const snapshot = await snapshotStore.getLatest();
-  if (!snapshot || snapshot.positions.length === 0) {
-    logger.info('No portfolio — skipping curation');
+  const hasPortfolio = snapshot && snapshot.positions.length > 0;
+  const hasWatchlist = options.watchlistEntries && options.watchlistEntries.length > 0;
+
+  if (!hasPortfolio && !hasWatchlist) {
+    logger.info('No portfolio or watchlist — skipping curation');
     return { signalsProcessed: 0, signalsCurated: 0, signalsDropped: 0, durationMs: Date.now() - start };
   }
 
-  const portfolioTickers = new Set(snapshot.positions.map((p) => p.symbol));
-  const positionByTicker = new Map(snapshot.positions.map((p) => [p.symbol, p]));
+  const positions = snapshot?.positions ?? [];
+  const portfolioTickers = new Set(positions.map((p) => p.symbol));
+  const positionByTicker = new Map(positions.map((p) => [p.symbol, p]));
+  const totalValue = snapshot?.totalValue ?? 0;
 
   // 1. LOAD — incremental via watermark
   // First run: 48-hour lookback (by publishedAt). Subsequent runs: delta from last watermark (by ingestedAt).
@@ -209,15 +259,25 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
   const sinceIngested = watermark ? watermark.lastSignalIngestedAt : undefined;
   const since = watermark ? undefined : new Date(Date.now() - FORTY_EIGHT_HOURS_MS).toISOString();
 
-  const rawSignals = await signalArchive.query({ tickers: [...portfolioTickers], since, sinceIngested });
+  const rawSignals =
+    portfolioTickers.size > 0
+      ? await signalArchive.query({ tickers: [...portfolioTickers], since, sinceIngested })
+      : [];
 
-  if (rawSignals.length === 0) {
+  if (rawSignals.length === 0 && !hasWatchlist) {
     logger.info('No new signals to curate');
     return { signalsProcessed: 0, signalsCurated: 0, signalsDropped: 0, durationMs: Date.now() - start };
   }
 
   // 1b. DEDUP — load already-curated signal IDs to skip re-processing
-  const alreadyCurated = await curatedStore.queryByTickers([...portfolioTickers], { limit: 10000 });
+  const allTickers = [...portfolioTickers];
+  if (hasWatchlist && options.watchlistEntries) {
+    for (const e of options.watchlistEntries) {
+      const sym = e.symbol.toUpperCase();
+      if (!portfolioTickers.has(sym)) allTickers.push(sym);
+    }
+  }
+  const alreadyCurated = allTickers.length > 0 ? await curatedStore.queryByTickers(allTickers, { limit: 10000 }) : [];
   const alreadyCuratedIds = new Set(alreadyCurated.map((cs) => cs.signal.id));
 
   // 2. FILTER — confidence, spam, portfolio match, already-curated
@@ -254,9 +314,6 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
   // Build recent title set for novelty scoring — titles of already-curated signals
   const recentTitles = new Set(alreadyCurated.map((cs) => cs.signal.title.trim().toLowerCase()));
 
-  // Group scores by ticker for rank/trim
-  const scoresByTicker = new Map<string, Array<{ signal: Signal; score: PortfolioRelevanceScore }>>();
-
   for (const signal of filtered) {
     const scores: PortfolioRelevanceScore[] = [];
     const reliability = computeSourceReliability(signal);
@@ -268,7 +325,7 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
       const position = positionByTicker.get(asset.ticker);
       if (!position) continue;
 
-      const exposure = computeExposureWeight(position.marketValue, snapshot.totalValue);
+      const exposure = computeExposureWeight(position.marketValue, totalValue);
       const typeRel = computeTypeRelevance(signal.type, position.assetClass);
       const composite = computeCompositeScore(
         exposure,
@@ -289,14 +346,6 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
       };
 
       scores.push(relevanceScore);
-
-      // Track per-ticker for ranking
-      const tickerGroup = scoresByTicker.get(asset.ticker);
-      if (tickerGroup) {
-        tickerGroup.push({ signal, score: relevanceScore });
-      } else {
-        scoresByTicker.set(asset.ticker, [{ signal, score: relevanceScore }]);
-      }
     }
 
     if (scores.length > 0) {
@@ -308,50 +357,21 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
         signal: classified,
         scores,
         curatedAt: new Date().toISOString(),
+        feedTarget: 'PORTFOLIO',
       });
     }
   }
 
-  // 4. RANK & TRIM — top N per position, then deduplicate
-  const keptSignalIds = new Set<string>();
+  // 4. RANK & TRIM & TITLE DEDUP
+  const rankedDeduped = rankTrimAndDedup(curatedSignals, config.topNPerPosition);
 
-  for (const [, entries] of scoresByTicker) {
-    // Sort by composite score descending (stable sort)
-    entries.sort((a, b) => b.score.compositeScore - a.score.compositeScore);
-
-    // Keep top N
-    const topN = entries.slice(0, config.topNPerPosition);
-    for (const entry of topN) {
-      keptSignalIds.add(entry.signal.id);
-    }
-  }
-
-  const rankedCurated = curatedSignals.filter((cs) => keptSignalIds.has(cs.signal.id));
-
-  // 4b. TITLE DEDUP — keep only the highest-scoring signal per normalized title.
-  // Prevents near-identical signals (same headline from different sources/runs) from cluttering the feed.
-  const byTitle = new Map<string, CuratedSignal>();
-  for (const cs of rankedCurated) {
-    const key = cs.signal.title.trim().toLowerCase();
-    const existing = byTitle.get(key);
-    if (!existing) {
-      byTitle.set(key, cs);
-    } else {
-      // Keep the one with the higher max composite score
-      const maxExisting = Math.max(...existing.scores.map((s) => s.compositeScore));
-      const maxCurrent = Math.max(...cs.scores.map((s) => s.compositeScore));
-      if (maxCurrent > maxExisting) {
-        byTitle.set(key, cs);
-      }
-    }
-  }
   // 4c. CROSS-TYPE EVENT GROUPING — when the same ticker has both a price-move signal
   // (TECHNICAL from jintel-market) and a news/fundamental signal on the same day,
   // the price move is redundant — the news explains the move. Drop the price-move
   // signal if a more informative signal exists for the same ticker+day.
   const REDUNDANT_SOURCES = new Set(['jintel-market']); // price-move signals
   const tickerDayHasExplanation = new Set<string>();
-  for (const cs of byTitle.values()) {
+  for (const cs of rankedDeduped) {
     if (!cs.signal.sources.some((s) => REDUNDANT_SOURCES.has(s.id))) {
       const day = cs.signal.publishedAt.slice(0, 10);
       for (const score of cs.scores) {
@@ -359,36 +379,168 @@ export async function runCurationPipeline(options: CurationPipelineOptions): Pro
       }
     }
   }
-  const finalCurated = [...byTitle.values()].filter((cs) => {
+  const finalCurated = rankedDeduped.filter((cs) => {
     if (!cs.signal.sources.some((s) => REDUNDANT_SOURCES.has(s.id))) return true;
     // Drop price-move signal if there's already a news/fundamental signal for same ticker+day
     const day = cs.signal.publishedAt.slice(0, 10);
     return !cs.scores.some((score) => tickerDayHasExplanation.has(`${score.ticker}|${day}`));
   });
 
-  // 5. STORE — write curated signals + update watermark
   await curatedStore.writeBatch(finalCurated);
 
-  // Find the latest ingestedAt for watermark
-  const latestIngestedAt = rawSignals.reduce(
-    (latest, s) => (s.ingestedAt > latest ? s.ingestedAt : latest),
-    watermark?.lastSignalIngestedAt ?? rawSignals[0].ingestedAt,
-  );
+  // Prevent multi-ticker signals from being re-curated as WATCHLIST
+  for (const cs of finalCurated) {
+    alreadyCuratedIds.add(cs.signal.id);
+  }
 
-  await curatedStore.saveWatermark({
-    lastRunAt: new Date().toISOString(),
-    lastSignalIngestedAt: latestIngestedAt,
-    signalsProcessed: rawSignals.length,
-    signalsCurated: finalCurated.length,
-  });
+  const watchlistResult = options.watchlistEntries
+    ? await curateWatchlistSignals({
+        watchlistEntries: options.watchlistEntries,
+        portfolioTickers,
+        signalArchive,
+        curatedStore,
+        config,
+        since,
+        sinceIngested,
+        alreadyCuratedIds,
+        spamRegexes,
+      })
+    : { curated: [], rawCount: 0 };
+
+  if (watchlistResult.curated.length > 0) {
+    await curatedStore.writeBatch(watchlistResult.curated);
+  }
+
+  const totalProcessed = rawSignals.length + watchlistResult.rawCount;
+  const totalCurated = finalCurated.length + watchlistResult.curated.length;
+
+  if (totalProcessed > 0) {
+    const latestIngestedAt =
+      rawSignals.length > 0
+        ? rawSignals.reduce(
+            (latest, s) => (s.ingestedAt > latest ? s.ingestedAt : latest),
+            watermark?.lastSignalIngestedAt ?? rawSignals[0].ingestedAt,
+          )
+        : (watermark?.lastSignalIngestedAt ?? new Date().toISOString());
+
+    await curatedStore.saveWatermark({
+      lastRunAt: new Date().toISOString(),
+      lastSignalIngestedAt: latestIngestedAt,
+      signalsProcessed: totalProcessed,
+      signalsCurated: totalCurated,
+    });
+  }
 
   const result: CurationRunResult = {
-    signalsProcessed: rawSignals.length,
-    signalsCurated: finalCurated.length,
-    signalsDropped: rawSignals.length - finalCurated.length,
+    signalsProcessed: totalProcessed,
+    signalsCurated: totalCurated,
+    signalsDropped: totalProcessed - totalCurated,
     durationMs: Date.now() - start,
   };
 
-  logger.info('Curation pipeline complete', result);
+  logger.info('Curation pipeline complete', { ...result, watchlistCurated: watchlistResult.curated.length });
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Watchlist curation — high-signal only (grouped signals, no exposure weight)
+// ---------------------------------------------------------------------------
+
+interface WatchlistCurationOptions {
+  watchlistEntries: WatchlistEntry[];
+  portfolioTickers: Set<string>;
+  signalArchive: SignalArchive;
+  curatedStore: CuratedSignalStore;
+  config: CurationConfig;
+  since?: string;
+  sinceIngested?: string;
+  alreadyCuratedIds: Set<string>;
+  spamRegexes: RegExp[];
+}
+
+interface WatchlistCurationResult {
+  curated: CuratedSignal[];
+  rawCount: number;
+}
+
+async function curateWatchlistSignals(opts: WatchlistCurationOptions): Promise<WatchlistCurationResult> {
+  const watchlistOnly = opts.watchlistEntries.filter((e) => !opts.portfolioTickers.has(e.symbol.toUpperCase()));
+  if (watchlistOnly.length === 0) return { curated: [], rawCount: 0 };
+
+  const watchlistTickers = new Set(watchlistOnly.map((e) => e.symbol.toUpperCase()));
+  const assetClassByTicker = new Map(watchlistOnly.map((e) => [e.symbol.toUpperCase(), e.assetClass]));
+
+  const rawSignals = await opts.signalArchive.query({
+    tickers: [...watchlistTickers],
+    since: opts.since,
+    sinceIngested: opts.sinceIngested,
+  });
+
+  if (rawSignals.length === 0) return { curated: [], rawCount: 0 };
+
+  const now = Date.now();
+  const recentTitles = new Set<string>();
+  const curatedSignals: CuratedSignal[] = [];
+
+  const filtered = rawSignals.filter((signal) => {
+    if (opts.alreadyCuratedIds.has(signal.id)) return false;
+    if (signal.sources.some((s) => DATA_SNAPSHOT_SOURCES.has(s.id))) return false;
+    if (signal.confidence < opts.config.minConfidence) return false;
+    if (opts.spamRegexes.some((rx) => rx.test(signal.title))) return false;
+    const bodyText = [signal.content, signal.tier1, signal.tier2].filter(Boolean).join(' ');
+    if (JUNK_CONTENT_RE.test(bodyText)) return false;
+    if (!signal.assets.some((a) => watchlistTickers.has(a.ticker))) return false;
+    // Noise gate: only signals that are part of a causal chain (signal group)
+    if (!signal.groupId) return false;
+    return true;
+  });
+
+  for (const signal of filtered) {
+    const scores: PortfolioRelevanceScore[] = [];
+    const reliability = computeSourceReliability(signal);
+    const recency = computeRecencyFactor(signal.publishedAt, now);
+    const contentQuality = computeContentQuality(signal);
+    const novelty = computeNoveltyFactor(signal, recentTitles);
+
+    for (const asset of signal.assets) {
+      if (!watchlistTickers.has(asset.ticker)) continue;
+      const assetClass = assetClassByTicker.get(asset.ticker) ?? 'OTHER';
+      const typeRel = computeTypeRelevance(signal.type, assetClass);
+      const composite = computeCompositeScore(
+        0,
+        typeRel,
+        recency,
+        reliability,
+        opts.config.weights,
+        contentQuality,
+        novelty,
+      );
+
+      scores.push({
+        signalId: signal.id,
+        ticker: asset.ticker,
+        exposureWeight: 0,
+        typeRelevance: Number(typeRel.toFixed(4)),
+        compositeScore: Number(composite.toFixed(4)),
+      });
+    }
+
+    if (scores.length > 0) {
+      const outputType = classifyOutputType(signal);
+      const classified = outputType !== signal.outputType ? { ...signal, outputType } : signal;
+      curatedSignals.push({
+        signal: classified,
+        scores,
+        curatedAt: new Date().toISOString(),
+        feedTarget: 'WATCHLIST',
+      });
+      recentTitles.add(signal.title.trim().toLowerCase());
+    }
+  }
+
+  const curated = rankTrimAndDedup(curatedSignals, opts.config.topNPerPosition);
+  if (curated.length > 0) {
+    logger.info('Watchlist curation pass', { signals: curated.length, tickers: [...watchlistTickers] });
+  }
+  return { curated, rawCount: rawSignals.length };
 }
