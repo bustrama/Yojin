@@ -52,7 +52,7 @@ const SCALE_CONFIG: Record<Scale, { interval: string; range: string }> = {
   '1h': { interval: '1h', range: '5d' },
   '1d': { interval: '1d', range: '3m' },
   '1wk': { interval: '1wk', range: '1y' },
-  '1mo': { interval: '1mo', range: '5y' },
+  '1mo': { interval: '1mo', range: '1y' },
 };
 
 function isIntraday(scale: Scale): boolean {
@@ -209,6 +209,8 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
 
   const isCrypto = position?.assetClass === 'CRYPTO';
   const [scale, setScale] = useState<Scale>('15m');
+  // Crypto has no scale selector — always use daily view
+  const effectiveScale: Scale = isCrypto ? '1d' : scale;
   // Remember last intraday selection when switching back from period scales
   const [lastIntraday, setLastIntraday] = useState<Scale>('15m');
 
@@ -217,7 +219,7 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
     if (isIntraday(s)) setLastIntraday(s);
   };
 
-  const { interval, range } = SCALE_CONFIG[scale];
+  const { interval, range } = SCALE_CONFIG[effectiveScale];
   const historyVars = useMemo<PriceHistoryQueryVariables>(
     () => ({ tickers: [symbol], range, interval }),
     [symbol, range, interval],
@@ -383,7 +385,7 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
               {/* Intraday dropdown */}
               <div className="relative">
                 <select
-                  value={isIntraday(scale) ? scale : lastIntraday}
+                  value={isIntraday(scale) ? scale : '__period__'}
                   onChange={(e) => handleScaleChange(e.target.value as Scale)}
                   className={cn(
                     'cursor-pointer appearance-none rounded pl-2 pr-5 py-0.5 text-2xs font-medium transition-colors bg-transparent border',
@@ -392,6 +394,11 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
                       : 'border-border-light text-text-muted hover:text-text-secondary',
                   )}
                 >
+                  {!isIntraday(scale) && (
+                    <option value="__period__" hidden>
+                      {INTRADAY_SCALES.find((s) => s.value === lastIntraday)?.label ?? '15min'}
+                    </option>
+                  )}
                   {INTRADAY_SCALES.map((s) => (
                     <option key={s.value} value={s.value}>
                       {s.label}
@@ -431,7 +438,7 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
             <Spinner size="sm" label="Loading price history..." />
           </div>
         ) : priceHistory.length > 0 ? (
-          <PriceChart data={priceHistory} intraday={isIntraday(scale)} />
+          <PriceChart data={priceHistory} intraday={isIntraday(effectiveScale)} />
         ) : (
           <p className="text-sm text-text-muted py-8 text-center">No price history available</p>
         )}

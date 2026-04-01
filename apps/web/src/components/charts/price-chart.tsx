@@ -6,6 +6,7 @@ import {
   type IChartApi,
   type CandlestickData,
   type Time,
+  type UTCTimestamp,
   ColorType,
 } from 'lightweight-charts';
 
@@ -55,7 +56,7 @@ function dedup(data: PriceChartDatum[], intraday: boolean): PriceChartDatum[] {
 function toTime(dateStr: string, intraday: boolean): Time {
   if (intraday) {
     // Convert ISO string to Unix timestamp (seconds) for intraday
-    return (new Date(dateStr).getTime() / 1000) as unknown as Time;
+    return Math.floor(new Date(dateStr).getTime() / 1000) as UTCTimestamp;
   }
   return dateStr as Time;
 }
