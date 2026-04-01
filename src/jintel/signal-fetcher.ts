@@ -244,8 +244,8 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     });
   }
 
-  // 4. Significant price moves (>=2%) — stable title for dedup, live values in content
-  if (quote && Math.abs(quote.changePercent) >= 2) {
+  // 4. Significant price moves (>=8%) — only flag outliers worth investigating
+  if (quote && Math.abs(quote.changePercent) >= 8) {
     const direction = quote.changePercent > 0 ? 'up' : 'down';
     signals.push({
       sourceId: 'jintel-market',
