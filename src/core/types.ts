@@ -5,6 +5,7 @@
 import type { ZodSchema } from 'zod';
 
 import type { AgentRuntime } from './agent-runtime.js';
+import type { CostTracker } from './cost-tracker.js';
 import type { EventLog } from './event-log.js';
 import type { ToolRegistry } from './tool-registry.js';
 import type { YojinConfig } from '../config/config.js';
@@ -105,6 +106,7 @@ export type AgentLoopEvent =
   | { type: 'thought'; text: string }
   | { type: 'text_delta'; text: string }
   | { type: 'action'; toolCalls: ToolCall[] }
+  | { type: 'tool_started'; toolCallId: string; toolName: string }
   | { type: 'observation'; results: ToolCallResult[] }
   | {
       type: 'tool_result_truncated';
@@ -113,7 +115,10 @@ export type AgentLoopEvent =
       truncatedChars: number;
     }
   | { type: 'compaction'; messagesBefore: number; messagesAfter: number; usedLlmSummary: boolean }
+  | { type: 'snip'; messagesBefore: number; messagesAfter: number; toolResultsSnipped: number }
   | { type: 'pii_redacted'; entitiesFound: number; typesFound: string[]; processingTimeMs: number }
+  | { type: 'cost'; model: string; costUsd: number; totalCostUsd: number }
+  | { type: 'budget_exceeded'; totalCostUsd: number; budgetUsd: number }
   | { type: 'done'; text: string; iterations: number }
   | { type: 'error'; error: string; iterations: number }
   | { type: 'max_iterations'; iterations: number };
@@ -153,6 +158,8 @@ export interface AgentLoopOptions {
   abortSignal?: AbortSignal;
   /** PII scanner for masking sensitive data in user messages before LLM. */
   piiScanner?: ChatPiiScanner;
+  /** Cost tracker — records per-model USD cost and enforces budget caps. */
+  costTracker?: CostTracker;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +179,7 @@ export interface AgentLoopProvider {
     usage?: { inputTokens: number; outputTokens: number };
   }>;
 
-  /** Streaming variant — yields text deltas, resolves to the same shape. */
+  /** Streaming variant — yields text deltas and tool_use blocks as they arrive. */
   streamWithTools?(params: {
     model: string;
     system?: string;
@@ -180,6 +187,8 @@ export interface AgentLoopProvider {
     tools?: ToolSchema[];
     maxTokens?: number;
     onTextDelta?: (text: string) => void;
+    /** Called when a complete tool_use block is emitted during streaming. */
+    onToolUse?: (block: ToolUseBlock) => void;
   }): Promise<{
     content: ContentBlock[];
     stopReason: string;

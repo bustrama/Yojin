@@ -9,6 +9,11 @@ export { truncateToolResult, truncateToolResults } from './tool-result-truncatio
 export type { TruncationConfig } from './tool-result-truncation.js';
 export { compactMessages } from './context-compaction.js';
 export type { CompactionConfig, CompactionResult } from './context-compaction.js';
+export { CostTracker } from './cost-tracker.js';
+export type { CostTrackerConfig, CostSnapshot, ModelUsage, TokenUsage, ModelPricing } from './cost-tracker.js';
+export { StreamingToolExecutor } from './streaming-tool-executor.js';
+export { snipToolResults } from './snip.js';
+export type { SnipConfig, SnipResult } from './snip.js';
 export type {
   ToolDefinition,
   ToolResult,
