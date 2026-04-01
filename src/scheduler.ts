@@ -429,7 +429,10 @@ export class Scheduler {
 
       // Curate signals so DataBriefs have fresh curated data
       if (this.curationPipeline) {
-        await runCurationPipeline(this.curationPipeline);
+        await runCurationPipeline({
+          ...this.curationPipeline,
+          watchlistEntries: this.watchlistStore?.list(),
+        });
       }
 
       // Resolve the curated signal store
@@ -542,7 +545,10 @@ export class Scheduler {
       }
 
       // Full curation pass
-      const result = await runCurationPipeline(this.curationPipeline);
+      const result = await runCurationPipeline({
+        ...this.curationPipeline,
+        watchlistEntries: this.watchlistStore?.list(),
+      });
       logger.info('Macro flow curation complete', {
         signalsProcessed: result.signalsProcessed,
         signalsCurated: result.signalsCurated,
@@ -625,7 +631,10 @@ export class Scheduler {
         }
       }
 
-      const result = await runCurationPipeline(this.curationPipeline);
+      const result = await runCurationPipeline({
+        ...this.curationPipeline,
+        watchlistEntries: this.watchlistStore?.list(),
+      });
 
       logger.info('Scheduled curation complete', {
         signalsProcessed: result.signalsProcessed,

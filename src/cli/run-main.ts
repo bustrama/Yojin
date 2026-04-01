@@ -258,6 +258,7 @@ async function startGateway(): Promise<void> {
       curatedStore: services.curatedSignalStore,
       snapshotStore: services.snapshotStore,
       config: curationConfig,
+      watchlistEntries: services.watchlistStore?.list(),
     });
   });
 
@@ -272,6 +273,7 @@ async function startGateway(): Promise<void> {
     getJintelClient: () => services.jintelToolOptions.client,
     signalIngestor: services.signalIngestor,
     assessmentWorkflowStartMs: services.assessmentWorkflowStartMs,
+    getWatchlistEntries: () => services.watchlistStore?.list() ?? [],
   });
   setCurationOrchestrator(orchestrator);
   setCurationPipelineDeps({ archive: services.signalArchive, config: curationConfig });

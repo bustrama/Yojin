@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'urql';
 import { DISMISS_SIGNAL_MUTATION, INTEL_FEED_QUERY } from '../../api/documents';
-import type { IntelFeedQueryResult, IntelFeedQueryVariables } from '../../api/types';
+import type { FeedTarget, IntelFeedQueryResult, IntelFeedQueryVariables } from '../../api/types';
 import { cn, safeHref, timeAgo } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
 import { CardBlurGate } from '../common/card-blur-gate';
@@ -23,6 +23,7 @@ interface IntelFeedItem {
   type: ItemType;
   signalType: string;
   ticker: string;
+  feedTarget: FeedTarget;
   sentiment: string | null;
   title: string;
   time: string;
@@ -540,10 +541,63 @@ export default function IntelFeed() {
 const POLL_INTERVAL_MS = 30_000;
 const NEW_ITEM_GLOW_MS = 3_000;
 
+function groupByTicker(items: IntelFeedItem[]): { ticker: string; items: IntelFeedItem[] }[] {
+  const sections: { ticker: string; items: IntelFeedItem[] }[] = [];
+  const map = new Map<string, IntelFeedItem[]>();
+  for (const item of items) {
+    const group = map.get(item.ticker);
+    if (group) {
+      group.push(item);
+    } else {
+      const newGroup = [item];
+      map.set(item.ticker, newGroup);
+      sections.push({ ticker: item.ticker, items: newGroup });
+    }
+  }
+  return sections;
+}
+
+function FeedSection({
+  label,
+  count,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  label: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mt-1">
+      <button onClick={onToggle} className="flex w-full cursor-pointer items-center gap-2 px-1 pt-3 pb-1 text-left">
+        <svg
+          className={cn('h-2.5 w-2.5 text-text-muted transition-transform', collapsed ? '-rotate-90' : 'rotate-0')}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+        <span className="text-[10px] font-semibold tracking-[0.12em] text-text-muted uppercase">{label}</span>
+        <span className="text-[10px] tabular-nums text-text-muted/60">{count}</span>
+        <div className="h-px flex-1 bg-border/50" />
+      </button>
+      {!collapsed && children}
+    </div>
+  );
+}
+
 function IntelFeedContent() {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [collapsedTickers, setCollapsedTickers] = useState<Set<string>>(new Set());
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [, dismissSignal] = useMutation(DISMISS_SIGNAL_MUTATION);
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -551,7 +605,7 @@ function IntelFeedContent() {
 
   const [{ data, fetching, error }, reexecute] = useQuery<IntelFeedQueryResult, IntelFeedQueryVariables>({
     query: INTEL_FEED_QUERY,
-    variables: { limit: 10 },
+    variables: { limit: 20 },
     requestPolicy: 'network-only',
   });
 
@@ -626,6 +680,7 @@ function IntelFeedContent() {
                   : []),
               ]
             : undefined,
+        feedTarget: cs.feedTarget ?? 'PORTFOLIO',
         verdict: cs.verdict ?? null,
         thesisAlignment: cs.thesisAlignment ?? null,
       };
@@ -645,19 +700,58 @@ function IntelFeedContent() {
 
   const totalCount = filteredItems.length;
 
-  // Group filtered items by ticker, preserving order of first appearance (highest score first)
-  const tickerSections: { ticker: string; items: IntelFeedItem[] }[] = [];
-  const tickerMap = new Map<string, IntelFeedItem[]>();
+  // Split items by feed target, then group by ticker within each
+  const { portfolioItems, watchlistItems, portfolioSections, watchlistSections } = useMemo(() => {
+    const portfolio = filteredItems.filter((i) => i.feedTarget === 'PORTFOLIO');
+    const watchlist = filteredItems.filter((i) => i.feedTarget === 'WATCHLIST');
+    return {
+      portfolioItems: portfolio,
+      watchlistItems: watchlist,
+      portfolioSections: groupByTicker(portfolio),
+      watchlistSections: groupByTicker(watchlist),
+    };
+  }, [filteredItems]);
 
-  for (const item of filteredItems) {
-    const group = tickerMap.get(item.ticker);
-    if (group) {
-      group.push(item);
-    } else {
-      const newGroup = [item];
-      tickerMap.set(item.ticker, newGroup);
-      tickerSections.push({ ticker: item.ticker, items: newGroup });
-    }
+  function renderTickerSections(sections: { ticker: string; items: IntelFeedItem[] }[]) {
+    return sections.map((section) => {
+      const isCollapsed = collapsedTickers.has(section.ticker);
+      return (
+        <div key={section.ticker}>
+          <TickerSectionHeader
+            ticker={section.ticker}
+            alertCount={section.items.filter((i) => i.type === 'alert').length}
+            itemCount={section.items.length}
+            sentiment={dominantSentiment(section.items)}
+            collapsed={isCollapsed}
+            onToggle={() => {
+              setCollapsedTickers((prev) => {
+                const next = new Set(prev);
+                if (next.has(section.ticker)) next.delete(section.ticker);
+                else next.add(section.ticker);
+                return next;
+              });
+            }}
+          />
+          {!isCollapsed && (
+            <div className="space-y-1.5">
+              {section.items.map((item) => (
+                <IntelFeedCard
+                  key={item.id}
+                  item={item}
+                  expanded={expandedId === item.id}
+                  isNew={newItemIds.has(item.id)}
+                  onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                  onDismiss={() => {
+                    if (expandedId === item.id) setExpandedId(null);
+                    void dismissSignal({ signalId: item.id }).then(() => reexecute({ requestPolicy: 'network-only' }));
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    });
   }
 
   // Determine content state
@@ -749,50 +843,42 @@ function IntelFeedContent() {
             </div>
           </div>
         ) : (
-          tickerSections.map((section) => {
-            const isCollapsed = collapsedTickers.has(section.ticker);
-            return (
-              <div key={section.ticker}>
-                <TickerSectionHeader
-                  ticker={section.ticker}
-                  alertCount={section.items.filter((i) => i.type === 'alert').length}
-                  itemCount={section.items.length}
-                  sentiment={dominantSentiment(section.items)}
-                  collapsed={isCollapsed}
-                  onToggle={() => {
-                    setCollapsedTickers((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(section.ticker)) {
-                        next.delete(section.ticker);
-                      } else {
-                        next.add(section.ticker);
-                      }
-                      return next;
-                    });
-                  }}
-                />
-                {!isCollapsed && (
-                  <div className="space-y-1.5">
-                    {section.items.map((item) => (
-                      <IntelFeedCard
-                        key={item.id}
-                        item={item}
-                        expanded={expandedId === item.id}
-                        isNew={newItemIds.has(item.id)}
-                        onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                        onDismiss={() => {
-                          if (expandedId === item.id) setExpandedId(null);
-                          void dismissSignal({ signalId: item.id }).then(() =>
-                            reexecute({ requestPolicy: 'network-only' }),
-                          );
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })
+          <>
+            {portfolioSections.length > 0 && (
+              <FeedSection
+                label="Portfolio"
+                count={portfolioItems.length}
+                collapsed={collapsedSections.has('PORTFOLIO')}
+                onToggle={() => {
+                  setCollapsedSections((prev) => {
+                    const next = new Set(prev);
+                    if (next.has('PORTFOLIO')) next.delete('PORTFOLIO');
+                    else next.add('PORTFOLIO');
+                    return next;
+                  });
+                }}
+              >
+                {renderTickerSections(portfolioSections)}
+              </FeedSection>
+            )}
+            {watchlistSections.length > 0 && (
+              <FeedSection
+                label="Watchlist"
+                count={watchlistItems.length}
+                collapsed={collapsedSections.has('WATCHLIST')}
+                onToggle={() => {
+                  setCollapsedSections((prev) => {
+                    const next = new Set(prev);
+                    if (next.has('WATCHLIST')) next.delete('WATCHLIST');
+                    else next.add('WATCHLIST');
+                    return next;
+                  });
+                }}
+              >
+                {renderTickerSections(watchlistSections)}
+              </FeedSection>
+            )}
+          </>
         )}
       </div>
     </div>

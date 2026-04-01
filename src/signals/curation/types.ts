@@ -11,13 +11,21 @@ import { z } from 'zod';
 import { PortfolioRelevanceScoreSchema, SignalSchema } from '../types.js';
 
 // ---------------------------------------------------------------------------
-// CuratedSignal — a signal with portfolio relevance scores
+// FeedTarget — routes curated signals to portfolio or watchlist feed
+// ---------------------------------------------------------------------------
+
+export const FeedTargetSchema = z.enum(['PORTFOLIO', 'WATCHLIST']);
+export type FeedTarget = z.infer<typeof FeedTargetSchema>;
+
+// ---------------------------------------------------------------------------
+// CuratedSignal — a signal with relevance scores and feed routing
 // ---------------------------------------------------------------------------
 
 export const CuratedSignalSchema = z.object({
   signal: SignalSchema,
   scores: z.array(PortfolioRelevanceScoreSchema).min(1),
   curatedAt: z.string().datetime(),
+  feedTarget: FeedTargetSchema.default('PORTFOLIO'),
 });
 export type CuratedSignal = z.infer<typeof CuratedSignalSchema>;
 

@@ -78,6 +78,11 @@ export const typeDefs = /* GraphQL */ `
     NEUTRAL
   }
 
+  enum FeedTarget {
+    PORTFOLIO
+    WATCHLIST
+  }
+
   # ---------------------------------------------------------------------------
   # Portfolio
   # ---------------------------------------------------------------------------
@@ -937,6 +942,7 @@ export const typeDefs = /* GraphQL */ `
     signal: Signal!
     scores: [PortfolioRelevanceScore!]!
     curatedAt: String!
+    feedTarget: FeedTarget!
     "Agent assessment verdict (CRITICAL/IMPORTANT/NOISE) — null if not yet assessed"
     verdict: SignalVerdict
     "Alignment with investment thesis — null if not yet assessed"
@@ -1058,7 +1064,7 @@ export const typeDefs = /* GraphQL */ `
     ): [Signal!]!
     signalsByIds(ids: [ID!]!): [Signal!]!
     signalGroups(ticker: String, since: String, limit: Int): [SignalGroup!]!
-    curatedSignals(ticker: String, since: String, limit: Int, offset: Int): [CuratedSignal!]!
+    curatedSignals(ticker: String, since: String, limit: Int, offset: Int, feedTarget: FeedTarget): [CuratedSignal!]!
     curationStatus: CurationStatus!
     curationWorkflowStatus: WorkflowStatus!
     signalAssessments(ticker: String, since: String, limit: Int): [AssessmentReport!]!

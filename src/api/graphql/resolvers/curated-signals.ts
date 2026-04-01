@@ -15,7 +15,8 @@ import type { AssessmentStore } from '../../../signals/curation/assessment-store
 import type { SignalAssessment } from '../../../signals/curation/assessment-types.js';
 import type { CuratedSignalStore } from '../../../signals/curation/curated-signal-store.js';
 import { runCurationPipeline } from '../../../signals/curation/pipeline.js';
-import type { CurationConfig } from '../../../signals/curation/types.js';
+import type { CurationConfig, FeedTarget } from '../../../signals/curation/types.js';
+import type { WatchlistStore } from '../../../watchlist/watchlist-store.js';
 
 const log = createSubsystemLogger('curated-signals-resolver');
 
@@ -29,6 +30,7 @@ let curationOrchestrator: Orchestrator | null = null;
 let snapshotStore: PortfolioSnapshotStore | null = null;
 let signalArchive: SignalArchive | null = null;
 let curationConfig: CurationConfig | null = null;
+let watchlistStore: WatchlistStore | null = null;
 
 export function setCuratedSignalStore(s: CuratedSignalStore): void {
   store = s;
@@ -51,6 +53,10 @@ export function setCurationPipelineDeps(deps: { archive: SignalArchive; config: 
   curationConfig = deps.config;
 }
 
+export function setCuratedWatchlistStore(s: WatchlistStore): void {
+  watchlistStore = s;
+}
+
 // ---------------------------------------------------------------------------
 // GraphQL shapes
 // ---------------------------------------------------------------------------
@@ -67,6 +73,7 @@ interface CuratedSignalGql {
   signal: SignalGql;
   scores: PortfolioRelevanceScoreGql[];
   curatedAt: string;
+  feedTarget: FeedTarget;
   verdict: string | null;
   thesisAlignment: string | null;
   actionability: number | null;
@@ -84,19 +91,29 @@ interface CurationStatusGql {
 
 export async function curatedSignalsResolver(
   _parent: unknown,
-  args: { ticker?: string; since?: string; limit?: number; offset?: number },
+  args: { ticker?: string; since?: string; limit?: number; offset?: number; feedTarget?: FeedTarget },
 ): Promise<CuratedSignalGql[]> {
   if (!store) return [];
 
-  // Resolve tickers: explicit arg, or auto-resolve from portfolio snapshot
+  // Resolve tickers based on feedTarget filter
   let tickers: string[];
   if (args.ticker) {
     tickers = [args.ticker];
-  } else if (snapshotStore) {
-    const snapshot = await snapshotStore.getLatest();
-    tickers = snapshot && snapshot.positions.length > 0 ? snapshot.positions.map((p) => p.symbol.toUpperCase()) : [];
   } else {
-    tickers = [];
+    const portfolioTickers: string[] = [];
+    const watchlistTickers: string[] = [];
+
+    if (args.feedTarget !== 'WATCHLIST' && snapshotStore) {
+      const snapshot = await snapshotStore.getLatest();
+      if (snapshot && snapshot.positions.length > 0) {
+        portfolioTickers.push(...snapshot.positions.map((p) => p.symbol.toUpperCase()));
+      }
+    }
+    if (args.feedTarget !== 'PORTFOLIO' && watchlistStore) {
+      watchlistTickers.push(...watchlistStore.list().map((e) => e.symbol.toUpperCase()));
+    }
+
+    tickers = [...new Set([...portfolioTickers, ...watchlistTickers])];
   }
   if (tickers.length === 0) return [];
 
@@ -121,8 +138,8 @@ export async function curatedSignalsResolver(
           }
         }
       }
-    } catch {
-      // Best-effort — assessments are enrichment, not critical
+    } catch (err) {
+      log.debug('Failed to load signal assessments', { error: err });
       assessmentBySignalId = new Map();
     }
   }
@@ -136,7 +153,12 @@ export async function curatedSignalsResolver(
   for (const [id, assessment] of assessmentBySignalId) {
     if (assessment.verdict === 'NOISE') noiseIds.add(id);
   }
-  const nonDismissed = curated.filter((cs) => !dismissedIds.has(cs.signal.id) && !noiseIds.has(cs.signal.id));
+  const nonDismissed = curated.filter((cs) => {
+    if (dismissedIds.has(cs.signal.id)) return false;
+    if (noiseIds.has(cs.signal.id)) return false;
+    if (args.feedTarget && cs.feedTarget !== args.feedTarget) return false;
+    return true;
+  });
 
   // Title-level dedup — keep the curated signal with the highest composite score per unique title
   const byTitle = new Map<string, (typeof nonDismissed)[number]>();
@@ -180,6 +202,7 @@ export async function curatedSignalsResolver(
         compositeScore: s.compositeScore,
       })),
       curatedAt: cs.curatedAt,
+      feedTarget: cs.feedTarget,
       verdict: assessment?.verdict ?? null,
       thesisAlignment: assessment?.thesisAlignment ?? null,
       actionability: assessment?.actionability ?? null,
@@ -254,6 +277,7 @@ export async function refreshIntelFeedResolver(): Promise<RefreshIntelFeedResult
         curatedStore: store,
         snapshotStore,
         config: curationConfig,
+        watchlistEntries: watchlistStore?.list(),
       });
 
       log.info('Intel feed refresh — curation complete', {

@@ -24,6 +24,7 @@ import {
   setCuratedAssessmentStore,
   setCuratedSignalStore,
   setCuratedSnapshotStore,
+  setCuratedWatchlistStore,
 } from './api/graphql/resolvers/curated-signals.js';
 import {
   runHealthChecks,
@@ -42,7 +43,11 @@ import {
   setOnboardingSnapshotStore,
   setOnboardingVault,
 } from './api/graphql/resolvers/onboarding.js';
-import { setPortfolioConnectionManager, setPortfolioJintelClient } from './api/graphql/resolvers/portfolio.js';
+import {
+  setPortfolioConnectionManager,
+  setPortfolioJintelClient,
+  setPortfolioWatchlistStore,
+} from './api/graphql/resolvers/portfolio.js';
 import { onAppDataCleared } from './api/graphql/resolvers/profile.js';
 import { setProfileStore } from './api/graphql/resolvers/profiles.js';
 import { setAssessmentStore } from './api/graphql/resolvers/signal-assessments.js';
@@ -51,7 +56,11 @@ import { setSignalArchive, setSignalAssessmentStore, setSignalSnapshotStore } fr
 import { setSkillStore } from './api/graphql/resolvers/skills.js';
 import { setSnapStore } from './api/graphql/resolvers/snap.js';
 import { setVault, setVaultSecretChangedCallback } from './api/graphql/resolvers/vault.js';
-import { setWatchlistEnrichment, setWatchlistStore } from './api/graphql/resolvers/watchlist.js';
+import {
+  setWatchlistEnrichment,
+  setWatchlistSnapshotStore,
+  setWatchlistStore,
+} from './api/graphql/resolvers/watchlist.js';
 import { BrainStore } from './brain/brain.js';
 import { EmotionTracker } from './brain/emotion.js';
 import { FrontalLobe } from './brain/frontal-lobe.js';
@@ -521,6 +530,8 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   });
   setWatchlistStore(watchlistStore);
   setWatchlistEnrichment(watchlistEnrichment);
+  setWatchlistSnapshotStore(snapshotStore);
+  setPortfolioWatchlistStore(watchlistStore);
   for (const tool of watchlistTools) {
     toolRegistry.register(tool);
   }
@@ -597,6 +608,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   setCuratedSignalStore(curatedSignalStore);
   setCuratedSnapshotStore(snapshotStore);
   setCuratedAssessmentStore(assessmentStore);
+  setCuratedWatchlistStore(watchlistStore);
   setAssessmentStore(assessmentStore);
   setSignalAssessmentStore(assessmentStore);
 
