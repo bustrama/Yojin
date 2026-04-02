@@ -312,23 +312,10 @@ export async function runAgentLoop(
     // Append assistant message with tool_use blocks
     messages.push({ role: 'assistant', content: response.content });
 
-    // Submit any tool calls that weren't already started during streaming.
-    // Check BEFORE the loop — once we addToolCall, pendingCount changes.
-    const streamingWasActive = streamingExecutor.pendingCount > 0 || streamingExecutor.getCompletedResults().length > 0;
-
-    if (!streamingWasActive) {
-      // Non-streaming provider: submit all tools now
-      for (const call of toolCalls) {
-        streamingExecutor.addToolCall(call);
-      }
-    } else {
-      // Streaming was active — only submit tools that weren't already started
-      const startedIds = new Set(streamingExecutor.getCompletedResults().map((r) => r.toolCallId));
-      for (const call of toolCalls) {
-        if (!startedIds.has(call.id)) {
-          streamingExecutor.addToolCall(call);
-        }
-      }
+    // Submit all tool calls — addToolCall is idempotent, so tools already
+    // started during streaming are safely skipped.
+    for (const call of toolCalls) {
+      streamingExecutor.addToolCall(call);
     }
 
     // Wait for all tools to complete

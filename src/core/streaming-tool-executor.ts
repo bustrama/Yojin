@@ -28,6 +28,12 @@ export class StreamingToolExecutor {
    * the tool runs in the background while the LLM stream continues.
    */
   addToolCall(call: ToolCall): void {
+    // Guard against duplicate submissions (e.g. tool started during stream then re-submitted after)
+    if (this.pending.has(call.id) || this.completed.some((r) => r.toolCallId === call.id)) {
+      logger.debug('Tool call already submitted, skipping duplicate', { tool: call.name, id: call.id });
+      return;
+    }
+
     logger.debug('Streaming tool submitted', { tool: call.name, id: call.id });
 
     const promise = this.executeTool(call);
