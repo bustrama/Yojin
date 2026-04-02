@@ -714,8 +714,9 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     }),
     async execute(params: { ticker: string }): Promise<ToolResult> {
       if (!options.client) return notConfigured();
+      const client = options.client;
       const result = await safeCall(() =>
-        (options.client as JintelClient).enrichEntity(params.ticker.toUpperCase(), ['news'] as EnrichmentField[]),
+        client.enrichEntity(params.ticker.toUpperCase(), ['news'] as EnrichmentField[]),
       );
       if (!result.ok) return result.toolResult;
       const handled = handleResult(result.data);
@@ -727,7 +728,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       }
 
       // Best-effort ingest news as signals
-      if (options.ingestor && entity.news.length > 0) {
+      if (options.ingestor) {
         const rawSignals: RawSignalInput[] = entity.news.map((a) => ({
           sourceId: 'jintel',
           sourceName: a.source || 'Jintel',
@@ -735,7 +736,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
           reliability: 0.75,
           title: a.title,
           content: a.snippet || a.title,
-          publishedAt: a.date ?? new Date().toISOString(),
+          publishedAt: a.date ?? new Date(new Date().toISOString().slice(0, 10)).toISOString(),
           type: 'NEWS' as const,
           tickers: entity.tickers ?? [params.ticker.toUpperCase()],
           confidence: 0.7,
@@ -759,8 +760,9 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     }),
     async execute(params: { ticker: string }): Promise<ToolResult> {
       if (!options.client) return notConfigured();
+      const client = options.client;
       const result = await safeCall(() =>
-        (options.client as JintelClient).enrichEntity(params.ticker.toUpperCase(), ['research'] as EnrichmentField[]),
+        client.enrichEntity(params.ticker.toUpperCase(), ['research'] as EnrichmentField[]),
       );
       if (!result.ok) return result.toolResult;
       const handled = handleResult(result.data);
@@ -787,8 +789,9 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     }),
     async execute(params: { ticker: string }): Promise<ToolResult> {
       if (!options.client) return notConfigured();
+      const client = options.client;
       const result = await safeCall(() =>
-        (options.client as JintelClient).enrichEntity(params.ticker.toUpperCase(), ['sentiment'] as EnrichmentField[]),
+        client.enrichEntity(params.ticker.toUpperCase(), ['sentiment'] as EnrichmentField[]),
       );
       if (!result.ok) return result.toolResult;
       const handled = handleResult(result.data);
@@ -807,8 +810,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     name: 'get_derivatives',
     description:
       'Get derivatives data (futures curve + options chain) for a ticker. Returns futures ' +
-      'expiration/price and options with strike, type, Greeks (delta, gamma, theta, vega), ' +
-      'implied volatility, open interest, and bid/ask.\n\n' +
+      'expiration/price and options with strike, type, delta, implied volatility, open interest, ' +
+      'and bid/ask.\n\n' +
       'Primarily available for crypto assets. Use when the user asks about options flow, ' +
       'futures contango/backwardation, implied volatility, or derivatives positioning.',
     parameters: z.object({
@@ -816,10 +819,9 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     }),
     async execute(params: { ticker: string }): Promise<ToolResult> {
       if (!options.client) return notConfigured();
+      const client = options.client;
       const result = await safeCall(() =>
-        (options.client as JintelClient).enrichEntity(params.ticker.toUpperCase(), [
-          'derivatives',
-        ] as EnrichmentField[]),
+        client.enrichEntity(params.ticker.toUpperCase(), ['derivatives'] as EnrichmentField[]),
       );
       if (!result.ok) return result.toolResult;
       const handled = handleResult(result.data);
