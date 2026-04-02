@@ -65,68 +65,14 @@ function getPlatformLabel(platform: string): string {
 
 const TH = 'px-4 py-2.5 text-2xs font-medium uppercase tracking-wider text-text-muted';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
-
-interface CollapsedPosition extends Position {
-  platformCount: number;
-  platforms: string[];
-}
-
-function collapsePositions(positions: Position[]): CollapsedPosition[] {
-  const bySymbol = new Map<string, { positions: Position[] }>();
-  for (const pos of positions) {
-    const entry = bySymbol.get(pos.symbol);
-    if (entry) {
-      entry.positions.push(pos);
-    } else {
-      bySymbol.set(pos.symbol, { positions: [pos] });
-    }
-  }
-  return [...bySymbol.values()].map(({ positions: group }) => {
-    const totalQty = group.reduce((s, p) => s + p.quantity, 0);
-    const totalMv = group.reduce((s, p) => s + p.marketValue, 0);
-    const totalCost = group.reduce((s, p) => s + p.costBasis * p.quantity, 0);
-    const totalPnl = group.reduce((s, p) => s + p.unrealizedPnl, 0);
-    const weightedCost = totalQty > 0 ? totalCost / totalQty : 0;
-    const pnlPct = totalCost > 0 ? ((totalMv - totalCost) / totalCost) * 100 : 0;
-    const first = group[0];
-    return {
-      ...first,
-      quantity: totalQty,
-      costBasis: weightedCost,
-      currentPrice: totalQty > 0 ? totalMv / totalQty : first.currentPrice,
-      marketValue: totalMv,
-      unrealizedPnl: totalPnl,
-      unrealizedPnlPercent: pnlPct,
-      platformCount: group.length,
-      platforms: [...new Set(group.map((p) => p.platform))],
-    };
-  });
-}
-
 export default function PositionTable({ positions, onAdd }: { positions: Position[]; onAdd?: () => void }) {
   const { openAssetDetail } = useAssetDetailModal();
   const totalValue = useMemo(() => positions.reduce((sum, p) => sum + p.marketValue, 0), [positions]);
   const [editing, setEditing] = useState<Position | null>(null);
   const [removing, setRemoving] = useState<Position | null>(null);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState<number>(10);
-  const [expanded, setExpanded] = useState(false);
 
-  const collapsed = useMemo(() => collapsePositions(positions), [positions]);
-  const displayPositions: (Position | CollapsedPosition)[] = expanded ? positions : collapsed;
-
-  // Sort by value descending, then paginate
-  const sorted = useMemo(() => [...displayPositions].sort((a, b) => b.marketValue - a.marketValue), [displayPositions]);
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const safePage = Math.min(page, totalPages - 1);
-  const pagePositions = sorted.slice(safePage * pageSize, safePage * pageSize + pageSize);
-
-  // Reset to first page when positions or page size changes
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    setPage(0);
-  };
+  // Sort by value descending
+  const sorted = useMemo(() => [...positions].sort((a, b) => b.marketValue - a.marketValue), [positions]);
 
   if (positions.length === 0) {
     return <EmptyState title="No positions found" description="Import a portfolio to see your positions." />;
@@ -134,12 +80,12 @@ export default function PositionTable({ positions, onAdd }: { positions: Positio
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-border bg-bg-card">
+      <div className="max-h-[75vh] overflow-y-auto rounded-xl border border-border bg-bg-card">
         <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="bg-bg-tertiary">
+          <thead className="sticky top-0 z-10 bg-bg-tertiary">
+            <tr>
               <th className={TH} />
-              <th className={TH}>{expanded ? 'Account' : 'Accounts'}</th>
+              <th className={TH}>Account</th>
               <th className={cn(TH, 'text-right')}>Qty</th>
               <th className={cn(TH, 'text-right whitespace-nowrap')}>Avg Entry</th>
               <th className={cn(TH, 'text-right')}>Price</th>
@@ -164,12 +110,12 @@ export default function PositionTable({ positions, onAdd }: { positions: Positio
             </tr>
           </thead>
           <tbody>
-            {pagePositions.map((pos, idx) => {
+            {sorted.map((pos, idx) => {
               const weight = totalValue > 0 ? (pos.marketValue / totalValue) * 100 : 0;
 
               return (
                 <tr
-                  key={`${pos.symbol}:${pos.platform}:${safePage * pageSize + idx}`}
+                  key={`${pos.symbol}:${pos.platform}:${idx}`}
                   className="border-t border-border transition-colors hover:bg-bg-hover group"
                 >
                   <td className="px-4 py-3">
@@ -191,33 +137,9 @@ export default function PositionTable({ positions, onAdd }: { positions: Positio
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {expanded ? (
-                      <span className={cn('inline-block rounded px-1.5 py-0.5 text-2xs font-medium', PLATFORM_BADGE)}>
-                        {getPlatformLabel(pos.platform)}
-                      </span>
-                    ) : 'platforms' in pos && (pos as CollapsedPosition).platforms.length > 1 ? (
-                      <div className="group/tip relative inline-block">
-                        <span
-                          className={cn(
-                            'inline-block rounded px-1.5 py-0.5 text-2xs font-medium cursor-default',
-                            PLATFORM_BADGE,
-                          )}
-                        >
-                          {(pos as CollapsedPosition).platforms.length} accounts
-                        </span>
-                        <div className="pointer-events-none absolute left-0 top-full z-10 mt-1 hidden rounded-lg border border-border bg-bg-secondary px-3 py-2 shadow-lg group-hover/tip:block">
-                          {(pos as CollapsedPosition).platforms.map((pl) => (
-                            <div key={pl} className="whitespace-nowrap text-2xs text-text-secondary py-0.5">
-                              {getPlatformLabel(pl)}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className={cn('inline-block rounded px-1.5 py-0.5 text-2xs font-medium', PLATFORM_BADGE)}>
-                        {getPlatformLabel(pos.platform)}
-                      </span>
-                    )}
+                    <span className={cn('inline-block rounded px-1.5 py-0.5 text-2xs font-medium', PLATFORM_BADGE)}>
+                      {getPlatformLabel(pos.platform)}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-text-secondary">
                     {formatQuantity(pos.quantity)}
@@ -291,77 +213,6 @@ export default function PositionTable({ positions, onAdd }: { positions: Positio
             })}
           </tbody>
         </table>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border px-4 py-2.5">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-2xs text-text-muted">
-              <span>Rows per page</span>
-              <select
-                value={pageSize}
-                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="rounded border border-border bg-bg-tertiary px-1.5 py-0.5 text-2xs text-text-primary outline-none focus:border-accent-primary"
-              >
-                {PAGE_SIZE_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setExpanded((v) => !v);
-                setPage(0);
-              }}
-              className={cn(
-                'flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-2xs font-medium transition-colors',
-                expanded
-                  ? 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary'
-                  : 'border-border bg-bg-tertiary text-text-muted hover:text-text-primary hover:border-border-light',
-              )}
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-                />
-              </svg>
-              {expanded ? 'Expanded' : 'Collapsed'}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 text-2xs text-text-muted">
-            <span>
-              {safePage * pageSize + 1}&ndash;{Math.min((safePage + 1) * pageSize, sorted.length)} of {sorted.length}
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                disabled={safePage === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                className="cursor-pointer rounded p-1 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-muted"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                disabled={safePage >= totalPages - 1}
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                className="cursor-pointer rounded p-1 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-muted"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {editing && <EditPositionModal position={editing} onClose={() => setEditing(null)} />}
