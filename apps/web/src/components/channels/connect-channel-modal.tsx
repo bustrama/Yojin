@@ -81,6 +81,7 @@ function QrPairingFlow({ channelId, channelLabel, meta, onConnected, onClose }: 
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(countdownRef.current);
+          setExpired(true);
           return 0;
         }
         return prev - 1;
@@ -183,15 +184,13 @@ function QrPairingFlow({ channelId, channelLabel, meta, onConnected, onClose }: 
             </div>
             <p className="text-xs text-text-muted tabular-nums">Expires in {formatTime(secondsLeft)}</p>
           </div>
-        ) : expired ? (
+        ) : error ? (
           <div className="flex flex-col items-center gap-3 py-4">
             <p className="text-sm text-error text-center">{error}</p>
             <Button variant="primary" size="sm" onClick={() => void startPairing()}>
-              Generate new QR code
+              Try again
             </Button>
           </div>
-        ) : error && !expired ? (
-          <p className="text-sm text-error text-center">{error}</p>
         ) : (
           <div className="flex flex-col items-center gap-3 py-8">
             <Spinner size="lg" />
