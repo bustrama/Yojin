@@ -64,17 +64,13 @@ export function setCuratedWatchlistStore(s: WatchlistStore): void {
 // ---------------------------------------------------------------------------
 
 interface PortfolioRelevanceScoreGql {
-  signalId: string;
   ticker: string;
-  exposureWeight: number;
-  typeRelevance: number;
   compositeScore: number;
 }
 
 interface CuratedSignalGql {
   signal: SignalGql;
   scores: PortfolioRelevanceScoreGql[];
-  curatedAt: string;
   feedTarget: FeedTarget;
   severity: SignalSeverity;
   verdict: string | null;
@@ -300,13 +296,9 @@ export async function curatedSignalsResolver(
     return {
       signal: signalGql,
       scores: tickers.map((ticker) => ({
-        signalId: t.signal.id,
         ticker,
-        exposureWeight: 0,
-        typeRelevance: 0,
         compositeScore: assessment?.relevanceScore ?? t.signal.confidence,
       })),
-      curatedAt: t.signal.ingestedAt,
       feedTarget: t.feedTarget,
       severity,
       verdict: assessment?.verdict ?? null,

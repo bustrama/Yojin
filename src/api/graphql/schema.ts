@@ -939,17 +939,13 @@ export const typeDefs = /* GraphQL */ `
   # ---------------------------------------------------------------------------
 
   type PortfolioRelevanceScore {
-    signalId: String!
     ticker: String!
-    exposureWeight: Float!
-    typeRelevance: Float!
     compositeScore: Float!
   }
 
   type CuratedSignal {
     signal: Signal!
     scores: [PortfolioRelevanceScore!]!
-    curatedAt: String!
     feedTarget: FeedTarget!
     "Derived severity for ranking and feed presentation"
     severity: SignalSeverity!
