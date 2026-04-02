@@ -127,7 +127,6 @@ Evaluate this signal and respond with a JSON object only — no markdown, no ext
   "tier1": "3-8 words, headline style, factual",
   "tier2": "2-3 sentences. What happened factually. Cite sources by name.",
   "sentiment": "BULLISH | BEARISH | MIXED | NEUTRAL",
-  "isUrgent": true or false,
   "verdict": "KEEP or DROP",
   "dropReason": "false_match | irrelevant | duplicate | low_quality | null",
   "qualityScore": 0-100,
@@ -186,7 +185,6 @@ CRITICAL: if your tier2 would say "not related to [company]" or "this is about [
     const tier1 = typeof obj['tier1'] === 'string' ? obj['tier1'].trim() : '';
     const tier2 = typeof obj['tier2'] === 'string' ? obj['tier2'].trim() : '';
     const sentimentRaw = typeof obj['sentiment'] === 'string' ? obj['sentiment'].toUpperCase().trim() : '';
-    const isUrgent = obj['isUrgent'] === true;
     const verdictRaw = typeof obj['verdict'] === 'string' ? obj['verdict'].toUpperCase().trim() : '';
     const dropReasonRaw = typeof obj['dropReason'] === 'string' ? obj['dropReason'].toLowerCase().trim() : null;
     const qualityScoreRaw = typeof obj['qualityScore'] === 'number' ? obj['qualityScore'] : 50;
@@ -220,7 +218,7 @@ CRITICAL: if your tier2 would say "not related to [company]" or "this is about [
     }
 
     const sentiment = sentimentRaw as QualityVerdict['sentiment'];
-    const outputType = this.deriveOutputType(isUrgent, sentiment, confidence);
+    const outputType = this.deriveOutputType(sentiment, confidence);
 
     return {
       verdict,
@@ -239,8 +237,7 @@ CRITICAL: if your tier2 would say "not related to [company]" or "this is about [
   // Private: helpers
   // ---------------------------------------------------------------------------
 
-  private deriveOutputType(isUrgent: boolean, sentiment: SignalSentiment, confidence: number): SignalOutputType {
-    if (isUrgent) return 'ALERT';
+  private deriveOutputType(sentiment: SignalSentiment, confidence: number): SignalOutputType {
     if (sentiment === 'BEARISH' && confidence > 0.7) return 'ALERT';
     return 'INSIGHT';
   }

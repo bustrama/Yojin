@@ -1272,6 +1272,7 @@ export const INTEL_FEED_QUERY = gql`
       }
       curatedAt
       feedTarget
+      severity
       verdict
       thesisAlignment
       actionability

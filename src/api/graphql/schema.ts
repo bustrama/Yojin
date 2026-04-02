@@ -72,6 +72,13 @@ export const typeDefs = /* GraphQL */ `
     NOISE
   }
 
+  enum SignalSeverity {
+    CRITICAL
+    HIGH
+    MEDIUM
+    LOW
+  }
+
   enum ThesisAlignment {
     SUPPORTS
     CHALLENGES
@@ -944,6 +951,8 @@ export const typeDefs = /* GraphQL */ `
     scores: [PortfolioRelevanceScore!]!
     curatedAt: String!
     feedTarget: FeedTarget!
+    "Derived severity for ranking and feed presentation"
+    severity: SignalSeverity!
     "Agent assessment verdict (CRITICAL/IMPORTANT/NOISE) — null if not yet assessed"
     verdict: SignalVerdict
     "Alignment with investment thesis — null if not yet assessed"

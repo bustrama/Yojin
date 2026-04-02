@@ -21,6 +21,7 @@ interface DataRow {
 interface IntelFeedItem {
   id: string;
   type: ItemType;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   signalType: string;
   ticker: string;
   feedTarget: FeedTarget;
@@ -75,8 +76,9 @@ const signalTypeBadgeColor: Record<string, string> = {
   TRADING_LOGIC_TRIGGER: 'bg-warning/10 text-warning',
 };
 
-/** Classify a signal using its outputType field. */
-function classifySignal(signal: { outputType?: string | null }): ItemType {
+/** Promote higher-severity items into the alerts lane. */
+function classifySignal(signal: { outputType?: string | null; severity: IntelFeedItem['severity'] }): ItemType {
+  if (signal.severity === 'CRITICAL' || signal.severity === 'HIGH') return 'alert';
   if (signal.outputType === 'ALERT') return 'alert';
   return 'insight';
 }
@@ -84,6 +86,13 @@ function classifySignal(signal: { outputType?: string | null }): ItemType {
 const dataAccentBorder: Record<ItemType, string> = {
   alert: 'border-warning/30',
   insight: 'border-success/30',
+};
+
+const severityBadgeColor: Record<IntelFeedItem['severity'], string> = {
+  CRITICAL: 'bg-error/20 text-error',
+  HIGH: 'bg-warning/20 text-warning',
+  MEDIUM: 'bg-info/15 text-info',
+  LOW: 'bg-text-muted/10 text-text-muted',
 };
 
 const filterTabs: { key: FilterTab; label: string }[] = [
@@ -421,6 +430,14 @@ function IntelFeedCard({
             {item.type === 'alert' && (
               <span className="text-2xs font-semibold tracking-wide uppercase text-warning">ALERT</span>
             )}
+            <span
+              className={cn(
+                'rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none',
+                severityBadgeColor[item.severity],
+              )}
+            >
+              {item.severity}
+            </span>
             {item.verdict && (
               <span
                 className={cn(
@@ -630,7 +647,8 @@ function IntelFeedContent() {
 
     const signalItems: IntelFeedItem[] = data.curatedSignals.map((cs) => {
       const s = cs.signal;
-      const itemType = classifySignal(s);
+      const severity = cs.severity ?? 'LOW';
+      const itemType = classifySignal({ outputType: s.outputType, severity });
       const topScore =
         cs.scores.length > 0
           ? cs.scores.reduce((best, sc) => (sc.compositeScore > best.compositeScore ? sc : best), cs.scores[0])
@@ -643,6 +661,7 @@ function IntelFeedContent() {
       return {
         id: s.id,
         type: itemType,
+        severity,
         signalType: s.type,
         ticker,
         sentiment: s.sentiment ?? null,

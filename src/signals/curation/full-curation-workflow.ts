@@ -115,7 +115,7 @@ export function registerFullCurationWorkflow(orchestrator: Orchestrator, options
           }
 
           return (
-            `You are evaluating curated portfolio signals for relevance and quality. ` +
+            `You are evaluating curated portfolio signals for user-specific importance and urgency. ` +
             `ALL data is provided below — no tools are available.\n\n` +
             `For EACH signal:\n` +
             `1. Classify verdict:\n` +
@@ -171,13 +171,13 @@ export function registerFullCurationWorkflow(orchestrator: Orchestrator, options
             `  - signalId: exact ID from the data (e.g. sig-xxx)\n` +
             `  - ticker: portfolio ticker\n` +
             `  - verdict: CRITICAL/IMPORTANT/NOISE (you may override RA if your thesis disagrees)\n` +
-            `  - relevanceScore: 0-1 thesis-aligned relevance\n` +
+            `  - relevanceScore: 0-1 importance to this user's position and thesis\n` +
             `  - reasoning: 1-2 sentences\n` +
             `  - thesisAlignment: SUPPORTS/CHALLENGES/NEUTRAL\n` +
-            `  - actionability: 0-1 how actionable\n` +
+            `  - actionability: 0-1 urgency / need-for-action right now\n` +
             `  - signalType: include ONLY if the RA flagged a reclassification (e.g. NEWS→MACRO)\n` +
             `- thesisSummary: your current thesis in 2-3 sentences\n\n` +
-            `Be concise. Focus on why each signal matters (or doesn't) to your thesis.`
+            `Be concise. Focus on why each signal matters to this user now, and whether it creates urgency.`
           );
         },
       },

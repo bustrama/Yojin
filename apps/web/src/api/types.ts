@@ -1010,6 +1010,7 @@ export interface CuratedSignal {
   scores: PortfolioRelevanceScore[];
   curatedAt: string;
   feedTarget: FeedTarget;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface CuratedSignalsQueryResult {
@@ -1080,6 +1081,7 @@ export interface IntelFeedCuratedSignal {
   scores: { ticker: string; compositeScore: number }[];
   curatedAt: string;
   feedTarget: FeedTarget;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   verdict: 'CRITICAL' | 'IMPORTANT' | 'NOISE' | null;
   thesisAlignment: 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL' | null;
   actionability: number | null;

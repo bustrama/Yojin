@@ -195,7 +195,6 @@ describe('SignalIngestor', () => {
         tier1: 'Test headline',
         tier2: 'Test summary for the signal.',
         sentiment: 'NEUTRAL',
-        isUrgent: false,
         verdict,
         dropReason: dropReason ?? null,
         qualityScore,

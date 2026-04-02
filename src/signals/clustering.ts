@@ -86,18 +86,10 @@ export class SignalClustering {
       try {
         await this.processOne(signal);
       } catch (error) {
-        logger.error('SignalClustering: failed to process signal, writing raw', {
+        logger.error('SignalClustering: failed to process signal, skipping unscreened signal', {
           signalId: signal.id,
           error: error instanceof Error ? error.message : String(error),
         });
-        try {
-          await this.options.archive.append(signal);
-        } catch (writeErr) {
-          logger.error('SignalClustering: fallback write also failed', {
-            signalId: signal.id,
-            error: writeErr instanceof Error ? writeErr.message : String(writeErr),
-          });
-        }
       }
     }
   }

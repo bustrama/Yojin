@@ -305,6 +305,9 @@ describe('SignalClustering', () => {
 
     // Should not throw
     await expect(clustering.processSignals([signal])).resolves.toBeUndefined();
+
+    const stored = await archive.query({ tickers: ['AAPL'] });
+    expect(stored).toHaveLength(0);
   });
 
   it('continues processing remaining signals after one fails', async () => {
