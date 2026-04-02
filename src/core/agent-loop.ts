@@ -354,6 +354,13 @@ export async function runAgentLoop(
     // ── Observation: feed results back ────────────────────────────────
     emit(onEvent, { type: 'observation', results });
 
+    // Emit display_card events for tools that returned structured card data
+    for (const entry of results) {
+      if (entry.result.displayCard) {
+        emit(onEvent, { type: 'display_card', card: entry.result.displayCard });
+      }
+    }
+
     const toolResultBlocks: ToolResultBlock[] = results.map((r) => ({
       type: 'tool_result' as const,
       tool_use_id: r.toolCallId,

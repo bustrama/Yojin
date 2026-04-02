@@ -74,7 +74,7 @@ export class Gateway {
   /** Initialize all plugins and wire message routing. */
   async start(): Promise<void> {
     await this.loadPlugins();
-    await this.registry.initializeAll(this.config as unknown as Record<string, unknown>);
+    await this.registry.initializeAll(this.config);
 
     // Wire message handlers: channel → AgentRuntime → channel
     for (const channel of this.registry.getAllChannels()) {
@@ -105,12 +105,22 @@ export class Gateway {
     try {
       const hasStreamingHandler = !!msg.onAgentEvent;
 
+      // Collect display cards emitted during the agent loop
+      const displayCards: import('../tools/display-data.js').DisplayCardData[] = [];
+      const wrappedOnEvent: import('../core/types.js').AgentLoopEventHandler = (event) => {
+        if (event.type === 'display_card') {
+          displayCards.push(event.card);
+        }
+        // Forward to the channel's streaming handler if present
+        msg.onAgentEvent?.(event);
+      };
+
       const responseText = await this.agentRuntime.handleMessage({
         message: msg.text,
         channelId,
         userId: msg.userId,
         threadId: msg.threadId,
-        onEvent: msg.onAgentEvent as import('../core/types.js').AgentLoopEventHandler | undefined,
+        onEvent: wrappedOnEvent,
       });
 
       if (!hasStreamingHandler) {
@@ -118,6 +128,7 @@ export class Gateway {
           channelId: msg.channelId,
           threadId: msg.threadId,
           text: responseText,
+          displayCards: displayCards.length > 0 ? displayCards : undefined,
         });
       }
     } catch (err) {

@@ -94,7 +94,7 @@ export async function startChat(args: string[]): Promise<void> {
 
   // Load the anthropic provider
   pluginRegistry.loadPlugin(anthropicPlugin);
-  await pluginRegistry.initializeAll(config as unknown as Record<string, unknown>);
+  await pluginRegistry.initializeAll(config);
 
   const providerId = parseFlag(args, '--provider') ?? config.defaultProvider ?? 'anthropic';
   const model = parseFlag(args, '--model') ?? config.defaultModel ?? 'claude-opus-4-6';
@@ -111,7 +111,7 @@ export async function startChat(args: string[]): Promise<void> {
         vault: services.vault,
         reinitializeProvider: async () => {
           await pluginRegistry.shutdownAll();
-          await pluginRegistry.initializeAll(config as unknown as Record<string, unknown>);
+          await pluginRegistry.initializeAll(config);
           return !!pluginRegistry.getProvider(providerId);
         },
         prompt: (q: string) =>

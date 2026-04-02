@@ -19,6 +19,7 @@ import type {
   TypingHandle,
 } from '../../../src/plugins/types.js';
 import type { SnapStore } from '../../../src/snap/snap-store.js';
+import { formatDisplayCardForTelegram } from '../../../src/tools/channel-display-formatters.js';
 import type { ApprovalGate } from '../../../src/trust/approval/approval-gate.js';
 import type { SecretVault } from '../../../src/trust/vault/types.js';
 
@@ -48,9 +49,17 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
       const chatId = msg.threadId ?? String(activeChatId ?? '');
       if (!chatId) throw new Error('No Telegram chat ID available');
 
-      const chunks = chunkMessage(msg.text);
+      let text = msg.text;
+      if (msg.displayCards?.length) {
+        const formatted = msg.displayCards.map((c) => formatDisplayCardForTelegram(c)).join('\n\n');
+        const escapedText = escapeHtml(msg.text);
+        text = escapedText ? `${escapedText}\n\n${formatted}` : formatted;
+      }
+
+      const parseMode = msg.displayCards?.length ? ('HTML' as const) : undefined;
+      const chunks = chunkMessage(text);
       for (const chunk of chunks) {
-        await bot.api.sendMessage(Number(chatId), chunk);
+        await bot.api.sendMessage(Number(chatId), chunk, parseMode ? { parse_mode: parseMode } : undefined);
       }
     },
 

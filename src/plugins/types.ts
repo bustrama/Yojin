@@ -8,9 +8,22 @@
 
 import type { ZodSchema } from 'zod';
 
+import type { DisplayCardData } from '../tools/display-data.js';
+
 // ---------------------------------------------------------------------------
 // Common
 // ---------------------------------------------------------------------------
+
+/**
+ * Minimal config shape passed to plugins during initialization.
+ * The index signature ensures that concrete config types (e.g. YojinConfig)
+ * are structurally assignable without unsafe double-casts.
+ */
+export interface PluginInitConfig {
+  providers?: ReadonlyArray<{ id: string; options?: Record<string, unknown> }>;
+  channels?: ReadonlyArray<{ id: string; enabled: boolean; options?: Record<string, unknown> }>;
+  [key: string]: unknown;
+}
 
 export type PluginKind = 'provider' | 'channel';
 
@@ -88,7 +101,7 @@ export interface ProviderPlugin {
   resolveModel?(modelRef: string): ProviderModel | undefined;
 
   /** Lifecycle: called when the plugin is initialized. */
-  initialize?(config: Record<string, unknown>): Promise<void>;
+  initialize?(config: PluginInitConfig): Promise<void>;
 
   /** Lifecycle: called on shutdown. */
   shutdown?(): Promise<void>;
@@ -119,6 +132,8 @@ export interface OutgoingMessage {
   threadId?: string;
   text: string;
   metadata?: Record<string, unknown>;
+  /** Display cards for channels that support rich formatting (Slack, Telegram, etc.). */
+  displayCards?: DisplayCardData[];
 }
 
 export interface ChannelMessagingAdapter {
@@ -168,7 +183,7 @@ export interface ChannelPlugin {
   capabilities: ChannelCapabilities;
 
   /** Lifecycle: called when the plugin is initialized. */
-  initialize?(config: Record<string, unknown>): Promise<void>;
+  initialize?(config: PluginInitConfig): Promise<void>;
 
   /** Lifecycle: called on shutdown. */
   shutdown?(): Promise<void>;

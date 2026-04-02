@@ -1,4 +1,5 @@
 import type { Action } from '../../../src/actions/types.js';
+import { chunkMessage as chunkMessageBase } from '../../../src/formatting/index.js';
 import type { InsightReport } from '../../../src/insights/types.js';
 import type { Snap } from '../../../src/snap/types.js';
 
@@ -27,41 +28,13 @@ export function toWhatsApp(text: string): string {
   return result;
 }
 
+const WHATSAPP_LIMIT = 65536;
+
 /**
  * Split a long message into chunks that fit within WhatsApp's 65536-char limit.
- * Prefers splitting at paragraph boundaries (\n\n), then line boundaries (\n),
- * then hard-cuts if no boundary is found.
  */
-export function chunkMessage(text: string, limit = 65536): string[] {
-  if (text.length <= limit) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > limit) {
-    let splitIdx = remaining.lastIndexOf('\n\n', limit);
-    if (splitIdx > 0) {
-      chunks.push(remaining.slice(0, splitIdx));
-      remaining = remaining.slice(splitIdx + 2);
-      continue;
-    }
-
-    splitIdx = remaining.lastIndexOf('\n', limit);
-    if (splitIdx > 0) {
-      chunks.push(remaining.slice(0, splitIdx));
-      remaining = remaining.slice(splitIdx + 1);
-      continue;
-    }
-
-    chunks.push(remaining.slice(0, limit));
-    remaining = remaining.slice(limit);
-  }
-
-  if (remaining.length > 0) {
-    chunks.push(remaining);
-  }
-
-  return chunks;
+export function chunkMessage(text: string, limit = WHATSAPP_LIMIT): string[] {
+  return chunkMessageBase(text, limit);
 }
 
 export function formatSnap(snap: Snap): string {

@@ -2,7 +2,7 @@
  * Plugin registry — stores all registered providers and channels.
  */
 
-import type { ChannelPlugin, ProviderPlugin, YojinPlugin, YojinPluginApi } from './types.js';
+import type { ChannelPlugin, PluginInitConfig, ProviderPlugin, YojinPlugin, YojinPluginApi } from './types.js';
 
 export class PluginRegistry {
   private providers = new Map<string, ProviderPlugin>();
@@ -52,7 +52,7 @@ export class PluginRegistry {
 
   // -- Lifecycle ------------------------------------------------------------
 
-  async initializeAll(config: Record<string, unknown>): Promise<void> {
+  async initializeAll(config: PluginInitConfig): Promise<void> {
     for (const provider of this.providers.values()) {
       try {
         await provider.initialize?.(config);

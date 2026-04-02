@@ -16,6 +16,7 @@ import type {
   OutgoingMessage,
 } from '../../../src/plugins/types.js';
 import type { SnapStore } from '../../../src/snap/snap-store.js';
+import { formatDisplayCardForSlack } from '../../../src/tools/channel-display-formatters.js';
 import type { ApprovalGate } from '../../../src/trust/approval/approval-gate.js';
 
 const logger = createSubsystemLogger('slack-channel');
@@ -71,10 +72,15 @@ export function buildSlackChannel(deps: SlackChannelDeps = {}): ChannelPlugin {
 
   const messagingAdapter: ChannelMessagingAdapter = {
     async sendMessage(msg: OutgoingMessage): Promise<void> {
+      let text = msg.text;
+      if (msg.displayCards?.length) {
+        const formatted = msg.displayCards.map((c) => formatDisplayCardForSlack(c)).join('\n\n');
+        text = text ? `${text}\n\n${formatted}` : formatted;
+      }
       await app.client.chat.postMessage({
         channel: msg.channelId,
         thread_ts: msg.threadId,
-        text: msg.text,
+        text,
       });
     },
     onMessage(handler: MessageHandler): void {
@@ -239,13 +245,8 @@ export function buildSlackChannel(deps: SlackChannelDeps = {}): ChannelPlugin {
     setupAdapter,
     capabilities,
 
-    async initialize(config: Record<string, unknown>): Promise<void> {
-      const channels = (config as Record<string, unknown>).channels as Array<{
-        id: string;
-        enabled: boolean;
-        options?: Record<string, string>;
-      }>;
-      const slackConfig = channels?.find((c) => c.id === 'slack');
+    async initialize(config): Promise<void> {
+      const slackConfig = config.channels?.find((c) => c.id === 'slack');
 
       if (!slackConfig?.enabled) {
         logger.info('Slack channel is disabled, skipping setup');
