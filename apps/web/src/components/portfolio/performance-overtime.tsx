@@ -13,13 +13,17 @@ interface PerformanceOvertimeProps {
   history: PortfolioHistoryPoint[];
 }
 
-/** Convert history points to chart-ready { date, pnl } using UTC dates, deduped by date (last wins). */
+/** Convert history points to chart-ready { date, pnl } using UTC dates, deduped by date (latest timestamp wins). */
 function toChartData(history: PortfolioHistoryPoint[]): { date: string; pnl: number }[] {
-  const byDate = new Map<string, number>();
+  const byDate = new Map<string, { pnl: number; timestamp: string }>();
   for (const h of history) {
-    byDate.set(new Date(h.timestamp).toISOString().slice(0, 10), h.periodPnl);
+    const date = new Date(h.timestamp).toISOString().slice(0, 10);
+    const existing = byDate.get(date);
+    if (!existing || h.timestamp > existing.timestamp) {
+      byDate.set(date, { pnl: h.periodPnl, timestamp: h.timestamp });
+    }
   }
-  return Array.from(byDate, ([date, pnl]) => ({ date, pnl })).sort((a, b) => a.date.localeCompare(b.date));
+  return Array.from(byDate, ([date, { pnl }]) => ({ date, pnl })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function PerformanceOvertime({ history }: PerformanceOvertimeProps) {

@@ -17,6 +17,7 @@ export class StreamingToolExecutor {
   private readonly agentId?: string;
   private readonly pending = new Map<string, Promise<ToolCallResult>>();
   private readonly completed: ToolCallResult[] = [];
+  private readonly submissionOrder: string[] = [];
 
   constructor(executor: ToolExecutor, agentId?: string) {
     this.executor = executor;
@@ -36,6 +37,7 @@ export class StreamingToolExecutor {
 
     logger.debug('Streaming tool submitted', { tool: call.name, id: call.id });
 
+    this.submissionOrder.push(call.id);
     const promise = this.executeTool(call);
     this.pending.set(call.id, promise);
 
@@ -56,7 +58,10 @@ export class StreamingToolExecutor {
       logger.debug('Awaiting remaining tools', { count: remaining.length });
       await Promise.all(remaining);
     }
-    return [...this.completed];
+    // Return in submission order — completed array is in completion order (fastest first)
+    return [...this.completed].sort(
+      (a, b) => this.submissionOrder.indexOf(a.toolCallId) - this.submissionOrder.indexOf(b.toolCallId),
+    );
   }
 
   /**

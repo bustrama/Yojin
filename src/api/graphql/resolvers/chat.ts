@@ -108,11 +108,12 @@ export function sendMessageMutation(
       }
       const validatedImageType = imageBase64 ? (imageMediaType as ImageMediaType) : undefined;
 
-      // Buffer text deltas per iteration — only forward to the client when the
-      // iteration ends WITHOUT tool calls (i.e. the agent's final response text).
-      // Intermediate thinking text (before tool calls) is discarded so the user
-      // sees: thinking → tool indicators → final streamed response.
+      // Track whether any tool call has been seen in this handleMessage invocation.
+      // Pre-tool thinking text is buffered and discarded when an action arrives.
+      // Post-tool text (the final response) is streamed live so the user sees it
+      // incrementally: thinking → tool indicators → streamed final response.
       let textBuffer = '';
+      let toolCallSeen = false;
 
       // runtime is guaranteed non-null — checked above before the void IIFE
       await (runtime as AgentRuntime).handleMessage({
@@ -123,10 +124,20 @@ export function sendMessageMutation(
         ...(imageBase64 && validatedImageType ? { imageBase64, imageMediaType: validatedImageType } : {}),
         onEvent: (event: AgentLoopEvent) => {
           if (event.type === 'text_delta') {
-            // Buffer — we don't yet know if tool calls will follow
-            textBuffer += event.text;
+            if (toolCallSeen) {
+              // Post-tool text = final response — stream it live
+              pubsub.publish(`chat:${threadId}`, {
+                type: 'TEXT_DELTA',
+                threadId,
+                delta: event.text,
+              } satisfies ChatEvent);
+            } else {
+              // Pre-tool text = thinking — buffer (discarded on action)
+              textBuffer += event.text;
+            }
           } else if (event.type === 'action') {
             // Tool calls follow this text — discard the thinking buffer
+            toolCallSeen = true;
             textBuffer = '';
             for (const call of event.toolCalls) {
               // Display tools emit a TOOL_CARD event for frontend rendering
@@ -153,8 +164,9 @@ export function sendMessageMutation(
               piiTypesFound: event.typesFound,
             } satisfies ChatEvent);
           } else if (event.type === 'done') {
-            // Flush any buffered text as a single delta before completing
-            if (textBuffer) {
+            // Flush buffered text for simple responses (no tool calls).
+            // Post-tool text was already streamed live above.
+            if (textBuffer && !toolCallSeen) {
               pubsub.publish(`chat:${threadId}`, {
                 type: 'TEXT_DELTA',
                 threadId,

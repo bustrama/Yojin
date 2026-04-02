@@ -7,13 +7,17 @@ interface TotalValueGraphProps {
   history: PortfolioHistoryPoint[];
 }
 
-/** Convert history points to chart-ready { date, value } using UTC dates, deduped by date (last wins). */
+/** Convert history points to chart-ready { date, value } using UTC dates, deduped by date (latest timestamp wins). */
 function toChartData(history: PortfolioHistoryPoint[]): { date: string; value: number }[] {
-  const byDate = new Map<string, number>();
+  const byDate = new Map<string, { value: number; timestamp: string }>();
   for (const p of history) {
-    byDate.set(new Date(p.timestamp).toISOString().slice(0, 10), p.totalValue);
+    const date = new Date(p.timestamp).toISOString().slice(0, 10);
+    const existing = byDate.get(date);
+    if (!existing || p.timestamp > existing.timestamp) {
+      byDate.set(date, { value: p.totalValue, timestamp: p.timestamp });
+    }
   }
-  return Array.from(byDate, ([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
+  return Array.from(byDate, ([date, { value }]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function TotalValueGraph({ history }: TotalValueGraphProps) {
