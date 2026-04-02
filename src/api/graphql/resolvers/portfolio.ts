@@ -227,11 +227,11 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
       marketValue,
       dayChange: quote.change,
       dayChangePercent: quote.changePercent,
-      // Pre/post market fields — available on some Jintel quote responses
-      preMarketChange: (quote as unknown as Record<string, number | null>).preMarketChange ?? null,
-      preMarketChangePercent: (quote as unknown as Record<string, number | null>).preMarketChangePercent ?? null,
-      postMarketChange: (quote as unknown as Record<string, number | null>).postMarketChange ?? null,
-      postMarketChangePercent: (quote as unknown as Record<string, number | null>).postMarketChangePercent ?? null,
+      // Pre/post market fields — optional on MarketQuote
+      preMarketChange: quote.preMarketChange ?? null,
+      preMarketChangePercent: quote.preMarketChangePercent ?? null,
+      postMarketChange: quote.postMarketChange ?? null,
+      postMarketChangePercent: quote.postMarketChangePercent ?? null,
       unrealizedPnl: hasCostBasis ? marketValue - totalCost : 0,
       unrealizedPnlPercent: hasCostBasis ? ((currentPrice - pos.costBasis) / pos.costBasis) * 100 : 0,
       sparkline,
@@ -277,6 +277,11 @@ export function setPortfolioConnectionManager(manager: ConnectionManager): void 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Normalize a position's platform to uppercase for comparison. Handles null/undefined. */
+function normPlatform(p: Position): string {
+  return (p.platform ?? '').toUpperCase();
+}
 
 const EMPTY_SNAPSHOT: PortfolioSnapshot = {
   id: 'empty',
@@ -444,9 +449,7 @@ export async function addManualPositionMutation(
 
   // Symbol-level dedup within this platform only
   const existing = await snapshotStore.getLatest();
-  const samePlatformPositions = (existing?.positions ?? []).filter(
-    (p) => p.platform?.toUpperCase() === effectivePlatform,
-  );
+  const samePlatformPositions = (existing?.positions ?? []).filter((p) => normPlatform(p) === effectivePlatform);
   const existingIdx = samePlatformPositions.findIndex((p) => p.symbol === newPosition.symbol);
   const updatedPlatformPositions =
     existingIdx !== -1
@@ -490,7 +493,7 @@ export async function editPositionMutation(
   const targetPlatformPositions: Position[] = [];
   const otherPlatformPositions: Position[] = [];
   for (const p of existing.positions) {
-    if ((p.platform ?? '').toUpperCase() === targetPlatform) {
+    if (normPlatform(p) === targetPlatform) {
       targetPlatformPositions.push(p);
     } else {
       otherPlatformPositions.push(p);
@@ -551,7 +554,7 @@ export async function removePositionMutation(
   const platformPositions: Position[] = [];
   const otherPlatformPositions: Position[] = [];
   for (const p of existing.positions) {
-    const pPlatform = (p.platform ?? '').toUpperCase();
+    const pPlatform = normPlatform(p);
     if (pPlatform === targetPlatform) {
       if (p.symbol.toUpperCase() !== targetSymbol) {
         platformPositions.push(p);

@@ -74,7 +74,7 @@ export class Gateway {
   /** Initialize all plugins and wire message routing. */
   async start(): Promise<void> {
     await this.loadPlugins();
-    await this.registry.initializeAll(this.config as unknown as Record<string, unknown>);
+    await this.registry.initializeAll(this.config);
 
     // Wire message handlers: channel → AgentRuntime → channel
     for (const channel of this.registry.getAllChannels()) {

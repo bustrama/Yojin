@@ -245,13 +245,8 @@ export function buildSlackChannel(deps: SlackChannelDeps = {}): ChannelPlugin {
     setupAdapter,
     capabilities,
 
-    async initialize(config: Record<string, unknown>): Promise<void> {
-      const channels = (config as Record<string, unknown>).channels as Array<{
-        id: string;
-        enabled: boolean;
-        options?: Record<string, string>;
-      }>;
-      const slackConfig = channels?.find((c) => c.id === 'slack');
+    async initialize(config): Promise<void> {
+      const slackConfig = config.channels?.find((c) => c.id === 'slack');
 
       if (!slackConfig?.enabled) {
         logger.info('Slack channel is disabled, skipping setup');

@@ -209,13 +209,8 @@ export function buildWebChannel(): ChannelPlugin {
     setupAdapter,
     capabilities,
 
-    async initialize(config: Record<string, unknown>): Promise<void> {
-      const channels = (config as Record<string, unknown>).channels as Array<{
-        id: string;
-        enabled: boolean;
-        options?: Record<string, unknown>;
-      }>;
-      const webConfig = channels?.find((c) => c.id === 'web');
+    async initialize(config): Promise<void> {
+      const webConfig = config.channels?.find((c) => c.id === 'web');
 
       if (!webConfig?.enabled) {
         console.log('Web channel is disabled, skipping setup');
