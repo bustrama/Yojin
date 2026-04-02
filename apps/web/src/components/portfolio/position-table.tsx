@@ -69,13 +69,13 @@ const TH = 'px-4 py-2.5 text-2xs font-medium uppercase tracking-wider text-text-
 // Group positions by symbol
 // ---------------------------------------------------------------------------
 
-interface GroupedPosition extends Position {
+export interface GroupedPosition extends Position {
   primaryPlatform: string;
   extraAccountCount: number;
   underlying: Position[];
 }
 
-function groupPositions(positions: Position[]): GroupedPosition[] {
+export function groupPositions(positions: Position[]): GroupedPosition[] {
   const bySymbol = new Map<string, Position[]>();
   for (const pos of positions) {
     const group = bySymbol.get(pos.symbol);
