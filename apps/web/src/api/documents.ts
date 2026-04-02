@@ -835,9 +835,11 @@ export const CURATED_SIGNALS_QUERY = gql`
       }
       feedTarget
       severity
-      verdict
-      thesisAlignment
-      actionability
+      assessment {
+        verdict
+        thesisAlignment
+        actionability
+      }
     }
   }
 `;
@@ -1272,9 +1274,11 @@ export const INTEL_FEED_QUERY = gql`
       }
       feedTarget
       severity
-      verdict
-      thesisAlignment
-      actionability
+      assessment {
+        verdict
+        thesisAlignment
+        actionability
+      }
     }
   }
 `;

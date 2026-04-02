@@ -1007,9 +1007,11 @@ export interface CuratedSignal {
   scores: PortfolioRelevanceScore[];
   feedTarget: FeedTarget;
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-  verdict: 'CRITICAL' | 'IMPORTANT' | 'NOISE' | null;
-  thesisAlignment: 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL' | null;
-  actionability: number | null;
+  assessment: {
+    verdict: 'CRITICAL' | 'IMPORTANT' | 'NOISE';
+    thesisAlignment: 'SUPPORTS' | 'CHALLENGES' | 'NEUTRAL';
+    actionability: number;
+  } | null;
 }
 
 export interface CuratedSignalsQueryResult {

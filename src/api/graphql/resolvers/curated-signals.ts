@@ -73,9 +73,11 @@ interface CuratedSignalGql {
   scores: PortfolioRelevanceScoreGql[];
   feedTarget: FeedTarget;
   severity: SignalSeverity;
-  verdict: string | null;
-  thesisAlignment: string | null;
-  actionability: number | null;
+  assessment: {
+    verdict: string;
+    thesisAlignment: string;
+    actionability: number;
+  } | null;
 }
 
 interface CurationStatusGql {
@@ -301,9 +303,13 @@ export async function curatedSignalsResolver(
       })),
       feedTarget: t.feedTarget,
       severity,
-      verdict: assessment?.verdict ?? null,
-      thesisAlignment: assessment?.thesisAlignment ?? null,
-      actionability: assessment?.actionability ?? null,
+      assessment: assessment
+        ? {
+            verdict: assessment.verdict,
+            thesisAlignment: assessment.thesisAlignment,
+            actionability: assessment.actionability,
+          }
+        : null,
     };
   });
 }
