@@ -12,7 +12,11 @@
 // Domain patterns — non-financial sites that frequently match short tickers
 // ---------------------------------------------------------------------------
 
-/** Non-financial domains that frequently match short tickers as substrings. */
+/**
+ * Non-financial domains that frequently match short tickers as substrings.
+ * Superset of patterns previously split across ingestor.ts and signal-fetcher.ts —
+ * imdb.com, rottentomatoes.com, fandom.com were ingestor-only; now applied uniformly.
+ */
 export const JUNK_DOMAIN_RE =
   /\b(spotify\.com|soundcloud\.com|genius\.com|bandcamp\.com|deezer\.com|tidal\.com|shazam\.com|collinsdictionary\.com|merriam-webster\.com|dictionary\.com|wiktionary\.org|wikipedia\.org|urbandictionary\.com|cambridge\.org\/dictionary|oxforddictionaries\.com|imdb\.com|rottentomatoes\.com|fandom\.com)\b/i;
 
@@ -20,7 +24,12 @@ export const JUNK_DOMAIN_RE =
 // Title patterns — non-financial content or scraper boilerplate
 // ---------------------------------------------------------------------------
 
-/** Title patterns that indicate non-financial content or scraper junk. */
+/**
+ * Title patterns that indicate non-financial content or scraper junk.
+ * Superset of patterns previously split across ingestor.ts and signal-fetcher.ts —
+ * `stock price`, `closed at $`, `what you need to know`, `spy vs spy` were
+ * signal-fetcher-only; now applied uniformly at all pipeline stages.
+ */
 export const JUNK_TITLE_RE =
   /__\w+__|stock quote price|stock quotes? from|stock price|in real time$|tradingview|quote & history|price and forecast|price chart|commission-free|buy and sell|closed at \$|what you need to know$|spy vs\.? spy|song and lyrics|official music video|official video|official audio|full album|definition and meaning|definition of\b|meaning of\b|\bdefinition\b.*\bdictionary\b/i;
 
