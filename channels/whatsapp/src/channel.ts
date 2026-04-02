@@ -23,6 +23,7 @@ import type {
   TypingHandle,
 } from '../../../src/plugins/types.js';
 import type { SnapStore } from '../../../src/snap/snap-store.js';
+import { formatDisplayCardForWhatsApp } from '../../../src/tools/channel-display-formatters.js';
 import type { ApprovalGate } from '../../../src/trust/approval/approval-gate.js';
 import type { PiiRedactor } from '../../../src/trust/pii/types.js';
 
@@ -154,7 +155,12 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
     async sendMessage(msg: OutgoingMessage): Promise<void> {
       if (!proxy) throw new Error('WhatsApp socket not available');
       if (!selfJid) throw new Error('WhatsApp self-chat JID not resolved — pair via QR first');
-      await sendToSelf(toWhatsApp(msg.text));
+      let text = msg.text;
+      if (msg.displayCards?.length) {
+        const formatted = msg.displayCards.map((c) => formatDisplayCardForWhatsApp(c)).join('\n\n');
+        text = text ? `${text}\n\n${formatted}` : formatted;
+      }
+      await sendToSelf(toWhatsApp(text));
     },
 
     onMessage(handler: MessageHandler): void {

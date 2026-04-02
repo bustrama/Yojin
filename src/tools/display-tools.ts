@@ -1,17 +1,30 @@
 /**
- * Display tools — UI visualization tools that trigger rich card rendering
- * on the frontend. When the AI calls a `display_*` tool, the chat resolver
- * emits a TOOL_CARD event that the frontend renders via ToolRenderer.
+ * Display tools — UI visualization tools that trigger rich card rendering.
  *
- * These tools don't fetch data — the card components fetch their own data
- * client-side via GraphQL. The tool result provides text context for the AI.
+ * On the web app, the chat resolver emits TOOL_CARD events that the frontend
+ * renders via ToolRenderer (React components fetch their own data client-side).
+ *
+ * On other channels (Slack, Telegram, WhatsApp), the structured displayCard
+ * data is formatted natively by each channel's formatter.
+ *
+ * The plain-text tool result gives the LLM real data to reference in its response.
  */
 
 import { z } from 'zod';
 
-import type { ToolDefinition } from '../core/types.js';
+import type { AllocationData, MorningBriefingData, PortfolioOverviewData, PositionsListData } from './display-data.js';
+import type { Position } from '../api/graphql/types.js';
+import type { ToolDefinition, ToolResult } from '../core/types.js';
+import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
+import { balanceToRange } from '../trust/pii/patterns.js';
 
-export function createDisplayTools(): ToolDefinition[] {
+export interface DisplayToolsDeps {
+  snapshotStore: PortfolioSnapshotStore;
+}
+
+export function createDisplayTools(deps: DisplayToolsDeps): ToolDefinition[] {
+  const { snapshotStore } = deps;
+
   const displayPortfolioOverview: ToolDefinition = {
     name: 'display_portfolio_overview',
     description:
@@ -21,9 +34,38 @@ export function createDisplayTools(): ToolDefinition[] {
         .enum(['today', 'week', 'ytd'])
         .describe('Time period for the overview: today, this week, or year-to-date'),
     }),
-    async execute(params: { period: string }): Promise<{ content: string }> {
+    async execute(params: { period: 'today' | 'week' | 'ytd' }): Promise<ToolResult> {
+      const snapshot = await snapshotStore.getLatest();
+      if (!snapshot || snapshot.positions.length === 0) {
+        return { content: 'No portfolio data available. The user needs to add positions first.' };
+      }
+
+      const top = [...snapshot.positions].sort((a, b) => b.marketValue - a.marketValue).slice(0, 5);
+
+      const data: PortfolioOverviewData = {
+        period: params.period,
+        totalValue: snapshot.totalValue,
+        totalPnl: snapshot.totalPnl,
+        totalPnlPercent: snapshot.totalPnlPercent,
+        positionCount: snapshot.positions.length,
+        topHoldings: top.map((p) => ({
+          symbol: p.symbol,
+          name: p.name,
+          marketValue: p.marketValue,
+          pnlPercent: p.unrealizedPnlPercent,
+        })),
+      };
+
+      const card = { type: 'portfolio-overview' as const, data };
+
+      // LLM sees redacted values — exact amounts go only to channels via displayCard
       return {
-        content: `Displaying portfolio overview card for period: ${params.period}. The user will see a visual card with their portfolio performance, total value, P&L, and largest holdings.`,
+        content:
+          `Displaying portfolio overview card (${params.period}).\n` +
+          `Total value: ${balanceToRange(snapshot.totalValue)}, ` +
+          `${snapshot.positions.length} positions, ` +
+          `P&L: ${snapshot.totalPnl >= 0 ? '+' : ''}${balanceToRange(snapshot.totalPnl)}.`,
+        displayCard: card,
       };
     },
   };
@@ -37,9 +79,40 @@ export function createDisplayTools(): ToolDefinition[] {
         .enum(['top', 'worst', 'movers', 'all'])
         .describe('Which positions to show: top performers, worst performers, biggest movers, or all positions'),
     }),
-    async execute(params: { variant: string }): Promise<{ content: string }> {
+    async execute(params: { variant: 'top' | 'worst' | 'movers' | 'all' }): Promise<ToolResult> {
+      const snapshot = await snapshotStore.getLatest();
+      if (!snapshot || snapshot.positions.length === 0) {
+        return { content: 'No portfolio data available. The user needs to add positions first.' };
+      }
+
+      const sortFns: Record<string, (a: Position, b: Position) => number> = {
+        top: (a, b) => b.unrealizedPnlPercent - a.unrealizedPnlPercent,
+        worst: (a, b) => a.unrealizedPnlPercent - b.unrealizedPnlPercent,
+        movers: (a, b) => Math.abs(b.unrealizedPnl) - Math.abs(a.unrealizedPnl),
+        all: (a, b) => b.marketValue - a.marketValue,
+      };
+      const limit = params.variant === 'all' ? 50 : 5;
+      const sorted = [...snapshot.positions].sort(sortFns[params.variant]).slice(0, limit);
+
+      const data: PositionsListData = {
+        variant: params.variant,
+        positions: sorted.map((p) => ({
+          symbol: p.symbol,
+          name: p.name,
+          marketValue: p.marketValue,
+          pnlPercent: p.unrealizedPnlPercent,
+          pnl: p.unrealizedPnl,
+        })),
+        totalValue: snapshot.totalValue,
+      };
+
+      const card = { type: 'positions-list' as const, data };
+
       return {
-        content: `Displaying positions list card with variant: ${params.variant}. The user will see a visual card with their ${params.variant === 'all' ? 'complete position list' : `${params.variant} performing positions`}.`,
+        content:
+          `Displaying ${params.variant} positions (${sorted.length} shown).\n` +
+          `Total portfolio value: ${balanceToRange(snapshot.totalValue)}.`,
+        displayCard: card,
       };
     },
   };
@@ -49,10 +122,63 @@ export function createDisplayTools(): ToolDefinition[] {
     description:
       'Display a visual portfolio allocation card to the user. Shows allocation breakdown by asset class and sector with progress bars. Call this when the user asks about their portfolio allocation, diversification, or sector breakdown.',
     parameters: z.object({}),
-    async execute(): Promise<{ content: string }> {
+    async execute(): Promise<ToolResult> {
+      const snapshot = await snapshotStore.getLatest();
+      if (!snapshot || snapshot.positions.length === 0) {
+        return { content: 'No portfolio data available. The user needs to add positions first.' };
+      }
+
+      const { totalValue } = snapshot;
+
+      // Group by asset class
+      const byAssetClass = new Map<string, number>();
+      for (const pos of snapshot.positions) {
+        byAssetClass.set(pos.assetClass, (byAssetClass.get(pos.assetClass) ?? 0) + pos.marketValue);
+      }
+      const assetClassRows = [...byAssetClass.entries()]
+        .map(([label, value]) => ({ label, value, weight: totalValue > 0 ? (value / totalValue) * 100 : 0 }))
+        .sort((a, b) => b.value - a.value);
+
+      // Group by sector
+      const bySector = new Map<string, number>();
+      for (const pos of snapshot.positions) {
+        const key = pos.sector ?? 'Other';
+        bySector.set(key, (bySector.get(key) ?? 0) + pos.marketValue);
+      }
+      const sectorRows = [...bySector.entries()]
+        .map(([label, value]) => ({ label, value, weight: totalValue > 0 ? (value / totalValue) * 100 : 0 }))
+        .sort((a, b) => b.value - a.value);
+
+      // Top concentrations
+      const topConcentrations = [...snapshot.positions]
+        .sort((a, b) => b.marketValue - a.marketValue)
+        .slice(0, 3)
+        .map((p) => ({
+          symbol: p.symbol,
+          weight: totalValue > 0 ? (p.marketValue / totalValue) * 100 : 0,
+        }));
+
+      const data: AllocationData = {
+        totalValue,
+        byAssetClass: assetClassRows,
+        bySector: sectorRows,
+        topConcentrations,
+      };
+
+      const card = { type: 'allocation' as const, data };
+
+      // LLM sees redacted value + weight percentages (no exact $)
+      const topClasses = assetClassRows
+        .slice(0, 3)
+        .map((r) => `${r.label} ${r.weight.toFixed(0)}%`)
+        .join(', ');
       return {
         content:
-          'Displaying portfolio allocation card. The user will see a visual card with their allocation breakdown by asset class and sector.',
+          `Displaying allocation breakdown.\n` +
+          `Total value: ${balanceToRange(totalValue)}. ` +
+          `Asset classes: ${topClasses}. ` +
+          `Top concentration: ${topConcentrations[0]?.symbol ?? 'N/A'} at ${topConcentrations[0]?.weight.toFixed(0) ?? 0}%.`,
+        displayCard: card,
       };
     },
   };
@@ -62,10 +188,43 @@ export function createDisplayTools(): ToolDefinition[] {
     description:
       'Display a visual morning briefing card to the user. Shows a daily summary with portfolio stats, active alerts, recent news headlines, and suggested actions. ALWAYS call this when the user asks for their morning briefing, daily summary, or daily digest.',
     parameters: z.object({}),
-    async execute(): Promise<{ content: string }> {
+    async execute(): Promise<ToolResult> {
+      const snapshot = await snapshotStore.getLatest();
+
+      const positions = snapshot?.positions ?? [];
+      const totalValue = snapshot?.totalValue ?? 0;
+      const totalPnl = snapshot?.totalPnl ?? 0;
+      const totalPnlPercent = snapshot?.totalPnlPercent ?? 0;
+
+      // Top movers by absolute P&L %
+      const movers = [...positions]
+        .sort((a, b) => Math.abs(b.unrealizedPnlPercent) - Math.abs(a.unrealizedPnlPercent))
+        .slice(0, 5)
+        .map((p) => ({
+          symbol: p.symbol,
+          name: p.name,
+          pnlPercent: p.unrealizedPnlPercent,
+        }));
+
+      const data: MorningBriefingData = {
+        date: new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+        totalValue,
+        totalPnl,
+        totalPnlPercent,
+        positionCount: positions.length,
+        alertCount: 0,
+        movers,
+        headlines: [],
+      };
+
+      const card = { type: 'morning-briefing' as const, data };
+
       return {
         content:
-          'Displaying morning briefing card. The user will see a visual card with their daily portfolio summary, alerts, and news headlines. Keep any additional commentary brief — the card contains the key data.',
+          `Displaying morning briefing card.\n` +
+          `Portfolio: ${balanceToRange(totalValue)} across ${positions.length} positions. ` +
+          `${totalPnl >= 0 ? 'Up' : 'Down'} ${balanceToRange(totalPnl)}.`,
+        displayCard: card,
       };
     },
   };

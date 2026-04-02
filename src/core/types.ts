@@ -29,6 +29,11 @@ export interface ToolDefinition {
 export interface ToolResult {
   content: string;
   isError?: boolean;
+  /** Structured data for display tools. Channels use this for rich formatting. */
+  displayCard?: {
+    type: string;
+    data: unknown;
+  };
 }
 
 /** Context passed to tool execution for audit logging. */
@@ -119,6 +124,7 @@ export type AgentLoopEvent =
   | { type: 'pii_redacted'; entitiesFound: number; typesFound: string[]; processingTimeMs: number }
   | { type: 'cost'; model: string; costUsd: number; totalCostUsd: number }
   | { type: 'budget_exceeded'; totalCostUsd: number; budgetUsd: number }
+  | { type: 'display_card'; card: { type: string; data: unknown } }
   | { type: 'done'; text: string; iterations: number }
   | { type: 'error'; error: string; iterations: number }
   | { type: 'max_iterations'; iterations: number };

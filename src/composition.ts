@@ -595,7 +595,8 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   }
 
   // Display tools — trigger rich card rendering on the frontend
-  for (const tool of createDisplayTools()) {
+  // and return structured data for non-web channels (Slack, Telegram, etc.)
+  for (const tool of createDisplayTools({ snapshotStore })) {
     toolRegistry.register(tool);
   }
 

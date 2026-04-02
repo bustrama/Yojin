@@ -8,6 +8,8 @@
 
 import type { ZodSchema } from 'zod';
 
+import type { DisplayCardData } from '../tools/display-data.js';
+
 // ---------------------------------------------------------------------------
 // Common
 // ---------------------------------------------------------------------------
@@ -119,6 +121,8 @@ export interface OutgoingMessage {
   threadId?: string;
   text: string;
   metadata?: Record<string, unknown>;
+  /** Display cards for channels that support rich formatting (Slack, Telegram, etc.). */
+  displayCards?: DisplayCardData[];
 }
 
 export interface ChannelMessagingAdapter {
