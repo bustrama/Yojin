@@ -231,6 +231,7 @@ export class ClaudeCodeProvider implements AIProvider {
     tools?: ToolSchema[];
     maxTokens?: number;
     onTextDelta?: (text: string) => void;
+    onToolUse?: (block: import('../core/types.js').ToolUseBlock) => void;
   }): Promise<{
     content: ContentBlock[];
     stopReason: string;
@@ -300,6 +301,7 @@ export class ClaudeCodeProvider implements AIProvider {
       tools?: ToolSchema[];
       maxTokens?: number;
       onTextDelta?: (text: string) => void;
+      onToolUse?: (block: import('../core/types.js').ToolUseBlock) => void;
     },
   ): Promise<{ content: ContentBlock[]; stopReason: string; usage?: { inputTokens: number; outputTokens: number } }> {
     const stream = client.messages.stream({
@@ -321,6 +323,16 @@ export class ClaudeCodeProvider implements AIProvider {
     stream.on('text', (text) => {
       params.onTextDelta?.(text);
     });
+
+    // Emit tool_use blocks as they complete during the stream
+    const onToolUse = params.onToolUse;
+    if (onToolUse) {
+      stream.on('contentBlock', (block) => {
+        if (block.type === 'tool_use') {
+          onToolUse({ type: 'tool_use', id: block.id, name: block.name, input: block.input });
+        }
+      });
+    }
 
     const response = await stream.finalMessage();
 
@@ -482,12 +494,31 @@ export class ClaudeCodeProvider implements AIProvider {
       tools?: ToolSchema[];
       maxTokens?: number;
       onTextDelta?: (text: string) => void;
+      onToolUse?: (block: import('../core/types.js').ToolUseBlock) => void;
     },
   ): Promise<{ content: ContentBlock[]; stopReason: string; usage?: { inputTokens: number; outputTokens: number } }> {
     const request = this.buildOAuthRequest(params);
+
+    const onToolUse = params.onToolUse;
+    const wireStreamCallbacks = (s: ReturnType<typeof client.messages.stream>) => {
+      s.on('text', (text: string) => params.onTextDelta?.(text));
+      if (onToolUse) {
+        s.on('contentBlock', (block: Anthropic.ContentBlock) => {
+          if (block.type === 'tool_use') {
+            onToolUse({
+              type: 'tool_use',
+              id: block.id,
+              name: fromOAuthToolName(block.name),
+              input: block.input,
+            });
+          }
+        });
+      }
+    };
+
     try {
       const stream = client.messages.stream(request);
-      stream.on('text', (text) => params.onTextDelta?.(text));
+      wireStreamCallbacks(stream);
       const response = await stream.finalMessage();
       return {
         content: this.mapOAuthResponse(response.content),
@@ -497,7 +528,7 @@ export class ClaudeCodeProvider implements AIProvider {
     } catch (err) {
       if (!isAuthError(err) || !(await this.refreshOAuthToken()) || !this.client) throw err;
       const stream = this.client.messages.stream(request);
-      stream.on('text', (text) => params.onTextDelta?.(text));
+      wireStreamCallbacks(stream);
       const response = await stream.finalMessage();
       return {
         content: this.mapOAuthResponse(response.content),

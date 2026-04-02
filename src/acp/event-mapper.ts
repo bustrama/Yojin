@@ -117,8 +117,12 @@ export function createEventMapper(sessionId: string): (event: AgentLoopEvent) =>
         ];
 
       case 'compaction':
+      case 'snip':
       case 'pii_redacted':
-        // Internal optimization / privacy info, not relevant to ACP client
+      case 'cost':
+      case 'budget_exceeded':
+      case 'tool_started':
+        // Internal optimization / privacy / cost info, not relevant to ACP client
         return [];
 
       default:

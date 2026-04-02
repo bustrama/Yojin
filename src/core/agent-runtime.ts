@@ -159,6 +159,7 @@ export class AgentRuntime {
       iterations: result.iterations,
       usage: result.usage,
       compactions: result.compactions,
+      costUsd: result.costUsd,
     };
   }
 
