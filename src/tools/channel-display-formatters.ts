@@ -8,6 +8,7 @@
 
 import type { DisplayCardData } from './display-data.js';
 import { fmtCurrency, fmtPnl, pnlEmoji } from './display-format-helpers.js';
+import { escapeHtml } from '../formatting/index.js';
 
 // ---------------------------------------------------------------------------
 // Slack (mrkdwn)
@@ -97,9 +98,7 @@ export function formatDisplayCardForSlack(card: DisplayCardData): string {
 // Telegram (HTML)
 // ---------------------------------------------------------------------------
 
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+const esc = escapeHtml;
 
 export function formatDisplayCardForTelegram(card: DisplayCardData): string {
   switch (card.type) {

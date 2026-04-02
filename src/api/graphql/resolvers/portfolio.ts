@@ -238,13 +238,17 @@ async function enrichWithLiveQuotes(snapshot: PortfolioSnapshot): Promise<Portfo
     };
   });
 
-  // Recompute portfolio totals from live-priced positions
-  const totalValue = positions.reduce((sum, p) => sum + p.marketValue, 0);
-  const totalCost = positions.reduce((sum, p) => sum + p.costBasis * p.quantity, 0);
+  // Recompute portfolio totals from live-priced positions (single pass)
+  let totalValue = 0;
+  let totalCost = 0;
+  let totalDayChange = 0;
+  for (const p of positions) {
+    totalValue += p.marketValue;
+    totalCost += p.costBasis * p.quantity;
+    totalDayChange += (p.dayChange ?? 0) * p.quantity;
+  }
   const totalPnl = totalValue - totalCost;
   const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-
-  const totalDayChange = positions.reduce((sum, p) => sum + (p.dayChange ?? 0) * p.quantity, 0);
   const prevValue = totalValue - totalDayChange;
   const totalDayChangePercent = prevValue > 0 ? (totalDayChange / prevValue) * 100 : 0;
 
@@ -309,48 +313,33 @@ export async function portfolioHistoryQuery(days?: number | null): Promise<Portf
   // Sort chronologically — JSONL insertion order may not be time-ordered
   snapshots.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-  // Group by day. Older days are deduplicated to one snapshot (the latest).
-  // The most recent day keeps all intraday points so the chart shows
-  // movement on day 1 (e.g. portfolio being built up during onboarding).
-  const byDay = new Map<string, PortfolioSnapshot[]>();
+  // Single pass: dedup older days to one snapshot (the latest per day),
+  // but keep ALL intraday points for the most recent day so the chart
+  // shows movement on day 1 (e.g. portfolio being built up during onboarding).
+  const latestDay = snapshots[snapshots.length - 1].timestamp.slice(0, 10);
+  const dayDedup = new Map<string, PortfolioSnapshot>();
+  const latestDaySnapshots: PortfolioSnapshot[] = [];
   for (const s of snapshots) {
-    const day = s.timestamp.slice(0, 10); // YYYY-MM-DD
-    const arr = byDay.get(day) ?? [];
-    arr.push(s);
-    byDay.set(day, arr);
-  }
-
-  const sortedDays = [...byDay.keys()].sort();
-  const latestDay = sortedDays[sortedDays.length - 1];
-
-  const deduped: PortfolioSnapshot[] = [];
-  for (const day of sortedDays) {
-    const daySnapshots = byDay.get(day) ?? [];
+    const day = s.timestamp.slice(0, 10);
     if (day === latestDay) {
-      deduped.push(...daySnapshots);
+      latestDaySnapshots.push(s);
     } else {
-      // Keep only the last snapshot per older day
-      deduped.push(daySnapshots[daySnapshots.length - 1]);
+      dayDedup.set(day, s);
     }
   }
 
   // Apply days filter if provided
-  let filtered = deduped;
+  let cutoff = -Infinity;
   if (days != null && days > 0) {
-    const latestTs = new Date(deduped[deduped.length - 1].timestamp).getTime();
-    const cutoff = latestTs - days * 24 * 60 * 60 * 1000;
-    filtered = deduped.filter((s) => new Date(s.timestamp).getTime() >= cutoff);
+    const latestSnap = latestDaySnapshots[latestDaySnapshots.length - 1];
+    if (latestSnap) {
+      cutoff = new Date(latestSnap.timestamp).getTime() - days * 24 * 60 * 60 * 1000;
+    }
   }
 
-  // Deduplicate to one point per day (keep last snapshot per day)
-  const dayDedup = new Map<string, PortfolioSnapshot>();
-  for (const s of filtered) {
-    const day = s.timestamp.slice(0, 10);
-    dayDedup.set(day, s);
-  }
-  const final = [...dayDedup.values()].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-  );
+  const final = [...dayDedup.values(), ...latestDaySnapshots]
+    .filter((s) => new Date(s.timestamp).getTime() >= cutoff)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   const history: PortfolioHistoryPoint[] = final.map((s, i) => {
     if (i === 0) {
@@ -497,8 +486,17 @@ export async function editPositionMutation(
   const targetPlatform = args.platform.toUpperCase();
   const { symbol, name, quantity, costBasis, assetClass, platform, entryDate } = args.input;
 
-  // Look up existing position first so we can preserve its entry date
-  const targetPlatformPositions = existing.positions.filter((p) => (p.platform ?? '').toUpperCase() === targetPlatform);
+  // Partition positions into target platform vs other platforms in a single pass
+  const targetPlatformPositions: Position[] = [];
+  const otherPlatformPositions: Position[] = [];
+  for (const p of existing.positions) {
+    if ((p.platform ?? '').toUpperCase() === targetPlatform) {
+      targetPlatformPositions.push(p);
+    } else {
+      otherPlatformPositions.push(p);
+    }
+  }
+
   const existingPosition = targetPlatformPositions.find((p) => p.symbol.toUpperCase() === targetSymbol);
 
   if (!existingPosition) {
@@ -528,7 +526,7 @@ export async function editPositionMutation(
     platform: updatedPosition.platform,
     existingSnapshot: {
       ...existing,
-      positions: existing.positions.filter((p) => (p.platform ?? '').toUpperCase() !== targetPlatform),
+      positions: otherPlatformPositions,
     },
   });
   const enriched = await enrichWithLiveQuotes(snapshot);
@@ -549,18 +547,26 @@ export async function removePositionMutation(
   const targetSymbol = args.symbol.toUpperCase();
   const targetPlatform = args.platform.toUpperCase();
 
-  const remaining = existing.positions.filter(
-    (p) => !(p.symbol.toUpperCase() === targetSymbol && (p.platform ?? '').toUpperCase() === targetPlatform),
-  );
+  // Partition positions in a single pass: target platform (excluding removed) vs other platforms
+  const platformPositions: Position[] = [];
+  const otherPlatformPositions: Position[] = [];
+  for (const p of existing.positions) {
+    const pPlatform = (p.platform ?? '').toUpperCase();
+    if (pPlatform === targetPlatform) {
+      if (p.symbol.toUpperCase() !== targetSymbol) {
+        platformPositions.push(p);
+      }
+    } else {
+      otherPlatformPositions.push(p);
+    }
+  }
 
-  // Save the filtered positions for this platform
-  const platformPositions = remaining.filter((p) => (p.platform ?? '').toUpperCase() === targetPlatform);
   const snapshot = await snapshotStore.save({
     positions: platformPositions,
     platform: targetPlatform,
     existingSnapshot: {
       ...existing,
-      positions: existing.positions.filter((p) => (p.platform ?? '').toUpperCase() !== targetPlatform),
+      positions: otherPlatformPositions,
     },
   });
   const enriched = await enrichWithLiveQuotes(snapshot);

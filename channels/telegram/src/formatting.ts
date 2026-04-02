@@ -1,41 +1,14 @@
 import type { Action } from '../../../src/actions/types.js';
+import { chunkMessage as chunkMessageBase, escapeHtml } from '../../../src/formatting/index.js';
 import type { InsightReport } from '../../../src/insights/types.js';
 import type { Snap } from '../../../src/snap/types.js';
 
-export function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+export { escapeHtml } from '../../../src/formatting/index.js';
 
-export function chunkMessage(text: string, limit = 4096): string[] {
-  if (text.length <= limit) return [text];
+const TELEGRAM_LIMIT = 4096;
 
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > limit) {
-    let splitIdx = remaining.lastIndexOf('\n\n', limit);
-    if (splitIdx > 0) {
-      chunks.push(remaining.slice(0, splitIdx));
-      remaining = remaining.slice(splitIdx + 2);
-      continue;
-    }
-
-    splitIdx = remaining.lastIndexOf('\n', limit);
-    if (splitIdx > 0) {
-      chunks.push(remaining.slice(0, splitIdx));
-      remaining = remaining.slice(splitIdx + 1);
-      continue;
-    }
-
-    chunks.push(remaining.slice(0, limit));
-    remaining = remaining.slice(limit);
-  }
-
-  if (remaining.length > 0) {
-    chunks.push(remaining);
-  }
-
-  return chunks;
+export function chunkMessage(text: string, limit = TELEGRAM_LIMIT): string[] {
+  return chunkMessageBase(text, limit);
 }
 
 export function formatSnap(snap: Snap): string {
