@@ -299,6 +299,24 @@ export class Scheduler {
     logger.info('Scheduler stopped');
   }
 
+  /**
+   * Reset in-memory state after "Clear App Data".
+   * Clears the micro registry so stale tickers don't trigger research,
+   * and resets snap dedup so a fresh snap isn't suppressed.
+   */
+  reset(): void {
+    this.microRegistry.clear();
+    this.microCompletionCount = 0;
+    this.lastSnapContentHash = undefined;
+    this.lastSnapNotifiedAt = 0;
+    if (this.pendingMicroTimer) {
+      clearTimeout(this.pendingMicroTimer);
+      this.pendingMicroTimer = null;
+    }
+    this.pendingMicroTickers.clear();
+    logger.info('Scheduler state reset');
+  }
+
   // ---------------------------------------------------------------------------
   // Micro research — per-asset AI analysis (Sonnet LLM call)
   // ---------------------------------------------------------------------------
