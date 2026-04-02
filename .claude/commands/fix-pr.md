@@ -14,9 +14,10 @@ Run these in parallel:
 - `gh pr view --json number,title,url,state,statusCheckRollup` to get PR info and CI status
 - `gh pr view --json number --jq '.number'` then `gh api repos/{owner}/{repo}/pulls/{number}/comments` to get all review comments
 - `gh api graphql` query to get review thread IDs and resolution status
+- `gh api repos/{owner}/{repo}/issues/{number}/comments` to get the Greptile Summary comment (posted as an issue comment, not a review comment)
 
 ### Step 2: Identify unresolved comments
-Filter for unresolved review threads. If all threads are already resolved, skip to Step 5. Display a summary table of comments with severity, file, line, and issue description.
+Filter for unresolved review threads. Also check the Greptile Summary comment for any issues flagged there that aren't already covered by inline review comments — Greptile sometimes flags issues in the summary that don't have corresponding inline comments. If all threads are already resolved and the summary has no additional issues, skip to Step 5. Display a summary table of comments with severity, file, line, and issue description.
 
 ### Step 3: Fix each comment
 For each unresolved comment:
