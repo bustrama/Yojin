@@ -20,7 +20,7 @@ import type { AssessmentStore } from '../../../signals/curation/assessment-store
 import type { SignalAssessment } from '../../../signals/curation/assessment-types.js';
 import type { CurationConfig, FeedTarget } from '../../../signals/curation/types.js';
 import { DEFAULT_SPAM_PATTERNS, deduplicateByTitle, filterSignals } from '../../../signals/signal-filter.js';
-import type { Signal } from '../../../signals/types.js';
+import type { Signal, SignalOutputType } from '../../../signals/types.js';
 import type { WatchlistStore } from '../../../watchlist/watchlist-store.js';
 
 const log = createSubsystemLogger('curated-signals-resolver');
@@ -76,6 +76,7 @@ interface CuratedSignalGql {
   scores: PortfolioRelevanceScoreGql[];
   curatedAt: string;
   feedTarget: FeedTarget;
+  severity: SignalSeverity;
   verdict: string | null;
   thesisAlignment: string | null;
   actionability: number | null;
@@ -91,8 +92,93 @@ interface CurationStatusGql {
 // Resolvers
 // ---------------------------------------------------------------------------
 
-/** Verdict priority for ranking — higher is better. */
-const VERDICT_RANK: Record<string, number> = { CRITICAL: 3, IMPORTANT: 2, NOISE: 0 };
+export type SignalSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+
+const SEVERITY_RANK: Record<SignalSeverity, number> = {
+  CRITICAL: 4,
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+};
+
+function ageUrgencyScore(publishedAt: string): number {
+  const ageMs = Date.now() - new Date(publishedAt).getTime();
+  const hour = 60 * 60 * 1000;
+  const day = 24 * hour;
+
+  if (ageMs <= 6 * hour) return 1;
+  if (ageMs <= day) return 0.85;
+  if (ageMs <= 3 * day) return 0.65;
+  if (ageMs <= 7 * day) return 0.4;
+  return 0.2;
+}
+
+function normalizeSeverity(value: unknown): SignalSeverity | null {
+  if (typeof value !== 'string') return null;
+
+  switch (value.trim().toUpperCase()) {
+    case 'CRITICAL':
+      return 'CRITICAL';
+    case 'IMPORTANT':
+    case 'HIGH':
+      return 'HIGH';
+    case 'MEDIUM':
+      return 'MEDIUM';
+    case 'LOW':
+    case 'NOISE':
+      return 'LOW';
+    default:
+      return null;
+  }
+}
+
+export function deriveSignalSeverity(signal: Signal, assessment?: SignalAssessment | null): SignalSeverity {
+  if (assessment?.verdict === 'NOISE') return 'LOW';
+
+  const recencyUrgency = ageUrgencyScore(signal.publishedAt);
+
+  if (assessment) {
+    const verdictImportance =
+      assessment.verdict === 'CRITICAL' ? 0.92 : assessment.verdict === 'IMPORTANT' ? 0.55 : 0.1;
+    const thesisBoost =
+      assessment.thesisAlignment === 'CHALLENGES' ? 0.15 : assessment.thesisAlignment === 'SUPPORTS' ? 0.05 : 0;
+    const importance = Math.min(1, Math.max(verdictImportance, assessment.relevanceScore) + thesisBoost);
+    const urgency = Math.max(assessment.actionability, recencyUrgency);
+
+    if (
+      (assessment.verdict === 'CRITICAL' && importance >= 0.85 && urgency >= 0.7) ||
+      (importance >= 0.95 && urgency >= 0.85)
+    ) {
+      return 'CRITICAL';
+    }
+    if (importance >= 0.7 && urgency >= 0.45) return 'HIGH';
+    if (urgency >= 0.55) return 'MEDIUM';
+    if (importance >= 0.6) return 'MEDIUM';
+    if (importance >= 0.45 && urgency >= 0.3) return 'MEDIUM';
+    return 'LOW';
+  }
+
+  const metadataSeverity = normalizeSeverity(signal.metadata?.severity);
+  if (metadataSeverity) return metadataSeverity;
+
+  if (signal.outputType === 'ACTION') return 'HIGH';
+  if (signal.outputType === 'ALERT') return recencyUrgency >= 0.65 ? 'HIGH' : 'MEDIUM';
+
+  if (signal.sentiment === 'BEARISH' && signal.confidence >= 0.75) return 'MEDIUM';
+  if (signal.type === 'FILINGS' || signal.type === 'TRADING_LOGIC_TRIGGER') return 'MEDIUM';
+  if (signal.type === 'TECHNICAL' && signal.confidence >= 0.7) return 'MEDIUM';
+
+  return signal.confidence >= 0.75 ? 'MEDIUM' : 'LOW';
+}
+
+export function deriveCuratedOutputType(signal: Signal, assessment?: SignalAssessment | null): SignalOutputType {
+  if (signal.outputType === 'ACTION') return 'ACTION';
+
+  const severity = deriveSignalSeverity(signal, assessment);
+  if (severity === 'CRITICAL' || severity === 'HIGH') return 'ALERT';
+
+  return 'INSIGHT';
+}
 
 export async function curatedSignalsResolver(
   _parent: unknown,
@@ -189,12 +275,12 @@ export async function curatedSignalsResolver(
     return !assessment || assessment.verdict !== 'NOISE';
   });
 
-  // Sort by verdict rank (CRITICAL > IMPORTANT > unassessed), then by confidence
+  // Sort by derived severity, then by confidence.
   const sorted = visible.sort((a, b) => {
     const assessA = assessmentBySignalId.get(a.signal.id);
     const assessB = assessmentBySignalId.get(b.signal.id);
-    const rankA = assessA ? (VERDICT_RANK[assessA.verdict] ?? 1) : 1;
-    const rankB = assessB ? (VERDICT_RANK[assessB.verdict] ?? 1) : 1;
+    const rankA = SEVERITY_RANK[deriveSignalSeverity(a.signal, assessA)];
+    const rankB = SEVERITY_RANK[deriveSignalSeverity(b.signal, assessB)];
     if (rankA !== rankB) return rankB - rankA;
     return b.signal.confidence - a.signal.confidence;
   });
@@ -207,9 +293,12 @@ export async function curatedSignalsResolver(
   return page.map((t) => {
     const assessment = assessmentBySignalId.get(t.signal.id);
     const tickers = t.signal.assets.map((a) => a.ticker);
+    const severity = deriveSignalSeverity(t.signal, assessment);
+    const signalGql = toGql(t.signal);
+    signalGql.outputType = deriveCuratedOutputType(t.signal, assessment);
 
     return {
-      signal: toGql(t.signal),
+      signal: signalGql,
       scores: tickers.map((ticker) => ({
         signalId: t.signal.id,
         ticker,
@@ -219,6 +308,7 @@ export async function curatedSignalsResolver(
       })),
       curatedAt: t.signal.ingestedAt,
       feedTarget: t.feedTarget,
+      severity,
       verdict: assessment?.verdict ?? null,
       thesisAlignment: assessment?.thesisAlignment ?? null,
       actionability: assessment?.actionability ?? null,
