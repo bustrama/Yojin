@@ -7,11 +7,22 @@
  *
  * Memory management:
  * - Token budget tracking detects when approaching context window limit
+ * - Snip pass strips verbose tool results from older messages before LLM summarization
  * - Tool results are truncated (head+tail) before entering history
  * - Context compaction summarizes older messages, preserving recent turns
+ *
+ * Streaming tool execution:
+ * - When provider supports onToolUse callback, tools start executing during the stream
+ * - Overlaps tool execution with the remainder of the LLM response
+ *
+ * Cost tracking:
+ * - Optional CostTracker records per-model USD cost
+ * - Budget enforcement stops the loop when cost cap is exceeded
  */
 
 import { compactMessages } from './context-compaction.js';
+import { snipToolResults } from './snip.js';
+import { StreamingToolExecutor } from './streaming-tool-executor.js';
 import { TokenBudget } from './token-budget.js';
 import { ToolRegistry } from './tool-registry.js';
 import { truncateToolResult } from './tool-result-truncation.js';
@@ -44,6 +55,8 @@ export interface AgentLoopResult {
   usage: { inputTokens: number; outputTokens: number };
   /** Number of compactions performed during this run. */
   compactions: number;
+  /** Total estimated cost in USD for this run. */
+  costUsd?: number;
 }
 
 export async function runAgentLoop(
@@ -62,6 +75,7 @@ export async function runAgentLoop(
     agentId,
     abortSignal,
     piiScanner,
+    costTracker,
   } = options;
 
   logger.info('Agent loop started', {
@@ -113,13 +127,52 @@ export async function runAgentLoop(
       const lastAssistant = messages.filter((m) => m.role === 'assistant').pop();
       const fallbackText = extractText(lastAssistant);
       emit(onEvent, { type: 'done', text: fallbackText, iterations });
-      return { text: fallbackText, messages, iterations, usage: totalUsage, compactions };
+      return {
+        text: fallbackText,
+        messages,
+        iterations,
+        usage: totalUsage,
+        compactions,
+        costUsd: costTracker?.snapshot().totalCostUsd,
+      };
+    }
+
+    // ── Budget check: stop if cost cap exceeded ──────────────────────
+    if (costTracker?.isOverBudget()) {
+      const snap = costTracker.snapshot();
+      logger.warn('Budget exceeded, stopping agent loop', {
+        agentId,
+        totalCostUsd: snap.totalCostUsd,
+      });
+      emit(onEvent, {
+        type: 'budget_exceeded',
+        totalCostUsd: snap.totalCostUsd,
+        budgetUsd: costTracker.maxRunBudgetUsd ?? snap.totalCostUsd,
+      });
+      const lastAssistant = messages.filter((m) => m.role === 'assistant').pop();
+      const fallbackText = extractText(lastAssistant) || 'I stopped because the cost budget was exceeded.';
+      emit(onEvent, { type: 'done', text: fallbackText, iterations });
+      return { text: fallbackText, messages, iterations, usage: totalUsage, compactions, costUsd: snap.totalCostUsd };
+    }
+
+    // ── Memory: snip verbose tool results before checking compaction ─
+    const snipResult = snipToolResults(messages, budget, {
+      preserveRecentTurns: memory?.preserveRecentTurns ?? 5,
+    });
+    if (snipResult.snipped > 0) {
+      messages = snipResult.messages;
+      emit(onEvent, {
+        type: 'snip',
+        messagesBefore: snipResult.messagesBefore,
+        messagesAfter: snipResult.messages.length,
+        toolResultsSnipped: snipResult.snipped,
+      });
     }
 
     // ── Memory: check if compaction is needed ───────────────────────
     if (budget.shouldCompact(messages, systemPrompt)) {
       const result = await compactMessages(messages, provider, model, budget, {
-        preserveRecentTurns: memory?.preserveRecentTurns,
+        preserveRecentTurns: memory?.preserveRecentTurns ?? 5,
       });
       if (result.messagesAfter < result.messagesBefore) {
         messages = result.messages;
@@ -133,9 +186,13 @@ export async function runAgentLoop(
       }
     }
 
-    // ── Thought: ask the LLM (streaming when available) ───────────────
+    // ── Thought: ask the LLM (streaming with tool execution) ─────────
     const maxTokens = options.maxTokens;
     let response;
+
+    // Set up streaming tool executor for overlapping execution
+    const streamingExecutor = new StreamingToolExecutor(registry, agentId);
+
     try {
       const llmCall = provider.streamWithTools
         ? provider.streamWithTools({
@@ -145,6 +202,11 @@ export async function runAgentLoop(
             tools: toolSchemas.length > 0 ? toolSchemas : undefined,
             ...(maxTokens ? { maxTokens } : {}),
             onTextDelta: (text) => emit(onEvent, { type: 'text_delta', text }),
+            onToolUse: (block) => {
+              // Start executing the tool immediately while the stream continues
+              emit(onEvent, { type: 'tool_started', toolCallId: block.id, toolName: block.name });
+              streamingExecutor.addToolCall({ id: block.id, name: block.name, input: block.input });
+            },
           })
         : provider.completeWithTools({
             model,
@@ -174,6 +236,21 @@ export async function runAgentLoop(
     if (response.usage) {
       totalUsage.inputTokens += response.usage.inputTokens;
       totalUsage.outputTokens += response.usage.outputTokens;
+
+      // Track cost
+      if (costTracker) {
+        const cost = costTracker.addUsage(model, {
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
+        });
+        emit(onEvent, {
+          type: 'cost',
+          model,
+          costUsd: cost,
+          totalCostUsd: costTracker.snapshot().totalCostUsd,
+        });
+      }
+
       logger.debug('LLM response received', {
         agentId,
         iteration: iterations,
@@ -199,6 +276,7 @@ export async function runAgentLoop(
         totalInputTokens: totalUsage.inputTokens,
         totalOutputTokens: totalUsage.outputTokens,
         compactions,
+        costUsd: costTracker?.snapshot().totalCostUsd,
       });
       // Rehydrate PII tags in the final response so the user sees original values
       const finalText = piiScanner && piiMap ? await piiScanner.restore(thoughtText, piiMap) : thoughtText;
@@ -208,7 +286,14 @@ export async function runAgentLoop(
       if (piiMap) {
         messages[originalUserIdx] = { role: 'user', content: userMessage };
       }
-      return { text: finalText, messages, iterations, usage: totalUsage, compactions };
+      return {
+        text: finalText,
+        messages,
+        iterations,
+        usage: totalUsage,
+        compactions,
+        costUsd: costTracker?.snapshot().totalCostUsd,
+      };
     }
 
     // ── Action: execute tool calls ────────────────────────────────────
@@ -227,23 +312,27 @@ export async function runAgentLoop(
     // Append assistant message with tool_use blocks
     messages.push({ role: 'assistant', content: response.content });
 
-    // Execute all tool calls (parallel, individually guarded)
-    const results: ToolCallResult[] = await Promise.all(
-      toolCalls.map(async (call) => {
-        try {
-          const result = await registry.execute(call.name, call.input, { agentId });
-          return { toolCallId: call.id, name: call.name, result };
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          logger.error('Tool execution failed', { agentId, tool: call.name, error: msg });
-          return {
-            toolCallId: call.id,
-            name: call.name,
-            result: { content: `Unexpected error in ${call.name}: ${msg}`, isError: true },
-          };
+    // Submit any tool calls that weren't already started during streaming.
+    // Check BEFORE the loop — once we addToolCall, pendingCount changes.
+    const streamingWasActive = streamingExecutor.pendingCount > 0 || streamingExecutor.getCompletedResults().length > 0;
+
+    if (!streamingWasActive) {
+      // Non-streaming provider: submit all tools now
+      for (const call of toolCalls) {
+        streamingExecutor.addToolCall(call);
+      }
+    } else {
+      // Streaming was active — only submit tools that weren't already started
+      const startedIds = new Set(streamingExecutor.getCompletedResults().map((r) => r.toolCallId));
+      for (const call of toolCalls) {
+        if (!startedIds.has(call.id)) {
+          streamingExecutor.addToolCall(call);
         }
-      }),
-    );
+      }
+    }
+
+    // Wait for all tools to complete
+    const results: ToolCallResult[] = await streamingExecutor.awaitAll();
 
     // ── Truncate oversized tool results ───────────────────────────────
     for (const entry of results) {
@@ -294,6 +383,7 @@ export async function runAgentLoop(
     iterations,
     usage: totalUsage,
     compactions,
+    costUsd: costTracker?.snapshot().totalCostUsd,
   };
 }
 

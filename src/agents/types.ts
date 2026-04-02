@@ -54,6 +54,8 @@ export interface AgentStepResult {
   iterations: number;
   usage: { inputTokens: number; outputTokens: number };
   compactions: number;
+  /** Estimated cost in USD for this agent run (if cost tracking is enabled). */
+  costUsd?: number;
 }
 
 // ---------------------------------------------------------------------------
