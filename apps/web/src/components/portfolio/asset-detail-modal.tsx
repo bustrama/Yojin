@@ -5,7 +5,9 @@ import { cn } from '../../lib/utils';
 import { useAssetDetailModal } from '../../lib/asset-detail-modal-context';
 import { useFeatureStatus } from '../../lib/feature-status';
 import { usePortfolio, useQuote, useOnPriceMove } from '../../api';
-import type { Position, Quote, PositionInsight, InsightRating } from '../../api/types';
+import type { Quote, PositionInsight, InsightRating } from '../../api/types';
+import { groupPositions } from './position-table';
+import { getPlatformMeta } from '../platforms/platform-meta';
 import { LATEST_INSIGHT_REPORT_QUERY, SIGNALS_QUERY, PRICE_HISTORY_QUERY } from '../../api/documents';
 import type {
   LatestInsightReportQueryResult,
@@ -199,10 +201,13 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
   const { jintelConfigured, loading: featureLoading } = useFeatureStatus();
 
   const [portfolioResult] = usePortfolio();
-  const position = useMemo<Position | undefined>(
-    () => portfolioResult.data?.portfolio?.positions.find((p) => p.symbol === symbol),
-    [portfolioResult.data, symbol],
-  );
+  const position = useMemo(() => {
+    const positions = portfolioResult.data?.portfolio?.positions;
+    if (!positions) return undefined;
+    const matching = positions.filter((p) => p.symbol === symbol);
+    if (matching.length === 0) return undefined;
+    return groupPositions(matching)[0];
+  }, [portfolioResult.data, symbol]);
 
   const [quoteResult] = useQuote(symbol);
   const quote = quoteResult.data?.quote ?? undefined;
@@ -298,11 +303,11 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
                 {ratingLabel[positionInsight.rating]}
               </Badge>
             )}
-            {position && (
-              <span className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
-                {position.platform}
+            {position?.underlying.map((p) => (
+              <span key={p.platform} className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
+                {getPlatformMeta(p.platform).label}
               </span>
-            )}
+            ))}
           </div>
           <p className="mt-0.5 text-sm text-text-muted">{position?.name ?? 'Position details and analysis'}</p>
         </div>
