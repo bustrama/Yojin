@@ -109,7 +109,7 @@ export class Gateway {
       const displayCards: import('../tools/display-data.js').DisplayCardData[] = [];
       const wrappedOnEvent: import('../core/types.js').AgentLoopEventHandler = (event) => {
         if (event.type === 'display_card') {
-          displayCards.push(event.card as import('../tools/display-data.js').DisplayCardData);
+          displayCards.push(event.card);
         }
         // Forward to the channel's streaming handler if present
         msg.onAgentEvent?.(event);

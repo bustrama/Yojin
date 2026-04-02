@@ -1,9 +1,9 @@
 /** Shared formatting helpers for display card formatters. */
 
+const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
 export function fmtCurrency(n: number): string {
-  const abs = Math.abs(n);
-  const formatted = abs.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  return n < 0 ? `-${formatted}` : formatted;
+  return currencyFmt.format(n);
 }
 
 export function fmtPnl(n: number): string {

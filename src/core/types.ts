@@ -11,6 +11,7 @@ import type { ToolRegistry } from './tool-registry.js';
 import type { YojinConfig } from '../config/config.js';
 import type { ChannelRouter } from '../plugins/channel-router.js';
 import type { SessionStore } from '../sessions/types.js';
+import type { DisplayCardData } from '../tools/display-data.js';
 import type { ChatPiiScanner } from '../trust/pii/chat-scanner.js';
 
 // ---------------------------------------------------------------------------
@@ -30,10 +31,7 @@ export interface ToolResult {
   content: string;
   isError?: boolean;
   /** Structured data for display tools. Channels use this for rich formatting. */
-  displayCard?: {
-    type: string;
-    data: unknown;
-  };
+  displayCard?: DisplayCardData;
 }
 
 /** Context passed to tool execution for audit logging. */
@@ -124,7 +122,7 @@ export type AgentLoopEvent =
   | { type: 'pii_redacted'; entitiesFound: number; typesFound: string[]; processingTimeMs: number }
   | { type: 'cost'; model: string; costUsd: number; totalCostUsd: number }
   | { type: 'budget_exceeded'; totalCostUsd: number; budgetUsd: number }
-  | { type: 'display_card'; card: { type: string; data: unknown } }
+  | { type: 'display_card'; card: DisplayCardData }
   | { type: 'done'; text: string; iterations: number }
   | { type: 'error'; error: string; iterations: number }
   | { type: 'max_iterations'; iterations: number };

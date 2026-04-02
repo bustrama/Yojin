@@ -109,7 +109,7 @@ export function formatDisplayCardForTelegram(card: DisplayCardData): string {
         `${pnlEmoji(d.totalPnl)} <b>Portfolio Overview</b> \u2014 ${esc(d.period.toUpperCase())}`,
         '',
         `<b>Total Value:</b> ${esc(fmtCurrency(d.totalValue))}`,
-        `<b>P&L:</b> ${direction} ${esc(fmtCurrency(d.totalPnl))} (${esc(fmtPnl(d.totalPnlPercent))})`,
+        `<b>P&amp;L:</b> ${direction} ${esc(fmtCurrency(d.totalPnl))} (${esc(fmtPnl(d.totalPnlPercent))})`,
         `<b>Positions:</b> ${d.positionCount}`,
       ];
       if (d.topHoldings.length > 0) {

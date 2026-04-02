@@ -88,7 +88,7 @@ export function createDisplayTools(deps: DisplayToolsDeps): ToolDefinition[] {
       const sortFns: Record<string, (a: Position, b: Position) => number> = {
         top: (a, b) => b.unrealizedPnlPercent - a.unrealizedPnlPercent,
         worst: (a, b) => a.unrealizedPnlPercent - b.unrealizedPnlPercent,
-        movers: (a, b) => Math.abs(b.unrealizedPnl) - Math.abs(a.unrealizedPnl),
+        movers: (a, b) => Math.abs((b.dayChange ?? 0) * b.quantity) - Math.abs((a.dayChange ?? 0) * a.quantity),
         all: (a, b) => b.marketValue - a.marketValue,
       };
       const limit = params.variant === 'all' ? 50 : 5;
@@ -190,11 +190,14 @@ export function createDisplayTools(deps: DisplayToolsDeps): ToolDefinition[] {
     parameters: z.object({}),
     async execute(): Promise<ToolResult> {
       const snapshot = await snapshotStore.getLatest();
+      if (!snapshot || snapshot.positions.length === 0) {
+        return { content: 'No portfolio data available. The user needs to add positions first.' };
+      }
 
-      const positions = snapshot?.positions ?? [];
-      const totalValue = snapshot?.totalValue ?? 0;
-      const totalPnl = snapshot?.totalPnl ?? 0;
-      const totalPnlPercent = snapshot?.totalPnlPercent ?? 0;
+      const positions = snapshot.positions;
+      const totalValue = snapshot.totalValue;
+      const totalPnl = snapshot.totalPnl;
+      const totalPnlPercent = snapshot.totalPnlPercent;
 
       // Top movers by absolute P&L %
       const movers = [...positions]

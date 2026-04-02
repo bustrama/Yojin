@@ -52,7 +52,8 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
       let text = msg.text;
       if (msg.displayCards?.length) {
         const formatted = msg.displayCards.map((c) => formatDisplayCardForTelegram(c)).join('\n\n');
-        text = text ? `${text}\n\n${formatted}` : formatted;
+        const escapedText = escapeHtml(msg.text);
+        text = escapedText ? `${escapedText}\n\n${formatted}` : formatted;
       }
 
       const parseMode = msg.displayCards?.length ? ('HTML' as const) : undefined;
