@@ -394,7 +394,7 @@ export interface VaultResult {
   error: string | null;
 }
 
-export interface VaultSecretInput {
+export interface KeyValueInput {
   key: string;
   value: string;
 }
@@ -437,7 +437,7 @@ export interface AddVaultSecretMutationResult {
 }
 
 export interface AddVaultSecretVariables {
-  input: VaultSecretInput;
+  input: KeyValueInput;
 }
 
 export interface UpdateVaultSecretMutationResult {
@@ -445,7 +445,7 @@ export interface UpdateVaultSecretMutationResult {
 }
 
 export interface UpdateVaultSecretVariables {
-  input: VaultSecretInput;
+  input: KeyValueInput;
 }
 
 export interface DeleteVaultSecretMutationResult {

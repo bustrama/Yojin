@@ -377,7 +377,7 @@ export const LIST_CHANNELS_QUERY = gql`
 `;
 
 export const CONNECT_CHANNEL_MUTATION = gql`
-  mutation ConnectChannel($id: ID!, $credentials: [CredentialInput!]!) {
+  mutation ConnectChannel($id: ID!, $credentials: [KeyValueInput!]!) {
     connectChannel(id: $id, credentials: $credentials) {
       success
       error
@@ -395,7 +395,7 @@ export const DISCONNECT_CHANNEL_MUTATION = gql`
 `;
 
 export const VALIDATE_CHANNEL_TOKEN_MUTATION = gql`
-  mutation ValidateChannelToken($id: ID!, $credentials: [CredentialInput!]!) {
+  mutation ValidateChannelToken($id: ID!, $credentials: [KeyValueInput!]!) {
     validateChannelToken(id: $id, credentials: $credentials) {
       success
       error
@@ -918,7 +918,7 @@ export const CHANGE_VAULT_PASSPHRASE_MUTATION = gql`
 `;
 
 export const ADD_VAULT_SECRET_MUTATION = gql`
-  mutation AddVaultSecret($input: VaultSecretInput!) {
+  mutation AddVaultSecret($input: KeyValueInput!) {
     addVaultSecret(input: $input) {
       success
       error
@@ -927,7 +927,7 @@ export const ADD_VAULT_SECRET_MUTATION = gql`
 `;
 
 export const UPDATE_VAULT_SECRET_MUTATION = gql`
-  mutation UpdateVaultSecret($input: VaultSecretInput!) {
+  mutation UpdateVaultSecret($input: KeyValueInput!) {
     updateVaultSecret(input: $input) {
       success
       error

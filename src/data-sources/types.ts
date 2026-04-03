@@ -15,7 +15,7 @@
 
 import { z } from 'zod';
 
-import { DateTimeField } from '../types/base.js';
+import { DateTimeField, IdField } from '../types/base.js';
 
 // ---------------------------------------------------------------------------
 // Data source type
@@ -29,7 +29,7 @@ export type DataSourceType = z.infer<typeof DataSourceTypeSchema>;
 // ---------------------------------------------------------------------------
 
 export const DataSourceCapabilitySchema = z.object({
-  id: z.string(),
+  id: IdField,
   description: z.string().optional(),
 });
 
