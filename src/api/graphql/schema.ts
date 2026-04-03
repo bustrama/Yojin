@@ -724,6 +724,12 @@ export const typeDefs = /* GraphQL */ `
   # Insights
   # ---------------------------------------------------------------------------
 
+  enum SignalImpact {
+    POSITIVE
+    NEGATIVE
+    NEUTRAL
+  }
+
   enum InsightRating {
     VERY_BULLISH
     BULLISH
@@ -744,7 +750,7 @@ export const typeDefs = /* GraphQL */ `
     signalId: String!
     type: SignalType!
     title: String!
-    impact: String!
+    impact: SignalImpact!
     confidence: Float!
     url: String
     sourceCount: Int!
@@ -842,6 +848,7 @@ export const typeDefs = /* GraphQL */ `
     opportunities: [String!]!
     sentiment: SignalSentiment!
     signalCount: Int!
+    topSignalIds: [String!]!
     assetSnap: String!
     assetActions: [String!]!
     generatedAt: String!
@@ -1010,6 +1017,7 @@ export const typeDefs = /* GraphQL */ `
   type SkillTrigger {
     type: String!
     description: String!
+    params: String
   }
 
   type Skill {
@@ -1021,7 +1029,9 @@ export const typeDefs = /* GraphQL */ `
     source: String!
     createdBy: String!
     createdAt: String!
+    content: String!
     triggers: [SkillTrigger!]!
+    maxPositionSize: Float
     tickers: [String!]!
   }
 
