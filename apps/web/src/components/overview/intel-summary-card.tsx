@@ -73,7 +73,13 @@ export default function IntelSummaryCard() {
   }
 
   if (!snap || !snap.intelSummary) {
-    return null;
+    return (
+      <DashboardCard title="Snap" variant="feature" className="flex-1">
+        <div className="flex flex-1 items-center justify-center px-5 pb-5">
+          <span className="text-sm text-text-muted">No summary yet</span>
+        </div>
+      </DashboardCard>
+    );
   }
 
   const sentences = splitSentences(snap.intelSummary);

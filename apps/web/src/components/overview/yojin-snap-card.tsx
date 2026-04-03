@@ -87,7 +87,13 @@ export default function YojinSnapCard() {
   }
 
   if (!snap || snap.actionItems.length === 0) {
-    return null;
+    return (
+      <DashboardCard title="Actions" variant="feature" className="flex-1">
+        <div className="flex flex-1 items-center justify-center px-5 pb-5">
+          <span className="text-sm text-text-muted">No actions yet</span>
+        </div>
+      </DashboardCard>
+    );
   }
 
   return (
