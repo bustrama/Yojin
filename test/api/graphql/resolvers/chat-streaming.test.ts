@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { sendMessageMutation, setChatAgentRuntime } from '../../../../src/api/graphql/resolvers/chat.js';
 import { pubsub } from '../../../../src/api/graphql/pubsub.js';
+import { sendMessageMutation, setChatAgentRuntime } from '../../../../src/api/graphql/resolvers/chat.js';
 import type { AgentLoopEventHandler, ToolCall } from '../../../../src/core/types.js';
 
 async function flushAsyncWork(): Promise<void> {

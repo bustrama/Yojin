@@ -27,65 +27,66 @@ export function PerformanceOvertime({ history }: PerformanceOvertimeProps) {
   const seriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const data = useMemo(() => toChartData(history), [history]);
 
-  // Create chart once on mount
+  // Create chart on first non-zero dimensions, resize thereafter
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const { width, height } = container.getBoundingClientRect();
-    if (width === 0 || height === 0) return;
-
-    const chart = createChart(container, {
-      width,
-      height,
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#737373',
-        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        fontSize: 10,
-      },
-      grid: {
-        vertLines: { visible: false },
-        horzLines: { color: '#3d3d3d', style: 4 },
-      },
-      crosshair: {
-        vertLine: { color: '#737373', labelBackgroundColor: '#737373' },
-        horzLine: { color: '#737373', labelBackgroundColor: '#737373' },
-      },
-      leftPriceScale: { visible: true, borderVisible: false },
-      rightPriceScale: { visible: false },
-      timeScale: {
-        borderVisible: false,
-        fixLeftEdge: true,
-        fixRightEdge: true,
-      },
-      handleScroll: { vertTouchDrag: false },
-    });
-
-    chartRef.current = chart;
-
-    seriesRef.current = chart.addSeries(HistogramSeries, {
-      priceScaleId: 'left',
-      priceFormat: {
-        type: 'custom',
-        formatter: (p: number) => {
-          const sign = p >= 0 ? '+' : '-';
-          return `${sign}$${Math.abs(p).toLocaleString('en-US')}`;
-        },
-      },
-    });
+    let chart: IChartApi | null = null;
 
     const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width: w, height: h } = entry.contentRect;
-        if (w > 0 && h > 0) chart.applyOptions({ width: w, height: h });
+      const { width: w, height: h } = entries[0].contentRect;
+      if (w === 0 || h === 0) return;
+
+      if (!chart) {
+        chart = createChart(container, {
+          width: w,
+          height: h,
+          layout: {
+            background: { type: ColorType.Solid, color: 'transparent' },
+            textColor: '#737373',
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+            fontSize: 10,
+          },
+          grid: {
+            vertLines: { visible: false },
+            horzLines: { color: '#3d3d3d', style: 4 },
+          },
+          crosshair: {
+            vertLine: { color: '#737373', labelBackgroundColor: '#737373' },
+            horzLine: { color: '#737373', labelBackgroundColor: '#737373' },
+          },
+          leftPriceScale: { visible: true, borderVisible: false },
+          rightPriceScale: { visible: false },
+          timeScale: {
+            borderVisible: false,
+            fixLeftEdge: true,
+            fixRightEdge: true,
+          },
+          handleScroll: { vertTouchDrag: false },
+        });
+
+        chartRef.current = chart;
+
+        seriesRef.current = chart.addSeries(HistogramSeries, {
+          priceScaleId: 'left',
+          priceFormat: {
+            type: 'custom',
+            formatter: (p: number) => {
+              const sign = p >= 0 ? '+' : '-';
+              return `${sign}$${Math.abs(p).toLocaleString('en-US')}`;
+            },
+          },
+        });
+      } else {
+        chart.applyOptions({ width: w, height: h });
       }
     });
     observer.observe(container);
 
     return () => {
       observer.disconnect();
-      chart.remove();
+      chart?.remove();
       chartRef.current = null;
       seriesRef.current = null;
     };

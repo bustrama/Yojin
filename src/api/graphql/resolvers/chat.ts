@@ -6,7 +6,7 @@
  * SessionStore is injected via setSessionStore().
  */
 
-import type { AgentRuntime } from '../../../core/agent-runtime.js';
+import { type AgentRuntime, DEFAULT_MODEL } from '../../../core/agent-runtime.js';
 import type { AgentLoopEvent, AgentMessage, ContentBlock, ImageMediaType, ToolUseBlock } from '../../../core/types.js';
 import type { SessionStore } from '../../../sessions/types.js';
 import { pubsub } from '../pubsub.js';
@@ -228,12 +228,11 @@ export async function sessionsQuery(): Promise<SessionSummaryGql[]> {
   const summaries: SessionSummaryGql[] = [];
 
   for (const id of ids) {
-    const meta = await sessionStore.get(id);
+    const [meta, history] = await Promise.all([sessionStore.get(id), sessionStore.getHistory(id)]);
     if (!meta) continue;
     // Only show web channel sessions in the sidebar
     if (meta.channelId !== 'web') continue;
 
-    const history = await sessionStore.getHistory(id);
     const messages = history.map((e) => e.message);
     const lastEntry = history[history.length - 1];
 
@@ -339,7 +338,7 @@ export async function createSessionMutation(): Promise<SessionSummaryGql> {
     threadId,
     userId: 'web-user',
     providerId: 'agent-runtime',
-    model: 'claude-sonnet-4-6',
+    model: DEFAULT_MODEL,
   });
 
   activeThreadId = threadId;
