@@ -53,14 +53,22 @@ function formatInsight(report: InsightReport): string {
   const lines = [':bar_chart: *Daily Insights Report*', ''];
   if (report.portfolio) {
     lines.push(`*Health:* ${report.portfolio.overallHealth}`);
-    lines.push(report.portfolio.summary, '');
   }
-  for (const pos of report.positions.slice(0, 5)) {
-    lines.push(`*${pos.symbol}*: ${pos.rating} — ${pos.thesis}`);
+  // Compact position ratings
+  if (report.positions.length > 0) {
+    const ratings = report.positions.map((p) => `${p.symbol} ${p.rating}`).join(' \u{2022} ');
+    lines.push(ratings);
   }
-  if (report.positions.length > 5) {
-    lines.push(`...and ${report.positions.length - 5} more positions`);
+  // Top actions (max 3)
+  const actions = report.portfolio?.actionItems ?? [];
+  if (actions.length > 0) {
+    lines.push('');
+    for (const item of actions.slice(0, 3)) {
+      const text = typeof item === 'string' ? item : item.text;
+      lines.push(`\u{2022} ${text}`);
+    }
   }
+  lines.push('', '_Open Yojin for full report_');
   return lines.join('\n');
 }
 

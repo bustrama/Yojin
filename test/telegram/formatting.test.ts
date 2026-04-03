@@ -148,7 +148,6 @@ describe('formatInsight', () => {
     const result = formatInsight(report);
     expect(result).toContain('<b>Daily Insights Report</b>');
     expect(result).toContain('HEALTHY');
-    expect(result).toContain('<code>AAPL</code>');
-    expect(result).toContain('BULLISH');
+    expect(result).toContain('AAPL BULLISH');
   });
 });

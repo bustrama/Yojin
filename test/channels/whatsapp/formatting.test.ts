@@ -282,9 +282,10 @@ describe('formatInsight', () => {
     expect(result).toContain('HEALTHY');
   });
 
-  it('includes portfolio summary', () => {
+  it('includes compact position ratings on one line', () => {
     const result = formatInsight(report);
-    expect(result).toContain('Portfolio is well positioned.');
+    expect(result).toContain('AAPL BULLISH');
+    expect(result).toContain('MSFT NEUTRAL');
   });
 
   it('includes position symbols and ratings', () => {
@@ -295,12 +296,12 @@ describe('formatInsight', () => {
     expect(result).toContain('NEUTRAL');
   });
 
-  it('includes position thesis', () => {
+  it('includes open Yojin CTA', () => {
     const result = formatInsight(report);
-    expect(result).toContain('Strong earnings momentum');
+    expect(result).toContain('_Open Yojin for full report_');
   });
 
-  it('limits to 5 positions and shows overflow count', () => {
+  it('includes all positions in compact format', () => {
     const manyPositions = Array.from({ length: 7 }, (_, i) => ({
       symbol: `SYM${i}`,
       name: `Company ${i}`,
@@ -317,9 +318,8 @@ describe('formatInsight', () => {
 
     const bigReport = { ...report, positions: manyPositions } as InsightReport;
     const result = formatInsight(bigReport);
-    expect(result).toContain('...and 2 more positions');
-    expect(result).not.toContain('SYM5');
-    expect(result).not.toContain('SYM6');
+    expect(result).toContain('SYM0 NEUTRAL');
+    expect(result).toContain('SYM6 NEUTRAL');
   });
 
   it('does not use HTML tags', () => {

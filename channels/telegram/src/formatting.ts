@@ -44,16 +44,25 @@ export function formatInsight(report: InsightReport): string {
 
   if (report.portfolio) {
     lines.push(`<b>Health:</b> ${escapeHtml(report.portfolio.overallHealth)}`);
-    lines.push(escapeHtml(report.portfolio.summary));
-    lines.push('');
   }
 
-  for (const pos of report.positions.slice(0, 5)) {
-    lines.push(`<code>${escapeHtml(pos.symbol)}</code>: ${escapeHtml(pos.rating)} — ${escapeHtml(pos.thesis)}`);
+  // Compact position ratings — one line, symbol + rating only
+  if (report.positions.length > 0) {
+    const ratings = report.positions.map((p) => `${escapeHtml(p.symbol)} ${escapeHtml(p.rating)}`).join(' \u{2022} ');
+    lines.push(ratings);
   }
-  if (report.positions.length > 5) {
-    lines.push(`...and ${report.positions.length - 5} more positions`);
+
+  // Top actions as short bullets (max 3)
+  const actions = report.portfolio?.actionItems ?? [];
+  if (actions.length > 0) {
+    lines.push('');
+    for (const item of actions.slice(0, 3)) {
+      const text = typeof item === 'string' ? item : item.text;
+      lines.push(`\u{2022} ${escapeHtml(text)}`);
+    }
   }
+
+  lines.push('', '<i>Open Yojin for full report</i>');
 
   return lines.join('\n');
 }

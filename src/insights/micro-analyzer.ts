@@ -30,7 +30,7 @@ Output ONLY valid JSON matching this schema:
   "opportunities": ["up to 3 observed positive factors"],
   "sentiment": "BULLISH" | "BEARISH" | "MIXED" | "NEUTRAL",
   "assetSnap": "1 sentence: the single most notable observation about this asset right now",
-  "assetActions": ["0-2 observations that ONLY deserve attention if they represent a material change or catalyst — frame as 'X is happening' not 'do Y'. Return empty array if nothing is truly noteworthy."]
+  "assetActions": ["1-3 bullet-point summaries of the key intel for this asset — distill the most important signals into concise observations. Frame as 'X is happening' not 'do Y'. Always include at least 1 item."]
 }
 
 Rules:
