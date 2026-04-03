@@ -46,7 +46,9 @@ function formatSnap(snap: { intelSummary: string; actionItems: { text: string; s
 }
 
 function formatAction(action: { what: string; why: string; source: string }): string {
-  return [':zap: *New Action*', '', action.what, '', `_Why:_ ${action.why}`, `_Source:_ ${action.source}`].join('\n');
+  const ticker = action.source?.match(/micro-observation:\s*(\S+)/)?.[1];
+  const header = ticker ? `:zap: *${ticker}*` : ':zap: *New Action*';
+  return [header, action.what].join('\n');
 }
 
 function formatInsight(report: InsightReport): string {

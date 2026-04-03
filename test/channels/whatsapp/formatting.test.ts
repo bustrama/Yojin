@@ -200,21 +200,22 @@ describe('formatAction', () => {
     expect(result).toContain('*New Action*');
   });
 
+  it('uses ticker as header for micro-observation actions', () => {
+    const microAction = { ...action, source: 'micro-observation: AAPL' };
+    const result = formatAction(microAction);
+    expect(result).toContain('*AAPL*');
+    expect(result).not.toContain('New Action');
+  });
+
   it('includes the what field', () => {
     const result = formatAction(action);
     expect(result).toContain('Review AAPL');
   });
 
-  it('includes why with WhatsApp italic label', () => {
+  it('does not include why or source fields', () => {
     const result = formatAction(action);
-    expect(result).toContain('_Why:_');
-    expect(result).toContain('RSI divergence on daily chart');
-  });
-
-  it('includes source with WhatsApp italic label', () => {
-    const result = formatAction(action);
-    expect(result).toContain('_Source:_');
-    expect(result).toContain('skill: momentum');
+    expect(result).not.toContain('_Why:_');
+    expect(result).not.toContain('_Source:_');
   });
 
   it('does not use HTML tags', () => {

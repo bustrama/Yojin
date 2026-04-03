@@ -55,9 +55,9 @@ export function formatSnap(snap: Snap): string {
 }
 
 export function formatAction(action: Action): string {
-  return ['\u{26A1} *New Action*', '', action.what, '', `_Why:_ ${action.why}`, `_Source:_ ${action.source}`].join(
-    '\n',
-  );
+  const ticker = action.source?.match(/micro-observation:\s*(\S+)/)?.[1];
+  const header = ticker ? `\u{26A1} *${ticker}*` : '\u{26A1} *New Action*';
+  return [header, action.what].join('\n');
 }
 
 export function formatInsight(report: InsightReport): string {
