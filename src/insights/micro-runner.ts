@@ -87,6 +87,13 @@ export async function runMicroResearch(
     const expiresAt = new Date(Date.now() + ACTION_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
     const now = new Date().toISOString();
 
+    // Only push channel notifications for critical insights — extreme ratings
+    // or high-conviction directional signals. All actions are still visible in the web UI.
+    const isCritical =
+      insight.rating === 'VERY_BULLISH' ||
+      insight.rating === 'VERY_BEARISH' ||
+      (insight.conviction >= 0.8 && insight.rating !== 'NEUTRAL');
+
     for (const actionText of insight.assetActions.filter((t) => t.trim().length > 0)) {
       const result = await deps.actionStore.create({
         id: randomUUID(),
@@ -98,7 +105,9 @@ export async function runMicroResearch(
         createdAt: now,
       });
       if (result.success) {
-        deps.notificationBus?.publish({ type: 'action.created', actionId: result.data.id, ticker });
+        if (isCritical) {
+          deps.notificationBus?.publish({ type: 'action.created', actionId: result.data.id, ticker });
+        }
       } else {
         logger.warn('Failed to create action from micro observation', { symbol: ticker, error: result.error });
       }
