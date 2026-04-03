@@ -39,6 +39,7 @@ export function buildActionKeyboard(actionId: string): InlineKeyboard {
     .text('\u{274C} Reject', `action-reject:${actionId}`);
 }
 
+/** Builds a 2×2 inline keyboard with the predefined quick-action buttons for the Telegram /start message. */
 export function buildQuickActionsKeyboard(): InlineKeyboard {
   const kb = new InlineKeyboard();
   QUICK_ACTIONS.forEach((action, i) => {

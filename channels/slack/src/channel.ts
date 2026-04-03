@@ -77,6 +77,7 @@ function formatInsight(report: InsightReport): string {
 
 type SlackBlock = { type: string; [key: string]: unknown };
 
+/** Returns Slack Block Kit blocks for the App Home quick-action menu. */
 function buildQuickActionsBlocks(): SlackBlock[] {
   return [
     {
