@@ -55,6 +55,9 @@ const logger = createSubsystemLogger('scheduler');
 
 const CronStateSchema = z.object({
   lastRuns: z.record(z.string()).default({}), // jobId → ISO timestamp
+  dailyRunCount: z.number().default(0),
+  dailyRunBudgetDate: z.string().default(''), // YYYY-MM-DD UTC
+  lastMacroCompletedAt: z.number().default(0), // epoch ms
 });
 type CronState = z.infer<typeof CronStateSchema>;
 
@@ -139,7 +142,7 @@ export interface SchedulerOptions {
   /**
    * Max LLM agent runs per calendar day (UTC). When the budget is exhausted,
    * the scheduler stops firing new workflows until midnight UTC.
-   * Default: 50. Set to 0 to disable the cap.
+   * Default: 20. Set to 0 to disable the cap.
    */
   dailyRunBudget?: number;
 }
@@ -152,7 +155,7 @@ const MACRO_INTERVAL_MS = 2 * 60 * 60 * 1000;
  * one just completed. Prevents the reset-flags → micro-completes → trigger
  * loop that would otherwise fire a macro every ~5 minutes.
  */
-const MICRO_TRIGGER_MACRO_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const MICRO_TRIGGER_MACRO_COOLDOWN_MS = MACRO_INTERVAL_MS;
 
 /** Max LLM agent runs per calendar day. Exceeding this stops the scheduler for the day. */
 const DEFAULT_DAILY_RUN_BUDGET = 20;
@@ -285,13 +288,42 @@ export class Scheduler {
     }
 
     this.dailyRunCount += runsToConsume;
+    void this.persistBudgetState();
     return true;
+  }
+
+  /** Load persisted budget + macro state into memory on startup. */
+  private async hydrateFromState(): Promise<void> {
+    try {
+      const state = await this.loadState();
+      this.dailyRunCount = state.dailyRunCount;
+      this.dailyRunBudgetDate = state.dailyRunBudgetDate;
+      this.lastMacroCompletedAt = state.lastMacroCompletedAt;
+    } catch {
+      // Start fresh — in-memory defaults are already set
+    }
+  }
+
+  /** Persist current budget + macro watermark into state.json (best-effort). */
+  private async persistBudgetState(): Promise<void> {
+    try {
+      const state = await this.loadState();
+      state.dailyRunCount = this.dailyRunCount;
+      state.dailyRunBudgetDate = this.dailyRunBudgetDate;
+      state.lastMacroCompletedAt = this.lastMacroCompletedAt;
+      await this.saveState(state);
+    } catch (err) {
+      logger.warn('Failed to persist budget state', { error: err });
+    }
   }
 
   /** Start the scheduler. Checks once per minute + micro tick every 30s. */
   start(): void {
     if (this.timer) return;
     logger.info('Scheduler started', { checkIntervalMs: this.checkIntervalMs, microIntervalMs: this.microIntervalMs });
+
+    // Hydrate persisted budget + macro state so restarts preserve the daily count
+    void this.hydrateFromState();
 
     // Populate micro registry from current portfolio + watchlist
     void this.populateMicroRegistry();
@@ -447,9 +479,6 @@ export class Scheduler {
       return;
     }
 
-    // Each asset = 1 LLM run. Gate against daily budget.
-    if (!this.checkDailyBudget(assets.length)) return;
-
     this.microRunning = true;
     const gen = this.resetGeneration;
     const symbols = assets.map((a) => a.symbol);
@@ -473,6 +502,10 @@ export class Scheduler {
         logger.warn('Micro research skipped — missing signalArchive or snapshotStore');
         return;
       }
+
+      // Each asset = 1 LLM run. Gate against daily budget only after confirming
+      // all dependencies are present — avoids burning quota on runs that won't execute.
+      if (!this.checkDailyBudget(assets.length)) return;
 
       // Run micro research in parallel (up to MAX_MICRO_CONCURRENCY)
       // Note: getJintelClient/signalIngestor are omitted here because the batch
@@ -637,11 +670,15 @@ export class Scheduler {
           logger.warn('Failed to save history snapshot', { error: err });
         }
       }
+
+      // Mark completion only on success so a failed macro run doesn't start
+      // the 2-hour cooldown clock, which would delay the next legitimate run.
+      this.lastMacroCompletedAt = Date.now();
+      void this.persistBudgetState();
     } catch (err) {
       logger.error('Macro flow failed', { error: err });
     } finally {
       this.running = false;
-      this.lastMacroCompletedAt = Date.now();
     }
   }
 
@@ -929,7 +966,7 @@ export class Scheduler {
       const raw = await readFile(this.statePath(), 'utf-8');
       return CronStateSchema.parse(JSON.parse(raw));
     } catch {
-      return { lastRuns: {} };
+      return CronStateSchema.parse({});
     }
   }
 
