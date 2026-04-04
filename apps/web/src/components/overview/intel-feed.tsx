@@ -334,6 +334,7 @@ function IntelFeedCard({
                 Chat
               </Button>
               <button
+                type="button"
                 aria-label="Dismiss"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -465,7 +466,14 @@ function IntelFeedContent() {
       time: item.publishedTime,
       tag: categoryLabel[item.type],
       tagVariant: item.type === 'alert' ? 'warning' : 'success',
-      keyPoints: item.data?.map((r) => `${r.label}: ${r.value}`) ?? (item.description ? [item.description] : []),
+      sentiment:
+        item.sentiment === 'bullish' || item.sentiment === 'bearish' || item.sentiment === 'neutral'
+          ? item.sentiment
+          : undefined,
+      confidence: item.data?.find((r) => r.label === 'Confidence')
+        ? Math.round(parseFloat(item.data.find((r) => r.label === 'Confidence')!.value))
+        : undefined,
+      keyPoints: item.description ? [item.description] : [],
       analysis: item.description || item.title,
       relatedTickers: item.tickers,
     });
@@ -647,7 +655,7 @@ function MockIntelFeed() {
       <div className="flex-1 overflow-hidden px-3 pb-4">
         <div className="mb-2.5 flex items-center gap-2.5 px-1 pt-4">
           <span className="whitespace-nowrap text-2xs font-semibold uppercase tracking-[0.12em] text-text-muted">
-            Alerts
+            All
           </span>
           <div className="h-px flex-1 bg-border" />
         </div>
