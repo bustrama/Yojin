@@ -171,6 +171,62 @@ export async function priceHistoryQuery(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Market status (NYSE holiday-aware, proxied from Jintel)
+// ---------------------------------------------------------------------------
+
+const MARKET_STATUS_QUERY = `{
+  marketStatus {
+    isOpen
+    isTradingDay
+    session
+    holiday
+    date
+  }
+}`;
+
+interface USMarketStatus {
+  isOpen: boolean;
+  isTradingDay: boolean;
+  session: 'PRE_MARKET' | 'OPEN' | 'AFTER_HOURS' | 'CLOSED';
+  holiday: string | null;
+  date: string;
+}
+
+export async function marketStatusQuery(): Promise<USMarketStatus> {
+  if (jintelClient) {
+    try {
+      const data = await jintelClient.request<{ marketStatus: USMarketStatus }>(MARKET_STATUS_QUERY);
+      return data.marketStatus;
+    } catch (err) {
+      log.warn('Jintel marketStatus failed, falling back to local', { error: String(err) });
+    }
+  }
+  // Fallback: local weekend-only check (no holiday awareness)
+  return computeLocalMarketStatus();
+}
+
+function computeLocalMarketStatus(): USMarketStatus {
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = et.getDay();
+  const dateKey = `${et.getFullYear()}-${String(et.getMonth() + 1).padStart(2, '0')}-${String(et.getDate()).padStart(2, '0')}`;
+
+  if (day === 0 || day === 6) {
+    return { isOpen: false, isTradingDay: false, session: 'CLOSED', holiday: null, date: dateKey };
+  }
+
+  const minutes = et.getHours() * 60 + et.getMinutes();
+  let session: USMarketStatus['session'];
+  if (minutes < 240) session = 'CLOSED';
+  else if (minutes < 570) session = 'PRE_MARKET';
+  else if (minutes < 960) session = 'OPEN';
+  else if (minutes < 1200) session = 'AFTER_HOURS';
+  else session = 'CLOSED';
+
+  return { isOpen: session === 'OPEN', isTradingDay: true, session, holiday: null, date: dateKey };
+}
+
 export function newsQuery(_parent: unknown, args: { symbol?: string; limit?: number }): Article[] {
   let articles = stubArticles;
   if (args.symbol) {

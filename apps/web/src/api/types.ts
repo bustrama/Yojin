@@ -279,6 +279,20 @@ export interface PriceHistoryQueryVariables {
   interval?: string;
 }
 
+export type MarketSession = 'PRE_MARKET' | 'OPEN' | 'AFTER_HOURS' | 'CLOSED';
+
+export interface USMarketStatus {
+  isOpen: boolean;
+  isTradingDay: boolean;
+  session: MarketSession;
+  holiday: string | null;
+  date: string;
+}
+
+export interface MarketStatusQueryResult {
+  marketStatus: USMarketStatus;
+}
+
 export interface Article {
   id: string;
   title: string;

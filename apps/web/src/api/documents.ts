@@ -170,6 +170,18 @@ export const PRICE_HISTORY_QUERY = gql`
   }
 `;
 
+export const MARKET_STATUS_QUERY = gql`
+  query MarketStatus {
+    marketStatus {
+      isOpen
+      isTradingDay
+      session
+      holiday
+      date
+    }
+  }
+`;
+
 export const NEWS_QUERY = gql`
   query News($symbol: String, $limit: Int) {
     news(symbol: $symbol, limit: $limit) {
