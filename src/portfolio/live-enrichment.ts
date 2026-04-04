@@ -99,8 +99,12 @@ export async function enrichPortfolioSnapshotWithLiveQuotes(
     });
 
   const weekday = isUSWeekday();
+  // On weekdays fetch today's session; on weekends/holidays widen to 5d so
+  // buildSparkline can find the most recent complete trading session.
   const equityRange = weekday ? '1d' : '5d';
-  const equityInterval = weekday ? '5m' : undefined;
+  // Always 5m so weekend/holiday sparklines show the last session's open→close
+  // price action at the same resolution as weekday sparklines.
+  const equityInterval = '5m';
 
   const [result, equityHistory, cryptoHistory] = await Promise.all([
     client.quotes(symbols).catch((err: unknown) => {
@@ -168,9 +172,7 @@ export async function enrichPortfolioSnapshotWithLiveQuotes(
     const priceHist = historyMap.get(pos.symbol);
     const isEquity = !cryptoSet.has(pos.symbol);
     const sparkline =
-      priceHist && priceHist.history.length > 0
-        ? buildSparkline(priceHist, currentPrice, weekday && isEquity)
-        : undefined;
+      priceHist && priceHist.history.length > 0 ? buildSparkline(priceHist, currentPrice, isEquity) : undefined;
 
     return {
       ...pos,
