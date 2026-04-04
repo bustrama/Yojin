@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from 'urql';
 
-type MarketStatus = 'open' | 'pre-market' | 'after-hours' | 'closed';
+import { MARKET_STATUS_QUERY } from '../api/documents';
+import type { MarketSession, MarketStatusQueryResult } from '../api/types';
+
+export type MarketStatus = 'open' | 'pre-market' | 'after-hours' | 'closed';
 
 interface MarketState {
   status: MarketStatus;
@@ -29,19 +33,38 @@ export function getMarketElapsedMinutes(): number {
   return Math.max(0, Math.min(time - MARKET_OPEN_MINUTE, MARKET_DURATION));
 }
 
-/** Returns current US equity market status based on NYSE hours (Eastern Time). */
-export function useMarketStatus(): MarketState {
-  const [state, setState] = useState<MarketState>(() => compute());
-
-  useEffect(() => {
-    const id = setInterval(() => setState(compute()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  return state;
+function sessionToState(session: MarketSession, isTradingDay: boolean): MarketState {
+  if (!isTradingDay || session === 'CLOSED') return { status: 'closed', label: 'Closed' };
+  if (session === 'PRE_MARKET') return { status: 'pre-market', label: 'Pre-Market' };
+  if (session === 'OPEN') return { status: 'open', label: 'Market Open' };
+  return { status: 'after-hours', label: 'After Hours' };
 }
 
-function compute(): MarketState {
+/**
+ * Returns current US equity market status, NYSE holiday-aware.
+ * Queries Jintel via Yojin's backend; re-polls every minute.
+ */
+export function useMarketStatus(): MarketState {
+  const [result, executeQuery] = useQuery<MarketStatusQueryResult>({
+    query: MARKET_STATUS_QUERY,
+  });
+
+  // Re-poll every minute so session transitions are reflected promptly
+  useEffect(() => {
+    const id = setInterval(() => executeQuery({ requestPolicy: 'network-only' }), 60_000);
+    return () => clearInterval(id);
+  }, [executeQuery]);
+
+  if (result.data) {
+    const { session, isTradingDay } = result.data.marketStatus;
+    return sessionToState(session, isTradingDay);
+  }
+
+  // While loading or on error, fall back to local time-based computation (no holiday awareness)
+  return computeLocal();
+}
+
+function computeLocal(): MarketState {
   const now = new Date();
   const et = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
@@ -61,17 +84,9 @@ function compute(): MarketState {
   const minute = parseInt(et.minute, 10);
   const time = hour * 60 + minute;
 
-  // Weekends
   if (day === 'Sat' || day === 'Sun') return { status: 'closed', label: 'Closed' };
-
-  // Pre-market: 4:00 AM – 9:29 AM ET
   if (time >= 240 && time < 570) return { status: 'pre-market', label: 'Pre-Market' };
-
-  // Regular: 9:30 AM – 3:59 PM ET
   if (time >= 570 && time < 960) return { status: 'open', label: 'Market Open' };
-
-  // After-hours: 4:00 PM – 7:59 PM ET
   if (time >= 960 && time < 1200) return { status: 'after-hours', label: 'After Hours' };
-
   return { status: 'closed', label: 'Closed' };
 }

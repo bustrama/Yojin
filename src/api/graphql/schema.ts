@@ -247,6 +247,21 @@ export const typeDefs = /* GraphQL */ `
     history: [PricePoint!]!
   }
 
+  type USMarketStatus {
+    isOpen: Boolean!
+    isTradingDay: Boolean!
+    session: MarketSession!
+    holiday: String
+    date: String!
+  }
+
+  enum MarketSession {
+    PRE_MARKET
+    OPEN
+    AFTER_HOURS
+    CLOSED
+  }
+
   type Article {
     id: ID!
     title: String!
@@ -1075,6 +1090,7 @@ export const typeDefs = /* GraphQL */ `
     news(symbol: String, limit: Int): [Article!]!
     quote(symbol: String!): Quote
     priceHistory(tickers: [String!]!, range: String, interval: String): [TickerPriceHistory!]!
+    marketStatus: USMarketStatus!
     listConnections: [Connection!]!
     detectAvailableTiers(platform: String!): [TierAvailability!]!
     listDataSources: [DataSource!]!
