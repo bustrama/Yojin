@@ -781,7 +781,7 @@ export interface SingleBriefOptions {
   getJintelClient?: () => JintelClient | undefined;
   memoryStores: Map<string, SignalMemoryStore>;
   profileStore?: TickerProfileStore;
-  /** Override the signal lookback window (ISO date string, e.g. first-run backfill). Defaults to 7 days. */
+  /** Override the signal lookback window (ISO date string). Defaults to 24 hours; first-run assets use 4 days. */
   signalsSince?: string;
 }
 
