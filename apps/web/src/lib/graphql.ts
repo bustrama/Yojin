@@ -64,6 +64,7 @@ const cache = cacheExchange({
     SessionDetail: (data) => data.id as string,
     Skill: (data) => data.id as string,
     SkillTrigger: () => null, // embedded — nested under Skill
+    SymbolSearchResult: () => null, // embedded — search result, no stable identity
   },
   updates: {
     Mutation: {
