@@ -23,6 +23,10 @@ export function createRiskManagerProfile(): AgentProfile {
       // Memory tools
       'store_signal_memory',
       'recall_signal_memories',
+      // Skill tools (read-only)
+      'list_skills',
+      'get_skill',
+      'get_skill_evaluations',
       // Utility
       'get_current_time',
       'calculate',

@@ -206,7 +206,7 @@ export async function marketStatusQuery(): Promise<USMarketStatus> {
   if (jintelClient) {
     try {
       const data = await jintelClient.request<{ marketStatus: USMarketStatus }>(MARKET_STATUS_QUERY);
-      return data.marketStatus;
+      if (data.marketStatus) return data.marketStatus;
     } catch (err) {
       log.warn('Jintel marketStatus failed, falling back to local', { error: String(err) });
     }

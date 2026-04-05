@@ -1219,7 +1219,7 @@ export type SkillCategory = 'RISK' | 'PORTFOLIO' | 'MARKET' | 'RESEARCH';
 export interface SkillTrigger {
   type: string;
   description: string;
-  params: string | null;
+  params?: string | null;
 }
 
 export interface Skill {
@@ -1227,14 +1227,59 @@ export interface Skill {
   name: string;
   description: string;
   category: SkillCategory;
+  style: string;
+  requires: string[];
   active: boolean;
   source: string;
   createdBy: string;
   createdAt: string;
   content: string;
   triggers: SkillTrigger[];
-  maxPositionSize: number | null;
+  maxPositionSize?: number | null;
   tickers: string[];
+}
+
+export interface SkillsQueryResult {
+  skills: Skill[];
+}
+
+export interface SkillsQueryVariables {
+  category?: SkillCategory;
+  style?: string;
+  active?: boolean;
+  query?: string;
+}
+
+export interface SkillQueryResult {
+  skill: Skill | null;
+}
+
+export interface ExportSkillQueryResult {
+  exportSkill: string;
+}
+
+export interface ToggleSkillMutationResult {
+  toggleSkill: { id: string; active: boolean };
+}
+
+export interface CreateSkillMutationResult {
+  createSkill: { id: string; name: string };
+}
+
+export interface UpdateSkillMutationResult {
+  updateSkill: { id: string; name: string };
+}
+
+export interface DeleteSkillMutationResult {
+  deleteSkill: boolean;
+}
+
+export interface ImportSkillMutationResult {
+  importSkill: Skill;
+}
+
+export interface ImportSkillVariables {
+  markdown: string;
 }
 
 // ---------------------------------------------------------------------------

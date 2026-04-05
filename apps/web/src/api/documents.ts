@@ -1363,3 +1363,114 @@ export const ACTIVITY_LOG_QUERY = gql`
     }
   }
 `;
+
+// ---------------------------------------------------------------------------
+// Queries — Skills
+// ---------------------------------------------------------------------------
+
+export const SKILLS_QUERY = gql`
+  query Skills($category: SkillCategory, $style: String, $active: Boolean, $query: String) {
+    skills(category: $category, style: $style, active: $active, query: $query) {
+      id
+      name
+      description
+      category
+      style
+      requires
+      active
+      source
+      createdBy
+      createdAt
+      content
+      triggers {
+        type
+        description
+        params
+      }
+      maxPositionSize
+      tickers
+    }
+  }
+`;
+
+export const SKILL_QUERY = gql`
+  query Skill($id: ID!) {
+    skill(id: $id) {
+      id
+      name
+      description
+      category
+      style
+      requires
+      active
+      source
+      createdBy
+      createdAt
+      content
+      triggers {
+        type
+        description
+        params
+      }
+      maxPositionSize
+      tickers
+    }
+  }
+`;
+
+export const EXPORT_SKILL_QUERY = gql`
+  query ExportSkill($id: ID!) {
+    exportSkill(id: $id)
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Mutations — Skills
+// ---------------------------------------------------------------------------
+
+export const TOGGLE_SKILL_MUTATION = gql`
+  mutation ToggleSkill($id: ID!, $active: Boolean!) {
+    toggleSkill(id: $id, active: $active) {
+      id
+      active
+    }
+  }
+`;
+
+export const CREATE_SKILL_MUTATION = gql`
+  mutation CreateSkill($input: CreateSkillInput!) {
+    createSkill(input: $input) {
+      id
+      name
+    }
+  }
+`;
+
+export const UPDATE_SKILL_MUTATION = gql`
+  mutation UpdateSkill($id: ID!, $input: UpdateSkillInput!) {
+    updateSkill(id: $id, input: $input) {
+      id
+      name
+    }
+  }
+`;
+
+export const DELETE_SKILL_MUTATION = gql`
+  mutation DeleteSkill($id: ID!) {
+    deleteSkill(id: $id)
+  }
+`;
+
+export const IMPORT_SKILL_MUTATION = gql`
+  mutation ImportSkill($markdown: String!) {
+    importSkill(markdown: $markdown) {
+      id
+      name
+      description
+      category
+      style
+      requires
+      source
+    }
+  }
+`;

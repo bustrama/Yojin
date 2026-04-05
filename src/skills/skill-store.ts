@@ -69,6 +69,25 @@ export class SkillStore {
     logger.info(`Saved skill: ${validated.name}`, { id: validated.id });
   }
 
+  /** Create a new skill — fails if id already exists. */
+  create(skill: Skill): void {
+    if (this.skills.has(skill.id)) {
+      throw new Error(`Skill already exists: ${skill.id}`);
+    }
+    this.save(skill);
+  }
+
+  /** Update an existing skill — fails if id does not exist. */
+  update(id: string, fields: Partial<Omit<Skill, 'id'>>): Skill {
+    const existing = this.skills.get(id);
+    if (!existing) {
+      throw new Error(`Skill not found: ${id}`);
+    }
+    const updated = { ...existing, ...fields, id };
+    this.save(updated);
+    return updated;
+  }
+
   /** Toggle a skill's active state. */
   setActive(id: string, active: boolean): Skill | undefined {
     const skill = this.skills.get(id);

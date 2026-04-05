@@ -19,7 +19,7 @@ describe('buildContext', () => {
     expect(services.vault).toBeUndefined();
   });
 
-  it('registers 54 tools (with vault-locked stubs)', async () => {
+  it('registers 59 tools (with vault-locked stubs)', async () => {
     const services = await buildContext({ skipVault: true });
     const schemas = services.toolRegistry.toSchemas();
 
@@ -36,8 +36,9 @@ describe('buildContext', () => {
     // + 2 data source query tools (query_data_source, list_data_sources)
     // + 2 memory tools (store_signal_memory, recall_signal_memories)
     // + 4 display tools (display_portfolio_overview, display_positions_list, display_allocation, display_morning_briefing)
-    // = 54
-    expect(schemas.length).toBe(54);
+    // + 5 skill tools (list_skills, get_skill, activate_skill, deactivate_skill, get_skill_evaluations)
+    // = 59
+    expect(schemas.length).toBe(59);
 
     const names = schemas.map((s) => s.name).sort();
     expect(names).toContain('get_current_time');

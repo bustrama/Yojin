@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 
+import { DataCapabilitySchema } from './capabilities.js';
+import type { DataCapability } from './capabilities.js';
 import { DateTimeField, IdField } from '../types/base.js';
 
 // ---------------------------------------------------------------------------
@@ -49,7 +51,9 @@ export const SkillSchema = z.object({
   description: z.string().min(1),
   category: SkillCategorySchema,
   active: z.boolean().default(false),
-  source: z.enum(['built-in', 'custom']),
+  source: z.enum(['built-in', 'custom', 'community']),
+  style: z.string().min(1).default('general'),
+  requires: z.array(DataCapabilitySchema).default([]),
   createdBy: z.string().min(1),
   createdAt: DateTimeField,
   /** The Markdown strategy content — what the Strategist reads. */
@@ -78,3 +82,6 @@ export const SkillEvaluationSchema = z.object({
   evaluatedAt: DateTimeField,
 });
 export type SkillEvaluation = z.infer<typeof SkillEvaluationSchema>;
+
+export { DataCapabilitySchema };
+export type { DataCapability };
