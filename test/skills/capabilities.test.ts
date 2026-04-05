@@ -40,13 +40,15 @@ describe('checkCapabilities', () => {
   });
 
   it('returns limited when some required are missing', () => {
-    const result = checkCapabilities(['market_data', 'derivatives']);
+    const subset = ['market_data'] as const;
+    const result = checkCapabilities(['market_data', 'derivatives'], [...subset]);
     expect(result.status).toBe('limited');
     expect(result.missing).toEqual(['derivatives']);
   });
 
   it('returns unavailable when all required are missing', () => {
-    const result = checkCapabilities(['derivatives']);
+    const subset = ['market_data'] as const;
+    const result = checkCapabilities(['derivatives'], [...subset]);
     expect(result.status).toBe('unavailable');
     expect(result.missing).toEqual(['derivatives']);
   });

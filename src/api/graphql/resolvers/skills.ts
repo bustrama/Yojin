@@ -117,11 +117,21 @@ interface UpdateSkillInput {
 }
 
 function mapTriggersFromInput(triggers: SkillTriggerInput[]): Skill['triggers'] {
-  return triggers.map((t) => ({
-    type: t.type as Skill['triggers'][number]['type'],
-    description: t.description,
-    ...(t.params ? { params: JSON.parse(t.params) as Record<string, unknown> } : {}),
-  }));
+  return triggers.map((t, i) => {
+    let params: Record<string, unknown> | undefined;
+    if (t.params) {
+      try {
+        params = JSON.parse(t.params) as Record<string, unknown>;
+      } catch {
+        throw new Error(`Trigger ${i + 1}: invalid JSON in params`);
+      }
+    }
+    return {
+      type: t.type as Skill['triggers'][number]['type'],
+      description: t.description,
+      ...(params ? { params } : {}),
+    };
+  });
 }
 
 function mapRequiresFromInput(requires?: string[]): DataCapability[] {
@@ -132,8 +142,13 @@ function mapRequiresFromInput(requires?: string[]): DataCapability[] {
 export function resolveCreateSkill(_: unknown, args: { input: CreateSkillInput }): unknown {
   if (!skillStore) throw new Error('Skill store not initialized');
   const { input } = args;
+  let id = slugify(input.name);
+  const existing = skillStore.getById(id);
+  if (existing) {
+    id = `${id}-${Date.now()}`;
+  }
   const skill: Skill = {
-    id: slugify(input.name),
+    id,
     name: input.name,
     description: input.description,
     category: input.category,
@@ -176,15 +191,8 @@ export function resolveDeleteSkill(_: unknown, args: { id: string }): boolean {
   return true;
 }
 
-export function resolveImportSkill(_: unknown, args: { markdown?: string; url?: string }): unknown {
+export function resolveImportSkill(_: unknown, args: { markdown: string }): unknown {
   if (!skillStore) throw new Error('Skill store not initialized');
-  if (!args.markdown && !args.url) {
-    throw new Error('Either markdown or url must be provided');
-  }
-  if (args.url) {
-    throw new Error('URL import is not yet supported');
-  }
-  if (!args.markdown) throw new Error('Markdown content is required');
   const skill = parseFromMarkdown(args.markdown);
   if (skillStore.getById(skill.id)) {
     skill.id = `${skill.id}-${Date.now()}`;

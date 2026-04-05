@@ -107,11 +107,13 @@ export default function SkillEditorModal({ open, onClose, skill: editSkill }: Sk
   const [maxPositionSize, setMaxPositionSize] = useState(initial.maxPositionSize);
   const [showPreview, setShowPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const [, createSkill] = useCreateSkill();
   const [, updateSkill] = useUpdateSkill();
 
-  const saveDisabled = !name.trim() || !content.trim() || !style.trim() || triggers.every((t) => !t.description.trim());
+  const saveDisabled =
+    saving || !name.trim() || !content.trim() || !style.trim() || triggers.every((t) => !t.description.trim());
 
   function toggleCapability(value: string) {
     setRequires((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
@@ -131,40 +133,46 @@ export default function SkillEditorModal({ open, onClose, skill: editSkill }: Sk
 
   async function handleSave() {
     setError(null);
+    setSaving(true);
 
-    const tickerList = tickers
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
+    try {
+      const tickerList = tickers
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
 
-    const parsedMaxPos = maxPositionSize ? parseFloat(maxPositionSize) : undefined;
+      const parsedMaxPos = maxPositionSize ? parseFloat(maxPositionSize) : undefined;
 
-    const input = {
-      name: name.trim(),
-      description: description.trim(),
-      category,
-      style: style.trim(),
-      requires: requires.length > 0 ? requires : undefined,
-      content,
-      triggers: triggers
-        .filter((t) => t.description.trim())
-        .map((t) => ({
-          type: t.type,
-          description: t.description.trim(),
-          params: t.params.trim() || undefined,
-        })),
-      tickers: tickerList.length > 0 ? tickerList : undefined,
-      maxPositionSize: parsedMaxPos !== undefined && !isNaN(parsedMaxPos) ? parsedMaxPos : undefined,
-    };
+      const input = {
+        name: name.trim(),
+        description: description.trim(),
+        category,
+        style: style.trim(),
+        requires: requires.length > 0 ? requires : undefined,
+        content,
+        triggers: triggers
+          .filter((t) => t.description.trim())
+          .map((t) => ({
+            type: t.type,
+            description: t.description.trim(),
+            params: t.params.trim() || undefined,
+          })),
+        tickers: tickerList.length > 0 ? tickerList : undefined,
+        maxPositionSize: parsedMaxPos !== undefined && !isNaN(parsedMaxPos) ? parsedMaxPos : undefined,
+      };
 
-    const result = isEdit && editSkill ? await updateSkill({ id: editSkill.id, input }) : await createSkill({ input });
+      const result =
+        isEdit && editSkill ? await updateSkill({ id: editSkill.id, input }) : await createSkill({ input });
 
-    if (result.error) {
-      setError(result.error.message);
-      return;
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+
+      onClose();
+    } finally {
+      setSaving(false);
     }
-
-    onClose();
   }
 
   return (
@@ -180,7 +188,7 @@ export default function SkillEditorModal({ open, onClose, skill: editSkill }: Sk
           >
             {showPreview ? 'Edit' : 'Preview'}
           </button>
-          <Button size="sm" disabled={saveDisabled} onClick={handleSave}>
+          <Button size="sm" disabled={saveDisabled} loading={saving} onClick={handleSave}>
             Save
           </Button>
           <button

@@ -153,8 +153,8 @@ Buy the dip`;
       expect(result).toMatchObject({ name: 'Imported Strategy' });
     });
 
-    it('throws when neither markdown nor url provided', () => {
-      expect(() => resolveImportSkill(null, {})).toThrow();
+    it('throws when markdown is empty', () => {
+      expect(() => resolveImportSkill(null, { markdown: '' })).toThrow();
     });
   });
 

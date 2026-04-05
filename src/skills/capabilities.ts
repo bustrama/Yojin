@@ -22,6 +22,7 @@ const AVAILABLE_CAPABILITIES: DataCapability[] = [
   'sentiment',
   'fundamentals',
   'filings',
+  'derivatives',
   'portfolio',
   'macro_data',
 ];
@@ -37,8 +38,11 @@ export interface CapabilityCheckResult {
   status: 'executable' | 'limited' | 'unavailable';
 }
 
-export function checkCapabilities(requires: DataCapability[]): CapabilityCheckResult {
-  const availableSet = new Set(AVAILABLE_CAPABILITIES);
+export function checkCapabilities(
+  requires: DataCapability[],
+  availableOverride?: DataCapability[],
+): CapabilityCheckResult {
+  const availableSet = new Set(availableOverride ?? AVAILABLE_CAPABILITIES);
   const available = requires.filter((r) => availableSet.has(r));
   const missing = requires.filter((r) => !availableSet.has(r));
 

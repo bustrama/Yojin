@@ -1268,7 +1268,7 @@ export const typeDefs = /* GraphQL */ `
     createSkill(input: CreateSkillInput!): Skill!
     updateSkill(id: ID!, input: UpdateSkillInput!): Skill!
     deleteSkill(id: ID!): Boolean!
-    importSkill(markdown: String, url: String): Skill!
+    importSkill(markdown: String!): Skill!
     clearAppData: Boolean!
     saveAiConfig(input: AiConfigInput!): AiConfig!
     saveAiCredential(provider: String!, apiKey: String!): SaveAiCredentialResult!

@@ -1279,8 +1279,7 @@ export interface ImportSkillMutationResult {
 }
 
 export interface ImportSkillVariables {
-  markdown?: string;
-  url?: string;
+  markdown: string;
 }
 
 // ---------------------------------------------------------------------------

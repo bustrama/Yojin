@@ -377,7 +377,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
         }
       }
     } catch (err) {
-      log.warn('Failed to seed Jintel data source entry', { error: String(err) });
+      log.debug('Failed to seed Jintel data source entry', { error: String(err) });
     }
   }
 
@@ -665,7 +665,9 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   if (existsSync(defaultStrategiesDir)) {
     const { readdirSync, readFileSync } = await import('node:fs');
     const { parseFromMarkdown } = await import('./skills/skill-serializer.js');
-    for (const file of readdirSync(defaultStrategiesDir).filter((f: string) => f.endsWith('.md'))) {
+    for (const file of readdirSync(defaultStrategiesDir).filter(
+      (f: string) => f.endsWith('.md') && f[0] === f[0].toLowerCase(),
+    )) {
       try {
         const md = readFileSync(`${defaultStrategiesDir}/${file}`, 'utf-8');
         const skill = parseFromMarkdown(md);
@@ -677,7 +679,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
           log.info(`Seeded strategy from ${file}: ${skill.name}`);
         }
       } catch (err) {
-        log.warn(`Failed to seed strategy from ${file}`, { error: err });
+        log.debug(`Failed to seed strategy from ${file}`, { error: err });
       }
     }
   }

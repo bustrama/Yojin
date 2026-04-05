@@ -164,6 +164,10 @@ export function createSkillTools(options: SkillToolsOptions): ToolDefinition[] {
         positionDrawdowns: {},
       });
 
+      const contextNote =
+        'Note: Evaluated with empty portfolio context — no live prices, weights, or indicators available. ' +
+        'Use the Strategist orchestrated workflow for full evaluation with real portfolio data.';
+
       if (evaluations.length === 0) {
         const capSummaries = activeSkills
           .map((s) => {
@@ -172,14 +176,14 @@ export function createSkillTools(options: SkillToolsOptions): ToolDefinition[] {
           })
           .filter(Boolean);
 
-        let content = 'No skill triggers fired with current portfolio data.';
+        let content = `No skill triggers fired.\n\n${contextNote}`;
         if (capSummaries.length > 0) {
           content += `\n\nSkills with missing capabilities:\n${capSummaries.join('\n')}`;
         }
         return { content };
       }
 
-      return { content: skillEvaluator.formatForStrategist(evaluations) };
+      return { content: `${skillEvaluator.formatForStrategist(evaluations)}\n\n${contextNote}` };
     },
   };
 

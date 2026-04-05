@@ -10,13 +10,16 @@ export default function ActiveRulesView() {
   const [result] = useSkills();
   const [, toggleSkill] = useToggleSkill();
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const skills = result.data?.skills ?? [];
   const active = skills.filter((s) => s.active);
   const available = skills.filter((s) => !s.active);
 
-  function handleToggle(id: string, newActive: boolean) {
-    toggleSkill({ id, active: newActive });
+  async function handleToggle(id: string, newActive: boolean) {
+    setToggleError(null);
+    const res = await toggleSkill({ id, active: newActive });
+    if (res.error) setToggleError(res.error.message);
   }
 
   if (result.fetching) {
@@ -27,8 +30,20 @@ export default function ActiveRulesView() {
     );
   }
 
+  if (result.error) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm text-error">Failed to load strategies. Please try again.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
+      {toggleError && (
+        <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">{toggleError}</div>
+      )}
+
       {active.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-text-secondary mb-3">Active ({active.length})</h2>

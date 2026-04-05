@@ -1462,8 +1462,8 @@ export const DELETE_SKILL_MUTATION = gql`
 `;
 
 export const IMPORT_SKILL_MUTATION = gql`
-  mutation ImportSkill($markdown: String, $url: String) {
-    importSkill(markdown: $markdown, url: $url) {
+  mutation ImportSkill($markdown: String!) {
+    importSkill(markdown: $markdown) {
       id
       name
       description

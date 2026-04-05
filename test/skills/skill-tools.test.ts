@@ -139,13 +139,12 @@ describe('createSkillTools', () => {
       expect(skillStore.getById('test-skill')!.active).toBe(true);
     });
 
-    it('warns about missing capabilities', async () => {
+    it('activates skill with all capabilities available', async () => {
       skillStore.create(makeSkill({ requires: ['derivatives'] }));
 
       const result = await getTool('activate_skill').execute({ id: 'test-skill' });
       expect(result.content).toContain('activated');
-      expect(result.content).toMatch(/missing|limited/i);
-      expect(result.content).toContain('derivatives');
+      expect(result.content).not.toMatch(/missing/i);
     });
 
     it('returns error for nonexistent skill', async () => {

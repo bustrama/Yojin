@@ -52,7 +52,7 @@ export const SkillSchema = z.object({
   category: SkillCategorySchema,
   active: z.boolean().default(false),
   source: z.enum(['built-in', 'custom', 'community']),
-  style: z.string().min(1),
+  style: z.string().min(1).default('general'),
   requires: z.array(DataCapabilitySchema).default([]),
   createdBy: z.string().min(1),
   createdAt: DateTimeField,
