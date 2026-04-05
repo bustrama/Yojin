@@ -128,7 +128,7 @@ export default function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? 'border-l-2 border-accent-primary bg-accent-glow text-accent-secondary'
+                  ? 'bg-accent-glow text-accent-secondary'
                   : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
               }`
             }
