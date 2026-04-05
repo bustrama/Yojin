@@ -7,7 +7,9 @@ const segmentLabels: Record<string, string> = {
   '': 'Overview',
   chat: 'Chat',
   portfolio: 'Portfolio',
-  skills: 'Skills',
+  insights: 'Insights',
+  watchlist: 'Watchlist',
+  skills: 'Strategies',
   profile: 'Profile',
   settings: 'Settings',
 };

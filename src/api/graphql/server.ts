@@ -109,7 +109,16 @@ import { riskReportQuery } from './resolvers/risk.js';
 import { assessmentStatusResolver, signalAssessmentsResolver } from './resolvers/signal-assessments.js';
 import { signalGroupFieldResolvers, signalGroupResolver, signalGroupsResolver } from './resolvers/signal-groups.js';
 import { signalsByIdsResolver, signalsResolver } from './resolvers/signals.js';
-import { resolveSkill, resolveSkills, resolveToggleSkill } from './resolvers/skills.js';
+import {
+  resolveCreateSkill,
+  resolveDeleteSkill,
+  resolveExportSkill,
+  resolveImportSkill,
+  resolveSkill,
+  resolveSkills,
+  resolveToggleSkill,
+  resolveUpdateSkill,
+} from './resolvers/skills.js';
 import { snapQuery } from './resolvers/snap.js';
 import {
   addVaultSecretMutation,
@@ -174,6 +183,7 @@ const schema = createSchema({
       action: actionResolver,
       skills: resolveSkills,
       skill: resolveSkill,
+      exportSkill: resolveExportSkill,
       tickerProfile: tickerProfileQuery,
       tickerProfiles: tickerProfilesQuery,
       microInsight: microInsightQuery,
@@ -232,6 +242,10 @@ const schema = createSchema({
       approveAction: approveActionMutation,
       rejectAction: rejectActionMutation,
       toggleSkill: resolveToggleSkill,
+      createSkill: resolveCreateSkill,
+      updateSkill: resolveUpdateSkill,
+      deleteSkill: resolveDeleteSkill,
+      importSkill: resolveImportSkill,
       clearAppData: clearAppDataMutation,
       saveAiConfig: saveAiConfigMutation,
       saveAiCredential: saveAiCredentialMutation,

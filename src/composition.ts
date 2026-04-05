@@ -104,6 +104,7 @@ import { SignalIngestor } from './signals/ingestor.js';
 import { createSignalTools } from './signals/tools.js';
 import { SkillEvaluator } from './skills/skill-evaluator.js';
 import { SkillStore } from './skills/skill-store.js';
+import { createSkillTools } from './skills/skill-tools.js';
 import { SnapStore } from './snap/snap-store.js';
 import { createApiHealthTools } from './tools/api-health.js';
 import { createBrainTools } from './tools/brain-tools.js';
@@ -376,7 +377,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
         }
       }
     } catch (err) {
-      log.warn('Failed to seed Jintel data source entry', { error: String(err) });
+      log.debug('Failed to seed Jintel data source entry', { error: String(err) });
     }
   }
 
@@ -655,23 +656,39 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   const actionStore = new ActionStore({ dir: `${dataRoot}/actions` });
   setActionStore(actionStore);
 
-  // Skill store + evaluator — seed from factory defaults on first run
+  // Skill store + evaluator — seed strategies from Markdown on first run
   const skillsDir = `${dataRoot}/skills`;
-  const defaultSkillsDir = `${resolveDefaultsRoot()}/skills`;
-  if (existsSync(defaultSkillsDir)) {
-    const { readdirSync } = await import('node:fs');
-    for (const file of readdirSync(defaultSkillsDir).filter((f: string) => f.endsWith('.json'))) {
-      const dest = `${skillsDir}/${file}`;
-      if (!existsSync(dest)) {
-        await copyFile(`${defaultSkillsDir}/${file}`, dest);
-        log.info(`Seeded default skill: ${file}`);
-      }
-    }
-  }
   const skillStore = new SkillStore({ dir: skillsDir });
   await skillStore.initialize();
   setSkillStore(skillStore);
+  const defaultStrategiesDir = `${resolveDefaultsRoot()}/strategies`;
+  if (existsSync(defaultStrategiesDir)) {
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const { parseFromMarkdown } = await import('./skills/skill-serializer.js');
+    for (const file of readdirSync(defaultStrategiesDir).filter(
+      (f: string) => f.endsWith('.md') && f[0] === f[0].toLowerCase(),
+    )) {
+      try {
+        const md = readFileSync(`${defaultStrategiesDir}/${file}`, 'utf-8');
+        const skill = parseFromMarkdown(md);
+        skill.source = 'built-in';
+        skill.createdBy = 'yojin';
+        const dest = `${skillsDir}/${skill.id}.json`;
+        if (!existsSync(dest)) {
+          skillStore.save(skill);
+          log.info(`Seeded strategy from ${file}: ${skill.name}`);
+        }
+      } catch (err) {
+        log.debug(`Failed to seed strategy from ${file}`, { error: err });
+      }
+    }
+  }
+
   const skillEvaluator = new SkillEvaluator(skillStore);
+
+  for (const tool of createSkillTools({ skillStore, skillEvaluator })) {
+    toolRegistry.register(tool);
+  }
 
   // Platform tools (3 tools if ConnectionManager available)
   if (connectionManager) {

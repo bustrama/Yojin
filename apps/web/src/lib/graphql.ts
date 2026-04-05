@@ -154,6 +154,21 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'signals');
         cache.invalidate('Query', 'curatedSignals');
       },
+      createSkill(_result, _args, cache) {
+        cache.invalidate('Query', 'skills');
+      },
+      updateSkill(_result, _args, cache) {
+        cache.invalidate('Query', 'skills');
+      },
+      deleteSkill(_result, _args, cache) {
+        cache.invalidate('Query', 'skills');
+      },
+      importSkill(_result, _args, cache) {
+        cache.invalidate('Query', 'skills');
+      },
+      toggleSkill(_result, _args, cache) {
+        cache.invalidate('Query', 'skills');
+      },
       clearAppData(_result, _args, cache) {
         cache.invalidate('Query', 'portfolio');
         cache.invalidate('Query', 'riskReport');

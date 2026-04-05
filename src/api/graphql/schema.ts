@@ -1047,6 +1047,19 @@ export const typeDefs = /* GraphQL */ `
     RESEARCH
   }
 
+  enum DataCapability {
+    MARKET_DATA
+    TECHNICALS
+    NEWS
+    RESEARCH
+    SENTIMENT
+    FUNDAMENTALS
+    FILINGS
+    DERIVATIVES
+    PORTFOLIO
+    MACRO_DATA
+  }
+
   type SkillTrigger {
     type: String!
     description: String!
@@ -1058,6 +1071,8 @@ export const typeDefs = /* GraphQL */ `
     name: String!
     description: String!
     category: SkillCategory!
+    style: String!
+    requires: [DataCapability!]!
     active: Boolean!
     source: String!
     createdBy: String!
@@ -1066,6 +1081,36 @@ export const typeDefs = /* GraphQL */ `
     triggers: [SkillTrigger!]!
     maxPositionSize: Float
     tickers: [String!]!
+  }
+
+  input SkillTriggerInput {
+    type: String!
+    description: String!
+    params: String
+  }
+
+  input CreateSkillInput {
+    name: String!
+    description: String!
+    category: SkillCategory!
+    style: String!
+    requires: [DataCapability!]
+    content: String!
+    triggers: [SkillTriggerInput!]!
+    tickers: [String!]
+    maxPositionSize: Float
+  }
+
+  input UpdateSkillInput {
+    name: String
+    description: String
+    category: SkillCategory
+    style: String
+    requires: [DataCapability!]
+    content: String
+    triggers: [SkillTriggerInput!]
+    tickers: [String!]
+    maxPositionSize: Float
   }
 
   # ---------------------------------------------------------------------------
@@ -1144,8 +1189,9 @@ export const typeDefs = /* GraphQL */ `
     activityLog(types: [ActivityEventType!], since: String, limit: Int): [ActivityEvent!]!
     actions(status: ActionStatus, since: String, limit: Int): [Action!]!
     action(id: ID!): Action
-    skills(category: SkillCategory, active: Boolean): [Skill!]!
+    skills(category: SkillCategory, active: Boolean, style: String, query: String): [Skill!]!
     skill(id: ID!): Skill
+    exportSkill(id: ID!): String!
     tickerProfile(ticker: String!): TickerProfile
     tickerProfiles(tickers: [String!]!): [TickerProfile!]!
     microInsight(symbol: String!): MicroInsight
@@ -1219,6 +1265,10 @@ export const typeDefs = /* GraphQL */ `
     approveAction(id: ID!): Action!
     rejectAction(id: ID!): Action!
     toggleSkill(id: ID!, active: Boolean!): Skill!
+    createSkill(input: CreateSkillInput!): Skill!
+    updateSkill(id: ID!, input: UpdateSkillInput!): Skill!
+    deleteSkill(id: ID!): Boolean!
+    importSkill(markdown: String!): Skill!
     clearAppData: Boolean!
     saveAiConfig(input: AiConfigInput!): AiConfig!
     saveAiCredential(provider: String!, apiKey: String!): SaveAiCredentialResult!

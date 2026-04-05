@@ -22,10 +22,15 @@ const baseSkill: Skill = {
   name: 'Critical Drawdown Alert',
   description: 'Sends a critical alert and auto-drafts a hedge recommendation when any position exceeds -10% drawdown.',
   category: 'RISK',
+  style: 'defensive',
+  requires: [],
   active: true,
   source: 'built-in',
   createdBy: 'Yojin',
   createdAt: 'Jan 3, 2026',
+  content: '',
+  triggers: [{ type: 'DRAWDOWN', description: 'Position drawdown exceeds -10%' }],
+  tickers: [],
 };
 
 export const Risk: Story = {
@@ -40,6 +45,7 @@ export const Portfolio: Story = {
       name: 'Concentration Warning',
       description: 'Alerts when any single position exceeds 30% of portfolio value.',
       category: 'PORTFOLIO',
+      style: 'balanced',
     },
   },
 };
@@ -52,6 +58,7 @@ export const Market: Story = {
       name: 'Earnings Calendar Alert',
       description: 'Notifies you when a holding reports earnings within 3 days.',
       category: 'MARKET',
+      style: 'event_driven',
     },
   },
 };
@@ -64,6 +71,7 @@ export const Research: Story = {
       name: 'Sentiment Shift Alert',
       description: 'Emails you when Jintel sentiment score shifts significantly.',
       category: 'RESEARCH',
+      style: 'momentum',
       source: 'custom',
       createdBy: 'Dean',
       createdAt: 'Jan 12, 2026',
@@ -74,6 +82,19 @@ export const Research: Story = {
 export const Inactive: Story = {
   args: {
     skill: { ...baseSkill, active: false },
+  },
+};
+
+export const Community: Story = {
+  args: {
+    skill: {
+      ...baseSkill,
+      id: '6',
+      name: 'Sector Rotation Signal',
+      source: 'community',
+      style: 'macro_rotation',
+      createdBy: 'Community',
+    },
   },
 };
 
@@ -95,6 +116,7 @@ export const AllCategories: Story = {
           name: 'Concentration Warning',
           description: 'Alerts when any single position exceeds 30% of portfolio value.',
           category: 'PORTFOLIO',
+          style: 'balanced',
         }}
       />
       <SkillCard
@@ -104,6 +126,7 @@ export const AllCategories: Story = {
           name: 'Earnings Calendar',
           description: 'Notifies you when a holding reports earnings within 3 days.',
           category: 'MARKET',
+          style: 'event_driven',
         }}
       />
       <SkillCard
@@ -113,6 +136,7 @@ export const AllCategories: Story = {
           name: 'Sentiment Tracker',
           description: 'Monitors Jintel sentiment shifts for your holdings.',
           category: 'RESEARCH',
+          style: 'momentum',
           source: 'custom',
           createdBy: 'Dean',
         }}
