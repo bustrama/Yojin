@@ -1,12 +1,5 @@
-export type SkillCategory = 'RISK' | 'PORTFOLIO' | 'MARKET' | 'RESEARCH';
+export type { Skill, SkillCategory } from '../../api/types.js';
 
-export interface Skill {
-  id: string;
-  name: string;
-  description: string;
-  category: SkillCategory;
-  active: boolean;
-  source: 'built-in' | 'custom';
-  createdBy: string;
-  createdAt: string;
+export function formatStyle(style: string): string {
+  return style.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

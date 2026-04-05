@@ -2,8 +2,11 @@
  * GraphQL resolvers for Skills — trading strategy management.
  */
 
+import { DataCapabilitySchema } from '../../../skills/capabilities.js';
+import type { DataCapability } from '../../../skills/capabilities.js';
+import { parseFromMarkdown, serializeToMarkdown, slugify } from '../../../skills/skill-serializer.js';
 import type { SkillStore } from '../../../skills/skill-store.js';
-import type { SkillCategory } from '../../../skills/types.js';
+import type { Skill, SkillCategory } from '../../../skills/types.js';
 
 // ---------------------------------------------------------------------------
 // State — wired by composition root
@@ -16,10 +19,26 @@ export function setSkillStore(store: SkillStore): void {
 }
 
 // ---------------------------------------------------------------------------
+// Capability mapping (domain snake_case ↔ GraphQL SCREAMING_SNAKE_CASE)
+// Derived from DataCapabilitySchema to stay in sync automatically.
+// ---------------------------------------------------------------------------
+
+const CAPABILITY_TO_GQL: Record<string, string> = Object.fromEntries(
+  DataCapabilitySchema.options.map((c) => [c, c.toUpperCase()]),
+);
+
+const GQL_TO_CAPABILITY: Record<string, DataCapability> = Object.fromEntries(
+  DataCapabilitySchema.options.map((c) => [c.toUpperCase(), c]),
+);
+
+// ---------------------------------------------------------------------------
 // Query resolvers
 // ---------------------------------------------------------------------------
 
-export function resolveSkills(_: unknown, args: { category?: SkillCategory; active?: boolean }): unknown[] {
+export function resolveSkills(
+  _: unknown,
+  args: { category?: SkillCategory; active?: boolean; style?: string; query?: string },
+): unknown[] {
   if (!skillStore) return [];
   let skills = skillStore.getAll();
   if (args.category) {
@@ -28,6 +47,18 @@ export function resolveSkills(_: unknown, args: { category?: SkillCategory; acti
   if (args.active !== undefined) {
     skills = skills.filter((s) => s.active === args.active);
   }
+  if (args.style) {
+    skills = skills.filter((s) => s.style === args.style);
+  }
+  if (args.query) {
+    const q = args.query.toLowerCase();
+    skills = skills.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.content.toLowerCase().includes(q),
+    );
+  }
   return skills.map(toGraphQL);
 }
 
@@ -35,6 +66,13 @@ export function resolveSkill(_: unknown, args: { id: string }): unknown | null {
   if (!skillStore) return null;
   const skill = skillStore.getById(args.id);
   return skill ? toGraphQL(skill) : null;
+}
+
+export function resolveExportSkill(_: unknown, args: { id: string }): string {
+  if (!skillStore) throw new Error('Skill store not initialized');
+  const skill = skillStore.getById(args.id);
+  if (!skill) throw new Error(`Skill not found: ${args.id}`);
+  return serializeToMarkdown(skill);
 }
 
 // ---------------------------------------------------------------------------
@@ -48,16 +86,125 @@ export function resolveToggleSkill(_: unknown, args: { id: string; active: boole
   return toGraphQL(updated);
 }
 
+interface SkillTriggerInput {
+  type: string;
+  description: string;
+  params?: string;
+}
+
+interface CreateSkillInput {
+  name: string;
+  description: string;
+  category: SkillCategory;
+  style: string;
+  requires?: string[];
+  content: string;
+  triggers: SkillTriggerInput[];
+  tickers?: string[];
+  maxPositionSize?: number;
+}
+
+interface UpdateSkillInput {
+  name?: string;
+  description?: string;
+  category?: SkillCategory;
+  style?: string;
+  requires?: string[];
+  content?: string;
+  triggers?: SkillTriggerInput[];
+  tickers?: string[];
+  maxPositionSize?: number;
+}
+
+function mapTriggersFromInput(triggers: SkillTriggerInput[]): Skill['triggers'] {
+  return triggers.map((t) => ({
+    type: t.type as Skill['triggers'][number]['type'],
+    description: t.description,
+    ...(t.params ? { params: JSON.parse(t.params) as Record<string, unknown> } : {}),
+  }));
+}
+
+function mapRequiresFromInput(requires?: string[]): DataCapability[] {
+  if (!requires) return [];
+  return requires.map((r) => GQL_TO_CAPABILITY[r] ?? (r.toLowerCase() as DataCapability));
+}
+
+export function resolveCreateSkill(_: unknown, args: { input: CreateSkillInput }): unknown {
+  if (!skillStore) throw new Error('Skill store not initialized');
+  const { input } = args;
+  const skill: Skill = {
+    id: slugify(input.name),
+    name: input.name,
+    description: input.description,
+    category: input.category,
+    style: input.style,
+    requires: mapRequiresFromInput(input.requires),
+    active: false,
+    source: 'custom',
+    createdBy: 'user',
+    createdAt: new Date().toISOString(),
+    content: input.content,
+    triggers: mapTriggersFromInput(input.triggers),
+    tickers: input.tickers ?? [],
+    ...(input.maxPositionSize !== undefined ? { maxPositionSize: input.maxPositionSize } : {}),
+  };
+  skillStore.create(skill);
+  return toGraphQL(skill);
+}
+
+export function resolveUpdateSkill(_: unknown, args: { id: string; input: UpdateSkillInput }): unknown {
+  if (!skillStore) throw new Error('Skill store not initialized');
+  const { id, input } = args;
+  const fields: Partial<Omit<Skill, 'id'>> = {};
+  if (input.name !== undefined) fields.name = input.name;
+  if (input.description !== undefined) fields.description = input.description;
+  if (input.category !== undefined) fields.category = input.category;
+  if (input.style !== undefined) fields.style = input.style;
+  if (input.requires !== undefined) fields.requires = mapRequiresFromInput(input.requires);
+  if (input.content !== undefined) fields.content = input.content;
+  if (input.triggers !== undefined) fields.triggers = mapTriggersFromInput(input.triggers);
+  if (input.tickers !== undefined) fields.tickers = input.tickers;
+  if (input.maxPositionSize !== undefined) fields.maxPositionSize = input.maxPositionSize;
+  const updated = skillStore.update(id, fields);
+  return toGraphQL(updated);
+}
+
+export function resolveDeleteSkill(_: unknown, args: { id: string }): boolean {
+  if (!skillStore) throw new Error('Skill store not initialized');
+  const deleted = skillStore.delete(args.id);
+  if (!deleted) throw new Error(`Skill not found: ${args.id}`);
+  return true;
+}
+
+export function resolveImportSkill(_: unknown, args: { markdown?: string; url?: string }): unknown {
+  if (!skillStore) throw new Error('Skill store not initialized');
+  if (!args.markdown && !args.url) {
+    throw new Error('Either markdown or url must be provided');
+  }
+  if (args.url) {
+    throw new Error('URL import is not yet supported');
+  }
+  if (!args.markdown) throw new Error('Markdown content is required');
+  const skill = parseFromMarkdown(args.markdown);
+  if (skillStore.getById(skill.id)) {
+    skill.id = `${skill.id}-${Date.now()}`;
+  }
+  skillStore.create(skill);
+  return toGraphQL(skill);
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function toGraphQL(skill: ReturnType<SkillStore['getAll']>[number]): unknown {
+function toGraphQL(skill: Skill): unknown {
   return {
     id: skill.id,
     name: skill.name,
     description: skill.description,
     category: skill.category,
+    style: skill.style,
+    requires: skill.requires.map((r) => CAPABILITY_TO_GQL[r] ?? r.toUpperCase()),
     active: skill.active,
     source: skill.source,
     createdBy: skill.createdBy,
