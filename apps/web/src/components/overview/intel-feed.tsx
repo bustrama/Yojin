@@ -278,10 +278,15 @@ function IntelFeedCard({
       >
         <ItemIcon icon={item.icon} type={item.type} expanded={expanded} />
         <div className="min-w-0 flex-1">
-          <span className={cn('text-[9px] font-semibold uppercase tracking-[0.08em]', categoryIconText[item.type])}>
-            {categoryLabel[item.type]}
+          <span
+            className={cn(
+              'inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em]',
+              item.type === 'alert' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success',
+            )}
+          >
+            {item.ticker}
           </span>
-          <p className="truncate text-sm font-medium leading-snug text-text-primary">{item.title}</p>
+          <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
         </div>
         <span className="flex-shrink-0 text-2xs text-text-muted">{item.publishedTime}</span>
       </button>
@@ -298,6 +303,15 @@ function IntelFeedCard({
             {item.description && (
               <p className="line-clamp-5 text-xs leading-relaxed text-text-secondary">{item.description}</p>
             )}
+
+            {/* Meta row */}
+            <div className="mt-2 flex items-center gap-x-2 rounded-lg border border-border-light bg-bg-primary/50 px-2.5 py-1.5 text-2xs text-text-muted">
+              {item.source && <span>{item.source}</span>}
+              {item.source && <span className="text-border">|</span>}
+              <span>{timeAgo(item.ingestedAt)}</span>
+              <span className="text-border">|</span>
+              <span>{item.signalType.replace(/_/g, ' ')}</span>
+            </div>
 
             {/* CTA buttons */}
             <div className="mt-3 flex items-center gap-2">
@@ -464,6 +478,7 @@ function IntelFeedContent({ feedTarget }: { feedTarget?: FeedTarget }) {
       title: item.title,
       source: item.source ?? item.signalType,
       time: item.publishedTime,
+      link: item.link,
       tag: categoryLabel[item.type],
       tagVariant: item.type === 'alert' ? 'warning' : 'success',
       sentiment:
@@ -471,8 +486,8 @@ function IntelFeedContent({ feedTarget }: { feedTarget?: FeedTarget }) {
           ? item.sentiment
           : undefined,
       confidence: (() => {
-        const conf = item.data?.find((r) => r.label === 'Confidence');
-        return conf ? Math.round(parseFloat(conf.value)) : undefined;
+        const row = item.data?.find((r) => r.label === 'Confidence');
+        return row ? Math.round(parseFloat(row.value)) : undefined;
       })(),
       keyPoints: item.description ? [item.description] : [],
       analysis: item.description || item.title,
@@ -621,8 +636,8 @@ function IntelFeedContent({ feedTarget }: { feedTarget?: FeedTarget }) {
 /* ── Mock Intel Feed (blur gate preview) ────────────────────────────── */
 
 const MOCK_ALERTS = [
-  { icon: 'trending' as IconName, title: 'NVDA beats Q4 earnings estimates by 12%', time: '2h ago' },
-  { icon: 'dollar' as IconName, title: 'Supply chain delays in China operations', time: '3h ago' },
+  { icon: 'trending' as IconName, ticker: 'NVDA', title: 'NVDA beats Q4 earnings estimates by 12%', time: '2h ago' },
+  { icon: 'dollar' as IconName, ticker: 'AAPL', title: 'Supply chain delays in China operations', time: '3h ago' },
 ];
 
 function MockIntelFeed() {
@@ -668,8 +683,10 @@ function MockIntelFeed() {
                   <div className="h-3 w-3 rounded-sm bg-warning/30" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <span className="text-2xs font-semibold uppercase tracking-[0.1em] text-warning">ALERT</span>
-                  <p className="truncate text-sm font-medium leading-snug text-text-primary">{item.title}</p>
+                  <span className="inline-block rounded bg-warning/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em] text-warning">
+                    {item.ticker}
+                  </span>
+                  <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
                 </div>
                 <span className="flex-shrink-0 text-2xs text-text-muted">{item.time}</span>
               </div>
