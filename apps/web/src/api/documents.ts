@@ -782,7 +782,7 @@ export const SIGNALS_QUERY = gql`
     $outputType: SignalOutputType
     $limit: Int
   ) {
-    signals(
+    curatedSignals(
       type: $type
       ticker: $ticker
       sourceId: $sourceId
@@ -793,29 +793,38 @@ export const SIGNALS_QUERY = gql`
       outputType: $outputType
       limit: $limit
     ) {
-      id
-      type
-      title
-      content
-      publishedAt
-      ingestedAt
-      confidence
-      contentHash
-      tickers
-      sources {
+      signal {
         id
-        name
         type
-        reliability
+        title
+        content
+        publishedAt
+        ingestedAt
+        confidence
+        contentHash
+        tickers
+        sources {
+          id
+          name
+          type
+          reliability
+        }
+        sourceCount
+        link
+        tier1
+        tier2
+        sentiment
+        outputType
+        groupId
+        version
       }
-      sourceCount
-      link
-      tier1
-      tier2
-      sentiment
-      outputType
-      groupId
-      version
+      severity
+      feedTarget
+      assessment {
+        verdict
+        thesisAlignment
+        actionability
+      }
     }
   }
 `;
