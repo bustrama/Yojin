@@ -18,8 +18,7 @@
       "yojin/plugin-sdk": ["./src/plugin-sdk/index.ts"],
       "yojin/plugin-sdk/*": ["./src/plugin-sdk/*.ts"]
     },
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0"
+    "baseUrl": "."
   },
   "include": ["src/**/*.ts", "providers/**/*.ts", "channels/**/*.ts"],
   "exclude": ["node_modules", "dist", "test"]
