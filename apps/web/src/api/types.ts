@@ -663,7 +663,7 @@ export interface Signal {
 }
 
 export interface SignalsQueryResult {
-  signals: Signal[];
+  curatedSignals: CuratedSignal[];
 }
 
 export interface SignalsByIdsQueryResult {
@@ -1053,7 +1053,14 @@ export interface CuratedSignalsQueryResult {
 export interface CuratedSignalsVariables {
   ticker?: string;
   since?: string;
+  until?: string;
+  type?: SignalType;
+  search?: string;
+  minConfidence?: number;
+  outputType?: string;
+  sourceId?: string;
   limit?: number;
+  offset?: number;
   feedTarget?: FeedTarget;
 }
 

@@ -258,7 +258,10 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
     query: SIGNALS_QUERY,
     variables: signalsVars,
   });
-  const allSignals = useMemo(() => signalsResult.data?.signals ?? [], [signalsResult.data?.signals]);
+  const allSignals = useMemo(
+    () => (signalsResult.data?.curatedSignals ?? []).map((c) => c.signal),
+    [signalsResult.data?.curatedSignals],
+  );
   const signals = useMemo(() => allSignals.filter((s) => s.type !== 'NEWS').slice(0, 10), [allSignals]);
   const newsSignals = useMemo(() => allSignals.filter((s) => s.type === 'NEWS').slice(0, 10), [allSignals]);
 
