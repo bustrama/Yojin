@@ -18,9 +18,10 @@ import { formatNumber, riskSignalsToRaw } from './tools.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
 import { JUNK_DOMAIN_RE, JUNK_TITLE_RE } from '../signals/quality-patterns.js';
-import { SignalTypeSchema } from '../signals/types.js';
+import { SignalTypeSchema, SourceTypeSchema } from '../signals/types.js';
 
 const SignalType = SignalTypeSchema.enum;
+const SourceType = SourceTypeSchema.enum;
 
 const logger = createSubsystemLogger('jintel-signal-fetcher');
 
@@ -225,7 +226,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: 'jintel-snapshot',
       sourceName: 'Jintel',
-      sourceType: 'ENRICHMENT',
+      sourceType: SourceType.ENRICHMENT,
       reliability: 0.95,
       // Stable title for content-hash dedup — live values go in content only
       title: `${name} Market Snapshot`,
@@ -246,7 +247,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: 'jintel-key-event',
       sourceName: 'Jintel Market Events',
-      sourceType: 'ENRICHMENT',
+      sourceType: SourceType.ENRICHMENT,
       reliability: 0.95,
       title: `${entity.name ?? tickers[0]}: ${event.type.replace(/_/g, ' ')} on ${event.date}`,
       content: `${event.description} | Close: $${event.close.toFixed(2)} (${event.changePercent >= 0 ? '+' : ''}${event.changePercent.toFixed(1)}%)${event.volume != null ? ` | Volume: ${event.volume.toLocaleString()}` : ''}`,
@@ -278,7 +279,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       signals.push({
         sourceId: 'jintel-short-interest',
         sourceName: 'Jintel Short Interest',
-        sourceType: 'ENRICHMENT',
+        sourceType: SourceType.ENRICHMENT,
         reliability: 0.9,
         title: `${entity.name ?? tickers[0]} Short Interest`,
         content: parts.join(' | '),
@@ -296,7 +297,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: 'jintel-sec',
       sourceName: 'Jintel SEC',
-      sourceType: 'ENRICHMENT',
+      sourceType: SourceType.ENRICHMENT,
       reliability: 0.95,
       title: `${entity.name ?? tickers[0]}: ${filing.type} filed ${filing.date}`,
       content: filing.description ?? undefined,
@@ -314,7 +315,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: 'jintel-market',
       sourceName: 'Jintel Market',
-      sourceType: 'ENRICHMENT',
+      sourceType: SourceType.ENRICHMENT,
       reliability: 0.95,
       title: `${entity.name ?? tickers[0]} Significant Price Move`,
       content: `${quote.ticker} ${direction} ${Math.abs(quote.changePercent).toFixed(1)}% to $${quote.price.toFixed(2)}`,
@@ -337,7 +338,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: `jintel-news-${article.source.toLowerCase().replace(/\s+/g, '-')}`,
       sourceName: `Jintel News (${article.source})`,
-      sourceType: 'API',
+      sourceType: SourceType.API,
       reliability: 0.8,
       title: article.title,
       content: article.snippet ?? undefined,
@@ -361,7 +362,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: 'jintel-research',
       sourceName: 'Jintel Research',
-      sourceType: 'API',
+      sourceType: SourceType.API,
       reliability: 0.85,
       title: article.title,
       content: article.text ?? undefined,
@@ -391,7 +392,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       signals.push({
         sourceId: 'jintel-technicals',
         sourceName: 'Jintel Technicals',
-        sourceType: 'ENRICHMENT',
+        sourceType: SourceType.ENRICHMENT,
         reliability: 0.9,
         // Stable title for content-hash dedup — live indicator values go in content only
         title: `${entity.name ?? tickers[0]} Technical Indicators`,
@@ -415,7 +416,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: 'jintel-sentiment',
       sourceName: 'Jintel Social Sentiment',
-      sourceType: 'ENRICHMENT',
+      sourceType: SourceType.ENRICHMENT,
       reliability: 0.7,
       title: `${entity.name ?? tickers[0]} Social Sentiment`,
       content: `Rank #${s.rank} (${rankDir}) | ${s.mentions} mentions (${mentionDir}), ${s.upvotes} upvotes (24h ago: rank #${s.rank24hAgo}, ${s.mentions24hAgo} mentions)`,
@@ -438,7 +439,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       signals.push({
         sourceId: `jintel-social-reddit-${post.id}`,
         sourceName: `Jintel Social (r/${post.subreddit})`,
-        sourceType: 'API',
+        sourceType: SourceType.API,
         reliability: 0.6,
         title: `${entity.name ?? tickers[0]}: r/${post.subreddit} — ${post.title}`,
         content: post.text.length > 500 ? post.text.slice(0, 497) + '…' : post.text,
@@ -457,7 +458,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       signals.push({
         sourceId: `jintel-social-reddit-comment-${comment.id}`,
         sourceName: `Jintel Social (r/${comment.subreddit} comment)`,
-        sourceType: 'API',
+        sourceType: SourceType.API,
         reliability: 0.55,
         title: `${entity.name ?? tickers[0]}: r/${comment.subreddit} — ${comment.body.slice(0, 60).trim()}`,
         content: comment.body.length > 500 ? comment.body.slice(0, 497) + '…' : comment.body,
@@ -480,7 +481,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: `jintel-discussions-hn-${story.objectId}`,
       sourceName: 'Jintel Discussions (HN)',
-      sourceType: 'API',
+      sourceType: SourceType.API,
       reliability: 0.7,
       title: story.title,
       content: story.topComments?.length
@@ -525,7 +526,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       signals.push({
         sourceId: 'jintel-financials',
         sourceName: 'Jintel Financial Statements',
-        sourceType: 'ENRICHMENT',
+        sourceType: SourceType.ENRICHMENT,
         reliability: 0.95,
         title: `${entity.name ?? tickers[0]} Financial Statements`,
         content: parts.join('\n'),
@@ -550,7 +551,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     signals.push({
       sourceId: 'jintel-executives',
       sourceName: 'Jintel Key Executives',
-      sourceType: 'ENRICHMENT',
+      sourceType: SourceType.ENRICHMENT,
       reliability: 0.85,
       title: `${entity.name ?? tickers[0]} Key Executives`,
       content: lines.join('\n'),
@@ -597,7 +598,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
       signals.push({
         sourceId: 'jintel-macro-gdp',
         sourceName: 'Jintel Macro',
-        sourceType: 'API',
+        sourceType: SourceType.API,
         reliability: 0.95,
         title: `US Real GDP: ${latest.value.toFixed(1)}% (${latest.date})`,
         content: `US Real GDP growth rate: ${latest.value.toFixed(2)}% as of ${latest.date}`,
@@ -617,7 +618,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
       signals.push({
         sourceId: 'jintel-macro-inflation',
         sourceName: 'Jintel Macro',
-        sourceType: 'API',
+        sourceType: SourceType.API,
         reliability: 0.95,
         title: `US Inflation (CPI): ${latest.value.toFixed(1)}% (${latest.date})`,
         content: `US Consumer Price Index: ${latest.value.toFixed(2)}% year-over-year as of ${latest.date}`,
@@ -637,7 +638,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
       signals.push({
         sourceId: 'jintel-macro-rates',
         sourceName: 'Jintel Macro',
-        sourceType: 'API',
+        sourceType: SourceType.API,
         reliability: 0.95,
         title: `US Interest Rate: ${latest.value.toFixed(2)}% (${latest.date})`,
         content: `US Federal Funds Rate: ${latest.value.toFixed(2)}% as of ${latest.date}`,
@@ -657,7 +658,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
       signals.push({
         sourceId: 'jintel-macro-sp500-pe',
         sourceName: 'Jintel Macro',
-        sourceType: 'API',
+        sourceType: SourceType.API,
         reliability: 0.95,
         title: `S&P 500 P/E Ratio: ${latest.value.toFixed(1)} (${latest.date})`,
         content: `S&P 500 trailing P/E ratio: ${latest.value.toFixed(2)} as of ${latest.date}`,
@@ -677,7 +678,7 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
       signals.push({
         sourceId: 'jintel-macro-sp500-cape',
         sourceName: 'Jintel Macro',
-        sourceType: 'API',
+        sourceType: SourceType.API,
         reliability: 0.95,
         title: `S&P 500 Shiller P/E (CAPE): ${latest.value.toFixed(1)} (${latest.date})`,
         content: `S&P 500 cyclically-adjusted P/E ratio (Shiller CAPE): ${latest.value.toFixed(2)} as of ${latest.date}`,

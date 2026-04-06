@@ -50,6 +50,7 @@ import type { Position } from '../api/graphql/types.js';
 import type { ToolDefinition, ToolResult } from '../core/types.js';
 import type { PortfolioSnapshotStore } from '../portfolio/snapshot-store.js';
 import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
+import { SignalTypeSchema, SourceTypeSchema } from '../signals/types.js';
 import { balanceToRange, quantityToRange } from '../trust/pii/patterns.js';
 
 // ── Options ──────────────────────────────────────────────────────────────
@@ -59,6 +60,11 @@ export interface JintelToolOptions {
   ingestor?: SignalIngestor;
   snapshotStore?: PortfolioSnapshotStore;
 }
+
+// ── Enum aliases ─────────────────────────────────────────────────────────
+
+const SignalType = SignalTypeSchema.enum;
+const SourceType = SourceTypeSchema.enum;
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -159,12 +165,12 @@ export function riskSignalsToRaw(signals: RiskSignal[], tickers: string[]): RawS
   return signals.map((s) => ({
     sourceId: 'jintel',
     sourceName: 'Jintel',
-    sourceType: 'API' as const,
+    sourceType: SourceType.API,
     reliability: 0.8,
     title: `[${s.severity}] ${s.type}: ${s.description}`,
     content: s.description,
     publishedAt: s.date ?? new Date().toISOString(),
-    type: 'SENTIMENT' as const,
+    type: SignalType.SENTIMENT,
     tickers,
     confidence: SEVERITY_CONFIDENCE[s.severity] ?? 0.7,
     metadata: { riskType: s.type, severity: s.severity, source: s.source },
@@ -978,12 +984,12 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
         const rawSignals: RawSignalInput[] = entity.news.map((a) => ({
           sourceId: 'jintel',
           sourceName: a.source || 'Jintel',
-          sourceType: 'API' as const,
+          sourceType: SourceType.API,
           reliability: 0.75,
           title: a.title,
           content: a.snippet || a.title,
           publishedAt: a.date ?? new Date(new Date().toISOString().slice(0, 10)).toISOString(),
-          type: 'NEWS' as const,
+          type: SignalType.NEWS,
           tickers: entity.tickers ?? [params.ticker.toUpperCase()],
           confidence: 0.7,
           metadata: { source: a.source, link: a.link },
