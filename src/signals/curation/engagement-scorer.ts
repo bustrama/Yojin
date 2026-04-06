@@ -2,7 +2,7 @@
  * Engagement scorer — extracts engagement metrics from signal metadata
  * and normalizes them to a 0–1 score per source type.
  *
- * Uses log1p scaling (same approach as last30days composite scoring) so that
+ * Uses log1p scaling so that
  * high-engagement outliers don't dominate — a 10k-like tweet scores ~0.85,
  * not infinitely more than a 1k-like tweet.
  *
