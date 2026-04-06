@@ -45,8 +45,8 @@ importers:
         specifier: 4.12.8
         version: 4.12.8
       rehydra:
-        specifier: 0.6.2
-        version: 0.6.2
+        specifier: 0.10.1
+        version: 0.10.1
       tslog:
         specifier: 4.10.2
         version: 4.10.2
@@ -398,6 +398,9 @@ packages:
 
   '@emnapi/runtime@1.9.0':
     resolution: {integrity: sha512-QN75eB0IH2ywSpRpNddCRfQIhmJYBCJ1x5Lb3IscKAL8bMnVAKnRg8dCoXbHzVLLH7P38N2Z3mtulB7W0J0FKw==}
+
+  '@emnapi/runtime@1.9.2':
+    resolution: {integrity: sha512-3U4+MIWHImeyu1wnmVygh5WlgfYDtyf0k8AbLhMFxOipihf6nrWC4syIm/SwEeec0mNSafiiNnMJwbza/Is6Lw==}
 
   '@emnapi/wasi-threads@1.2.0':
     resolution: {integrity: sha512-N10dEJNSsUx41Z6pZsXU8FjPjpBEplgH24sfkmITrBED1/U2Esum9F3lfLrMjKHHjmi557zQn7kR9R+XWXu5Rg==}
@@ -1871,8 +1874,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  adm-zip@0.5.16:
-    resolution: {integrity: sha512-TGw5yVi4saajsSEgz25grObGHEUaDrniwvA2qwSC060KfqGPdglhvPMA2lPIoxs3PQIItj2iag35fONcQqgUaQ==}
+  adm-zip@0.5.17:
+    resolution: {integrity: sha512-+Ut8d9LLqwEvHHJl1+PIHqoyDxFgVN847JTVM3Izi3xHDWPE4UtzzXysMZQs64DMcrJfBeS/uoEP4AD3HQHnQQ==}
     engines: {node: '>=12.0'}
 
   agentation@2.3.3:
@@ -3451,8 +3454,8 @@ packages:
   redux@5.0.1:
     resolution: {integrity: sha512-M9/ELqF6fy8FwmkpnF0S3YKOqMyoWJ4+CS5Efg2ct3oY9daQvd/Pc71FpGZsVsbl3Cpb+IIcjBDUnnyBdQbq4w==}
 
-  rehydra@0.6.2:
-    resolution: {integrity: sha512-hUiUhcK4yuZPtR4ebucPWnwIYNpjZgYWZunE/toZO3f4CBm8v7MS7yIuGet8eNcD2mZr/zynZ1NJsoNA0juAyA==}
+  rehydra@0.10.1:
+    resolution: {integrity: sha512-qS8dPbFev7f3b9HIHgKHPvkra2anT3XS4d7AsDCMs8HKnG6pZZlSdN8iQm9DSrx+wzaOAyI0MqQX39RIOqVGRg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       better-sqlite3: ^11.0.0
@@ -4349,6 +4352,11 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@emnapi/runtime@1.9.2':
+    dependencies:
+      tslib: 2.8.1
+    optional: true
+
   '@emnapi/wasi-threads@1.2.0':
     dependencies:
       tslib: 2.8.1
@@ -4658,7 +4666,7 @@ snapshots:
 
   '@img/sharp-wasm32@0.34.5':
     dependencies:
-      '@emnapi/runtime': 1.9.0
+      '@emnapi/runtime': 1.9.2
     optional: true
 
   '@img/sharp-win32-arm64@0.34.5':
@@ -5712,7 +5720,7 @@ snapshots:
 
   acorn@8.16.0: {}
 
-  adm-zip@0.5.16:
+  adm-zip@0.5.17:
     optional: true
 
   agentation@2.3.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
@@ -7156,7 +7164,7 @@ snapshots:
 
   onnxruntime-node@1.24.3:
     dependencies:
-      adm-zip: 0.5.16
+      adm-zip: 0.5.17
       global-agent: 3.0.0
       onnxruntime-common: 1.24.3
     optional: true
@@ -7466,7 +7474,7 @@ snapshots:
 
   redux@5.0.1: {}
 
-  rehydra@0.6.2:
+  rehydra@0.10.1:
     optionalDependencies:
       onnxruntime-node: 1.24.3
 
