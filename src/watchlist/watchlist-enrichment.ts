@@ -70,7 +70,7 @@ export class WatchlistEnrichment {
       if (elapsed < retryWindow) return undefined;
     }
 
-    // Search by symbol (or fall back to name if symbol returns nothing)
+    // Search by symbol only
     const query = key;
     const result = await this.jintelClient.searchEntities(query, { limit: 1 });
     if (result.success && result.data.length > 0) {

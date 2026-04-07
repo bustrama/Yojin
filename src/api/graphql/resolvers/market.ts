@@ -134,7 +134,7 @@ export async function quoteQuery(_parent: unknown, args: { symbol: string }): Pr
       const q = quotesResult.data[0];
       return {
         symbol: q.ticker,
-        name: result.success ? result.data?.name : undefined,
+        name: (result.success ? result.data?.name : undefined) ?? q.ticker,
         price: q.price,
         change: q.change,
         changePercent: q.changePercent,

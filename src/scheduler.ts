@@ -508,10 +508,10 @@ export class Scheduler {
       if (!this.checkDailyBudget(assets.length)) return;
 
       // Run micro research in parallel (up to MAX_MICRO_CONCURRENCY)
-      // Note: getJintelClient/signalIngestor are omitted from both the top-level deps
-      // AND briefOptions because the batch already fetched + enriched via fetchJintelSignals
-      // above — passing getJintelClient in briefOptions would cause buildSingleBrief to
-      // re-enrich each ticker individually (N+1).
+      // Note: getJintelClient/signalIngestor are omitted from the top-level deps
+      // (so runMicroResearch won't re-fetch signals per ticker — already batch-fetched above).
+      // getJintelClient IS passed in briefOptions so buildSingleBrief can enrich entities
+      // for fundamentals, risk, technicals etc. that signals alone don't provide.
       const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const results = await Promise.allSettled(
@@ -523,6 +523,7 @@ export class Scheduler {
             briefOptions: {
               snapshotStore,
               signalArchive: archive,
+              getJintelClient: this.getJintelClient,
               memoryStores: this.memoryStores ?? new Map(),
               profileStore: this.profileStore,
               signalsSince: isFirstRun ? fourDaysAgo : oneDayAgo,

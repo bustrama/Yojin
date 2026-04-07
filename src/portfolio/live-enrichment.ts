@@ -44,8 +44,12 @@ interface CachedHistory {
 
 const historyCache = new Map<string, CachedHistory>();
 
-function getCachedHistory(tickers: string[], range: string): Map<string, TickerPriceHistory> | undefined {
-  const key = `${tickers.slice().sort().join(',')}_${range}`;
+function getCachedHistory(
+  tickers: string[],
+  range: string,
+  interval?: string,
+): Map<string, TickerPriceHistory> | undefined {
+  const key = `${tickers.slice().sort().join(',')}_${range}_${interval ?? ''}`;
   const cached = historyCache.get(key);
   if (!cached) return undefined;
   if (Date.now() - cached.fetchedAt > HISTORY_CACHE_TTL_MS) {
@@ -55,8 +59,13 @@ function getCachedHistory(tickers: string[], range: string): Map<string, TickerP
   return cached.data;
 }
 
-function setCachedHistory(tickers: string[], range: string, data: Map<string, TickerPriceHistory>): void {
-  const key = `${tickers.slice().sort().join(',')}_${range}`;
+function setCachedHistory(
+  tickers: string[],
+  range: string,
+  interval: string | undefined,
+  data: Map<string, TickerPriceHistory>,
+): void {
+  const key = `${tickers.slice().sort().join(',')}_${range}_${interval ?? ''}`;
   historyCache.set(key, { data, fetchedAt: Date.now() });
 }
 
@@ -167,7 +176,7 @@ export async function enrichPortfolioSnapshotWithLiveQuotes(
   const cachedQuotes = getCachedQuotes(symbols);
 
   const fetchHistory = (tickers: string[], range: string, interval?: string) => {
-    const cached = getCachedHistory(tickers, range);
+    const cached = getCachedHistory(tickers, range, interval);
     if (cached) {
       log.debug('Using cached priceHistory', { tickers });
       return Promise.resolve(cached);
@@ -178,7 +187,7 @@ export async function enrichPortfolioSnapshotWithLiveQuotes(
         if (res?.success) {
           const map = new Map<string, TickerPriceHistory>();
           for (const h of res.data) map.set(h.ticker, h);
-          setCachedHistory(tickers, range, map);
+          setCachedHistory(tickers, range, interval, map);
           return map;
         }
         return undefined;
