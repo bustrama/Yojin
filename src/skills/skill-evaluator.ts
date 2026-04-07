@@ -113,8 +113,16 @@ ${sections.join('\n\n---\n\n')}`;
         const lookbackMonths = params['lookback_months'] != null ? Number(params['lookback_months']) : undefined;
 
         let change: number | undefined;
-        if (lookbackMonths != null && ctx.periodReturns) {
-          change = ctx.periodReturns[`${ticker}:${lookbackMonths}`];
+        if (lookbackMonths != null) {
+          // Prefetched periods are 3, 6, 12 (see buildPortfolioContext). Any other
+          // value silently misses — warn loudly so strategy authors see it.
+          change = ctx.periodReturns?.[`${ticker}:${lookbackMonths}`];
+          if (change === undefined) {
+            logger.warn(
+              `PRICE_MOVE: unsupported lookback_months=${lookbackMonths} (supported: 3, 6, 12). ` +
+                `Trigger will not fire for ${ticker}.`,
+            );
+          }
         } else {
           change = ctx.priceChanges[ticker];
         }
@@ -169,7 +177,9 @@ ${sections.join('\n\n---\n\n')}`;
       }
 
       case 'SIGNAL_PRESENT': {
-        const signalTypes = (params['signal_types'] as SignalType[] | undefined) ?? [];
+        const rawTypes = params['signal_types'];
+        const signalTypes: SignalType[] = Array.isArray(rawTypes) ? (rawTypes as SignalType[]) : [];
+        if (signalTypes.length === 0) return null;
         const minSentiment = params['min_sentiment'] != null ? Number(params['min_sentiment']) : undefined;
         const requestedLookback = params['lookback_hours'] != null ? Number(params['lookback_hours']) : 24;
         // Hard-cap at 24h — the prefetch only covers 24h, honoring more would

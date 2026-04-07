@@ -12,7 +12,7 @@ triggers:
     params:
       days: 3
   - type: METRIC_THRESHOLD
-    description: Standardized unexpected earnings (SUE) above 2.0 — last quarter's surprise normalized by 4-quarter stddev
+    description: Standardized unexpected earnings (SUE) above 2.0 — last quarter's surprise normalized by the sample stddev of available quarterly surprises (minimum 2)
     params:
       metric: SUE
       threshold: 2.0

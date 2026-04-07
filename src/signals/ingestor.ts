@@ -340,7 +340,7 @@ export class SignalIngestor {
       ingestedAt: new Date().toISOString(),
       confidence,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-      ...(input.sentimentScore != null ? { sentimentScore: input.sentimentScore } : {}),
+      ...(input.sentimentScore != null ? { sentimentScore: Math.max(-1, Math.min(1, input.sentimentScore)) } : {}),
       ...(input.sentiment ? { sentiment: input.sentiment } : {}),
     };
 
