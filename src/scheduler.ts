@@ -831,18 +831,13 @@ export class Scheduler {
   /**
    * Regenerate snap from micro insights — provides immediate feedback
    * after each micro batch without waiting for the full macro flow.
-   * Once a macro InsightReport exists, `regenerateSnap` takes over.
+   * If a macro InsightReport exists but micro insights are newer,
+   * the snap is still regenerated from micro data so fresh observations surface.
    */
   private async regenerateSnapFromMicro(): Promise<void> {
     if (!this.snapStore || !this.microInsightStore || !this.providerRouter) return;
 
     try {
-      // If a macro insight report already exists, skip — regenerateSnap handles it
-      if (this.insightStore) {
-        const report = await this.insightStore.getLatest();
-        if (report) return;
-      }
-
       const microInsights = await this.microInsightStore.getAllLatest();
       if (microInsights.size === 0) return;
 
