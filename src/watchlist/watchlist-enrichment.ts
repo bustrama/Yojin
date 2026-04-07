@@ -244,7 +244,8 @@ export class WatchlistEnrichment {
     if (changed) await this.flush();
     // Also clear the JintelClient response cache so the next batchEnrich
     // call fetches live data rather than serving the in-memory cached result.
-    this.jintelClient?.invalidateCache(symbols);
+    // Double-optional for runtime safety against pre-0.12.0 installs.
+    this.jintelClient?.invalidateCache?.(symbols);
   }
 
   private isStale(entry: EnrichmentCacheEntry): boolean {
