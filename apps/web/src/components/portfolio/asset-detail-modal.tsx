@@ -36,6 +36,8 @@ const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOStrin
 
 type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y';
 
+type CandleInterval = '15m' | '30m' | '1h' | '1d' | '1wk' | '1mo';
+
 const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: '1W', label: '1W' },
   { value: '1M', label: '1M' },
@@ -45,13 +47,25 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: '5Y', label: '5Y' },
 ];
 
-const RANGE_CONFIG: Record<TimeRange, { range: string; interval: string; intraday: boolean }> = {
-  '1W': { range: '5d', interval: '15m', intraday: true },
-  '1M': { range: '1m', interval: '1h', intraday: true },
-  '3M': { range: '3m', interval: '1d', intraday: false },
-  '6M': { range: '6m', interval: '1d', intraday: false },
-  '1Y': { range: '1y', interval: '1d', intraday: false },
-  '5Y': { range: '5y', interval: '1wk', intraday: false },
+const INTERVAL_LABELS: Record<CandleInterval, string> = {
+  '15m': '15min',
+  '30m': '30min',
+  '1h': '1hr',
+  '1d': 'Daily',
+  '1wk': 'Weekly',
+  '1mo': 'Monthly',
+};
+
+const RANGE_CONFIG: Record<
+  TimeRange,
+  { range: string; defaultInterval: CandleInterval; intervals: CandleInterval[]; intraday: boolean }
+> = {
+  '1W': { range: '5d', defaultInterval: '15m', intervals: ['15m', '30m', '1h'], intraday: true },
+  '1M': { range: '1m', defaultInterval: '1h', intervals: ['30m', '1h', '1d'], intraday: true },
+  '3M': { range: '3m', defaultInterval: '1d', intervals: ['1d', '1wk'], intraday: false },
+  '6M': { range: '6m', defaultInterval: '1d', intervals: ['1d', '1wk'], intraday: false },
+  '1Y': { range: '1y', defaultInterval: '1d', intervals: ['1d', '1wk', '1mo'], intraday: false },
+  '5Y': { range: '5y', defaultInterval: '1wk', intervals: ['1wk', '1mo'], intraday: false },
 };
 
 // ---------------------------------------------------------------------------
@@ -206,8 +220,18 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
   const quote = quoteResult.data?.quote ?? undefined;
 
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
+  const [intervalOverride, setIntervalOverride] = useState<CandleInterval | null>(null);
 
-  const { interval, range, intraday: isIntradayRange } = RANGE_CONFIG[timeRange];
+  const config = RANGE_CONFIG[timeRange];
+  const interval =
+    intervalOverride && config.intervals.includes(intervalOverride) ? intervalOverride : config.defaultInterval;
+  const range = config.range;
+  const isIntradayRange = interval === '15m' || interval === '30m' || interval === '1h';
+
+  const handleRangeChange = (r: TimeRange) => {
+    setTimeRange(r);
+    setIntervalOverride(null);
+  };
   const historyVars = useMemo<PriceHistoryQueryVariables>(
     () => ({ tickers: [symbol], range, interval }),
     [symbol, range, interval],
@@ -371,11 +395,36 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
       <Card
         title="Price"
         headerAction={
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            {/* Candle interval selector */}
+            <div className="relative">
+              <select
+                value={interval}
+                onChange={(e) => setIntervalOverride(e.target.value as CandleInterval)}
+                className="cursor-pointer appearance-none rounded pl-2 pr-5 py-0.5 text-2xs font-medium transition-colors bg-transparent border border-border-light text-text-muted hover:text-text-secondary"
+              >
+                {config.intervals.map((iv) => (
+                  <option key={iv} value={iv}>
+                    {INTERVAL_LABELS[iv]}
+                  </option>
+                ))}
+              </select>
+              <svg
+                className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3 text-text-muted"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+              </svg>
+            </div>
+
+            {/* Range buttons */}
             {TIME_RANGES.map((r) => (
               <button
                 key={r.value}
-                onClick={() => setTimeRange(r.value)}
+                onClick={() => handleRangeChange(r.value)}
                 className={cn(
                   'cursor-pointer rounded px-1.5 py-0.5 text-2xs font-medium transition-colors',
                   timeRange === r.value ? 'bg-accent-primary text-white' : 'text-text-muted hover:text-text-secondary',
