@@ -55,6 +55,11 @@ Extend via interfaces, not modification:
 - **Don't default missing data to values that satisfy conditions.** Using `?? 0` for a numeric lookup that feeds a threshold comparison (e.g. `value ?? 0` into `value <= threshold`) will fire the condition when data is absent. Skip the check (`return null`) when the input is `undefined` — absent data means "can't evaluate", not "value is zero".
 - **Don't ship mock data as production fallback.** When a resolver or hook depends on an optional backing store (e.g. `EventLog`), return an empty result when the store isn't wired — not fabricated events. Mock data belongs in tests and Storybook, not in runtime code paths.
 
+## Signal Routing & Classification
+
+- **Classify by checking all entries, not just the first.** When routing items based on an array field (e.g. `signal.sources[]`), check the full array — not just `[0]`. After merge operations, later sources may change the semantics. Example: `signal.sources.every(s => s.type === 'ENRICHMENT')` is stable; `signal.sources[0]?.type === 'ENRICHMENT'` breaks if an API source is later prepended or merged in.
+- **Write derived/synthetic records after, not before, the lookup that depends on prior history.** If step A writes records to a store and step B reads from that store to derive context (e.g. recent-signals for duplicate detection), step A must happen after step B completes. Writing first contaminates step B's context with the current batch's own output. Apply this ordering discipline whenever a write and a history-read target the same backing store in the same pipeline run.
+
 ## Signal & Data Dedup
 
 - **Content hashes must be stable across re-runs.** The ingestor hashes `title | YYYY-MM-DD` (day-precision). When creating `RawSignalInput` for enrichment data (fundamentals, technicals), set `publishedAt` to a stable value (start-of-day), not `new Date().toISOString()`. A ms-precision timestamp produces a new hash on every run, defeating dedup.
