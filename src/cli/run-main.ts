@@ -326,6 +326,7 @@ async function startGateway(): Promise<void> {
     });
     if (tickers.length > 0) {
       scheduler.triggerMicroFlow(tickers);
+      await services.watchlistEnrichment.invalidateTickers(tickers);
     }
   });
   // Apply micro LLM interval changes from UI settings immediately (no restart needed)

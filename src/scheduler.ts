@@ -482,10 +482,20 @@ export class Scheduler {
     logger.info('Micro research batch started', { symbols });
 
     try {
-      // First, fetch Jintel signals for these tickers
+      // Fetch Jintel signals for these tickers. Use each asset's lastMicroAt as the `since`
+      // parameter so restarts only re-fetch since the last known fetch, not the full 7-day window.
+      // First-run assets (lastMicroAt === null) fall back to 7 days.
       const jintelClient = this.getJintelClient?.();
       if (jintelClient && this.signalIngestor) {
-        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        // Oldest lastMicroAt across the batch — fetch covers all assets in one call.
+        const earliestLastFetch = assets.reduce<string | null>((min, asset) => {
+          const state = this.microRegistry.get(asset.symbol);
+          const t = state?.lastMicroAt ?? null;
+          if (!t) return null; // first-run asset → need full 7d window
+          return min === null ? t : t < min ? t : min;
+        }, sevenDaysAgo);
+        const since = earliestLastFetch ?? sevenDaysAgo;
         const result = await fetchJintelSignals(jintelClient, this.signalIngestor, symbols, { since });
         if (result.ingested > 0) {
           logger.info('Micro research Jintel fetch', { ingested: result.ingested, duplicates: result.duplicates });
@@ -725,6 +735,17 @@ export class Scheduler {
     if (this.running) {
       logger.info('Skipping macro flow — already running');
       return;
+    }
+
+    // Signal-gate: skip the full Opus pipeline if no signals have arrived since the last macro run.
+    // Saves the most expensive part of the pipeline on quiet market days.
+    if (this.signalArchive && this.lastMacroCompletedAt > 0) {
+      const baseline = new Date(this.lastMacroCompletedAt).toISOString();
+      const fresh = await this.signalArchive.query({ sinceIngested: baseline, limit: 1 });
+      if (fresh.length === 0) {
+        logger.info('Skipping macro flow — no new signals since last run', { lastMacroCompletedAt: baseline });
+        return;
+      }
     }
 
     logger.info('Macro flow started — portfolio-wide analysis');
