@@ -32,6 +32,7 @@ import {
 } from '../api/graphql/resolvers/onboarding.js';
 import { setPortfolioChangedCallback } from '../api/graphql/resolvers/portfolio.js';
 import { onAppDataCleared } from '../api/graphql/resolvers/profile.js';
+import { setSchedulerStatusProvider } from '../api/graphql/resolvers/scheduler.js';
 import { setWatchlistChangedCallback } from '../api/graphql/resolvers/watchlist.js';
 import { buildContext } from '../composition.js';
 import { AgentRuntime } from '../core/agent-runtime.js';
@@ -317,6 +318,8 @@ async function startGateway(): Promise<void> {
   setWatchlistChangedCallback((tickers) => scheduler.triggerMicroFlow(tickers, 'watchlist'));
   // Apply micro LLM interval changes from UI settings immediately (no restart needed)
   setMicroLlmIntervalCallback((hours) => scheduler.setMicroLlmIntervalMs(hours * 60 * 60 * 1000));
+  // Expose scheduler status to the schedulerStatus GraphQL query
+  setSchedulerStatusProvider(() => scheduler.getStatus());
 
   const gateway = new Gateway(services.config, agentRuntime, {
     snapshotStore: services.snapshotStore,

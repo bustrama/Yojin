@@ -391,6 +391,28 @@ export const SAVE_BRIEFING_CONFIG_MUTATION = gql`
 `;
 
 // ---------------------------------------------------------------------------
+// Scheduler status
+// ---------------------------------------------------------------------------
+
+export const SCHEDULER_STATUS_QUERY = gql`
+  query SchedulerStatus {
+    schedulerStatus {
+      microLlmIntervalHours
+      pendingCount
+      throttledCount
+      assets {
+        symbol
+        source
+        lastSignalFetchAt
+        lastLlmAt
+        nextLlmEligibleAt
+        pendingAnalysis
+      }
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
 // Channels
 // ---------------------------------------------------------------------------
 

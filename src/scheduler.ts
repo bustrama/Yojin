@@ -187,6 +187,22 @@ interface MicroAssetState {
   completedToday: boolean;
 }
 
+export interface SchedulerAssetStatus {
+  symbol: string;
+  source: string;
+  lastSignalFetchAt: string | null;
+  lastLlmAt: string | null;
+  nextLlmEligibleAt: string;
+  pendingAnalysis: boolean;
+}
+
+export interface SchedulerStatus {
+  microLlmIntervalHours: number;
+  pendingCount: number;
+  throttledCount: number;
+  assets: SchedulerAssetStatus[];
+}
+
 export class Scheduler {
   private readonly orchestrator: Orchestrator;
   private readonly dataRoot: string;
@@ -649,6 +665,41 @@ export class Scheduler {
     for (const state of this.microRegistry.values()) {
       state.completedToday = false;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Status API — exposes per-asset scheduler state for UI visibility
+  // ---------------------------------------------------------------------------
+
+  /** Per-asset status returned by getStatus(). */
+  getStatus(): SchedulerStatus {
+    const now = Date.now();
+    const assets: SchedulerAssetStatus[] = [...this.microRegistry.values()].map((state) => {
+      const nextLlmEligibleAt = state.lastLlmAt
+        ? new Date(new Date(state.lastLlmAt).getTime() + this.microLlmIntervalMs).toISOString()
+        : new Date().toISOString();
+      // Pending = has new signals fetched (lastMicroAt updated) but LLM hasn't run since
+      const pendingAnalysis =
+        state.lastMicroAt !== null && (state.lastLlmAt === null || state.lastMicroAt > state.lastLlmAt);
+      return {
+        symbol: state.symbol,
+        source: state.source,
+        lastSignalFetchAt: state.lastMicroAt,
+        lastLlmAt: state.lastLlmAt,
+        nextLlmEligibleAt,
+        pendingAnalysis,
+      };
+    });
+
+    return {
+      microLlmIntervalHours: this.microLlmIntervalMs / (60 * 60 * 1000),
+      pendingCount: assets.filter((a) => a.pendingAnalysis).length,
+      throttledCount: assets.filter((a) => {
+        if (!a.lastLlmAt) return false;
+        return now - new Date(a.lastLlmAt).getTime() < this.microLlmIntervalMs;
+      }).length,
+      assets,
+    };
   }
 
   /**
