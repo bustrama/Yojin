@@ -251,13 +251,13 @@ export class SignalIngestor {
     if (signals.length > 0) {
       // ENRICHMENT-sourced signals bypass clustering + quality agent — write directly.
       // Editorial signals (API/RSS/SCRAPER) go through the full pipeline.
-      const enrichmentSignals = signals.filter((s) => s.sources[0]?.type === 'ENRICHMENT');
-      const editorialSignals = signals.filter((s) => s.sources[0]?.type !== 'ENRICHMENT');
+      // Use isEnrichmentOnlySignal so routing is stable regardless of source merge order.
+      const enrichmentSignals = signals.filter((s) => this.isEnrichmentOnlySignal(s));
+      const editorialSignals = signals.filter((s) => !this.isEnrichmentOnlySignal(s));
 
-      if (enrichmentSignals.length > 0) {
-        await this.archive.appendBatch(enrichmentSignals);
-      }
-
+      // Evaluate editorial signals BEFORE writing enrichment snapshots so the
+      // recent-signals query inside evaluateQuality only sees prior history,
+      // not synthetic snapshots from the current batch.
       if (editorialSignals.length > 0) {
         if (this.clustering) {
           try {
@@ -271,6 +271,10 @@ export class SignalIngestor {
           const enriched = await this.evaluateQuality(editorialSignals);
           await this.archive.appendBatch(enriched);
         }
+      }
+
+      if (enrichmentSignals.length > 0) {
+        await this.archive.appendBatch(enrichmentSignals);
       }
       logger.info(
         `Ingested ${signals.length} signals${dropped > 0 ? `, ${dropped} dropped (not in portfolio or watchlist)` : ''}`,
@@ -431,6 +435,17 @@ export class SignalIngestor {
     return createHash('sha256').update(`${normalized}|${day}`).digest('hex');
   }
 
+  /**
+   * True when every source on a signal is ENRICHMENT-typed.
+   * Used to decide whether a signal bypasses the quality agent.
+   * Checking all sources (not just sources[0]) ensures routing is stable
+   * regardless of merge order — a signal that had an API source merged in
+   * still routes through quality evaluation.
+   */
+  private isEnrichmentOnlySignal(signal: Signal): boolean {
+    return signal.sources.length > 0 && signal.sources.every((s) => s.type === 'ENRICHMENT');
+  }
+
   /** Weighted confidence — bonus scales with average reliability so low-quality sources can't inflate score. */
   private weightedConfidence(sources: Signal['sources']): number {
     const totalReliability = sources.reduce((sum, s) => sum + s.reliability, 0);
@@ -451,8 +466,8 @@ export class SignalIngestor {
     if (!this.qualityAgent) return signals;
 
     // Split: ENRICHMENT signals are always kept; only editorial signals need LLM evaluation
-    const enrichmentSignals = signals.filter((s) => s.sources[0]?.type === 'ENRICHMENT');
-    const editorialSignals = signals.filter((s) => s.sources[0]?.type !== 'ENRICHMENT');
+    const enrichmentSignals = signals.filter((s) => this.isEnrichmentOnlySignal(s));
+    const editorialSignals = signals.filter((s) => !this.isEnrichmentOnlySignal(s));
 
     if (editorialSignals.length === 0) return signals;
 
