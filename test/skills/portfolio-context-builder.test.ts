@@ -1,11 +1,15 @@
-import type { Entity, MarketQuote, TechnicalIndicators } from '@yojinhq/jintel-client';
+import type { Entity, MarketQuote, SocialSentiment, TechnicalIndicators } from '@yojinhq/jintel-client';
 import { describe, expect, it } from 'vitest';
 
+import type { Signal } from '../../src/signals/types.js';
 import {
   buildPortfolioContext,
   computeDrawdown,
   computePeriodReturns,
+  computeSUE,
+  computeSentimentMomentum24h,
   mapIndicators,
+  mapMetrics,
 } from '../../src/skills/portfolio-context-builder.js';
 
 describe('mapIndicators', () => {
@@ -304,5 +308,162 @@ describe('computePeriodReturns', () => {
 
   it('returns empty when history has no candles', () => {
     expect(computePeriodReturns([{ ticker: 'AAPL', history: [] }], [{ months: 12 }])).toEqual({});
+  });
+});
+
+describe('computeSUE', () => {
+  it('returns null for null/undefined/empty input', () => {
+    expect(computeSUE(null)).toBeNull();
+    expect(computeSUE(undefined)).toBeNull();
+    expect(computeSUE([])).toBeNull();
+  });
+
+  it('returns null when fewer than 2 usable quarters', () => {
+    expect(computeSUE([{ period: '2024-12-31', epsDifference: 0.5 }])).toBeNull();
+    expect(
+      computeSUE([
+        { period: '2024-12-31', epsDifference: 0.5 },
+        { period: '2024-09-30', epsDifference: null },
+      ]),
+    ).toBeNull();
+  });
+
+  it('returns null when stddev is zero (identical surprises)', () => {
+    expect(
+      computeSUE([
+        { period: '2024-12-31', epsDifference: 0.2 },
+        { period: '2024-09-30', epsDifference: 0.2 },
+        { period: '2024-06-30', epsDifference: 0.2 },
+        { period: '2024-03-31', epsDifference: 0.2 },
+      ]),
+    ).toBeNull();
+  });
+
+  it('computes SUE = latest / sample stddev', () => {
+    // Diffs [1, 1/3, 1/3, 1/3]: mean = 0.5, variance = ((0.5)^2 + 3*(-1/6)^2)/3 = 0.25/3 + 1/36 ... easier to verify numerically
+    const sue = computeSUE([
+      { period: '2024-12-31', epsDifference: 1 },
+      { period: '2024-09-30', epsDifference: 1 / 3 },
+      { period: '2024-06-30', epsDifference: 1 / 3 },
+      { period: '2024-03-31', epsDifference: 1 / 3 },
+    ]);
+    // Formula: a=1, b=1/3; mean = (1 + 3*(1/3))/4 = 0.5; variance = ((0.5)^2 + 3*(-1/6)^2)/3
+    //   = (0.25 + 3*(1/36))/3 = (0.25 + 1/12)/3 = (1/3)/3 = 1/9; stddev = 1/3; SUE = 1 / (1/3) = 3
+    expect(sue).toBeCloseTo(3, 5);
+  });
+});
+
+describe('computeSentimentMomentum24h', () => {
+  it('returns null for null/undefined sentiment', () => {
+    expect(computeSentimentMomentum24h(null)).toBeNull();
+    expect(computeSentimentMomentum24h(undefined)).toBeNull();
+  });
+
+  it('returns null when mentions24hAgo is missing or zero', () => {
+    expect(computeSentimentMomentum24h({ mentions: 100 } as unknown as SocialSentiment)).toBeNull();
+    expect(computeSentimentMomentum24h({ mentions: 100, mentions24hAgo: 0 } as unknown as SocialSentiment)).toBeNull();
+  });
+
+  it('computes fractional change in mention volume', () => {
+    expect(
+      computeSentimentMomentum24h({ mentions: 120, mentions24hAgo: 100 } as unknown as SocialSentiment),
+    ).toBeCloseTo(0.2, 5);
+    expect(
+      computeSentimentMomentum24h({ mentions: 80, mentions24hAgo: 100 } as unknown as SocialSentiment),
+    ).toBeCloseTo(-0.2, 5);
+  });
+});
+
+describe('mapMetrics', () => {
+  it('returns {} for null/undefined entity', () => {
+    expect(mapMetrics(null)).toEqual({});
+    expect(mapMetrics(undefined)).toEqual({});
+  });
+
+  it('maps priceToBook and bookValue when present', () => {
+    const entity = {
+      id: 'AAPL',
+      tickers: ['AAPL'],
+      market: {
+        fundamentals: { priceToBook: 49.3, bookValue: 4.4 },
+      },
+    } as unknown as Entity;
+    const result = mapMetrics(entity);
+    expect(result.priceToBook).toBe(49.3);
+    expect(result.bookValue).toBe(4.4);
+  });
+
+  it('omits keys when upstream fields are null', () => {
+    const entity = {
+      id: 'AAPL',
+      tickers: ['AAPL'],
+      market: {
+        fundamentals: { priceToBook: null, bookValue: null },
+      },
+    } as unknown as Entity;
+    expect(mapMetrics(entity)).toEqual({});
+  });
+
+  it('populates SUE when earningsHistory has enough usable quarters', () => {
+    const entity = {
+      id: 'AAPL',
+      tickers: ['AAPL'],
+      market: {
+        fundamentals: {
+          earningsHistory: [
+            { period: '2024-12-31', epsDifference: 1 },
+            { period: '2024-09-30', epsDifference: 1 / 3 },
+            { period: '2024-06-30', epsDifference: 1 / 3 },
+            { period: '2024-03-31', epsDifference: 1 / 3 },
+          ],
+        },
+      },
+    } as unknown as Entity;
+    const result = mapMetrics(entity);
+    expect(result.SUE).toBeCloseTo(3, 5);
+  });
+
+  it('populates sentiment_momentum_24h from entity.sentiment', () => {
+    const entity = {
+      id: 'AAPL',
+      tickers: ['AAPL'],
+      market: { fundamentals: null },
+      sentiment: { mentions: 150, mentions24hAgo: 100 },
+    } as unknown as Entity;
+    expect(mapMetrics(entity).sentiment_momentum_24h).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('buildPortfolioContext — signals passthrough', () => {
+  it('passes signalsByTicker through to context.signals unchanged', () => {
+    const signal: Signal = {
+      id: 's1',
+      type: 'NEWS',
+      title: 'AAPL up',
+      sources: [{ id: 'src', name: 'Src', type: 'API', reliability: 0.8 }],
+      assets: [{ ticker: 'AAPL', linkType: 'DIRECT' }],
+      publishedAt: new Date().toISOString(),
+      ingestedAt: new Date().toISOString(),
+      contentHash: 'h1',
+      confidence: 0.8,
+    } as unknown as Signal;
+
+    const snapshot = {
+      positions: [{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }],
+      totalValue: 1500,
+    };
+
+    const ctx = buildPortfolioContext(snapshot, [], [], undefined, { AAPL: [signal] });
+    expect(ctx.signals).toEqual({ AAPL: [signal] });
+  });
+
+  it('defaults signals to {} when signalsByTicker is omitted', () => {
+    const snapshot = {
+      positions: [{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }],
+      totalValue: 1500,
+    };
+    const ctx = buildPortfolioContext(snapshot, [], []);
+    expect(ctx.signals).toEqual({});
+    expect(ctx.metrics).toEqual({});
   });
 });

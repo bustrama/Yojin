@@ -11,8 +11,8 @@ triggers:
     description: Stock is within 3 trading days of earnings announcement
     params:
       days: 3
-  - type: SIGNAL_MATCH
-    description: Positive earnings surprise with standardized unexpected earnings (SUE) above 2.0
+  - type: METRIC_THRESHOLD
+    description: Standardized unexpected earnings (SUE) above 2.0 — last quarter's surprise normalized by 4-quarter stddev
     params:
       metric: SUE
       threshold: 2.0

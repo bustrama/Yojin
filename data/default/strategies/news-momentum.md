@@ -7,14 +7,14 @@ requires:
   - news
   - sentiment
 triggers:
-  - type: SIGNAL_MATCH
-    description: High-relevance directional news signal detected with strong sentiment polarity
+  - type: SIGNAL_PRESENT
+    description: Recent NEWS or FILINGS signal with bullish sentiment polarity
     params:
-      relevance: high
-      sentiment_polarity_min: 0.7
       signal_types:
         - NEWS
         - FILINGS
+      min_sentiment: 0.3
+      lookback_hours: 24
 tickers: []
 maxPositionSize: 0.03
 ---

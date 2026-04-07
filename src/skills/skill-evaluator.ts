@@ -9,6 +9,7 @@
 import type { SkillStore } from './skill-store.js';
 import type { SkillEvaluation, SkillTrigger } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
+import type { Signal, SignalType } from '../signals/types.js';
 
 const logger = createSubsystemLogger('skill-evaluator');
 
@@ -30,6 +31,10 @@ export interface PortfolioContext {
   portfolioDrawdown: number;
   /** Per-position drawdown (%). */
   positionDrawdowns: Record<string, number>;
+  /** Numeric metrics per ticker (SUE, sentiment_momentum_24h, priceToBook, bookValue, ...). */
+  metrics: Record<string, Record<string, number>>;
+  /** Recent signals per ticker, pre-fetched and grouped (24h lookback). */
+  signals: Record<string, Signal[]>;
 }
 
 export class SkillEvaluator {
@@ -152,13 +157,51 @@ ${sections.join('\n\n---\n\n')}`;
         return null;
       }
 
-      case 'SIGNAL_MATCH':
+      case 'METRIC_THRESHOLD': {
+        const metric = String(params['metric'] ?? '');
+        const threshold = Number(params['threshold'] ?? 0);
+        const direction = String(params['direction'] ?? 'above');
+        const value = ctx.metrics[ticker]?.[metric];
+        if (value == null) return null; // honest: missing data → can't evaluate
+        const fired = direction === 'above' ? value >= threshold : value <= threshold;
+        if (!fired) return null;
+        return { metric, value, threshold, direction };
+      }
+
+      case 'SIGNAL_PRESENT': {
+        const signalTypes = (params['signal_types'] as SignalType[] | undefined) ?? [];
+        const minSentiment = params['min_sentiment'] != null ? Number(params['min_sentiment']) : undefined;
+        const requestedLookback = params['lookback_hours'] != null ? Number(params['lookback_hours']) : 24;
+        // Hard-cap at 24h — the prefetch only covers 24h, honoring more would
+        // produce silent false negatives.
+        const lookback = Math.min(requestedLookback, 24);
+        const cutoff = Date.now() - lookback * 3_600_000;
+        const tickerSignals = ctx.signals[ticker] ?? [];
+        const matched = tickerSignals.find(
+          (s) =>
+            signalTypes.includes(s.type) &&
+            new Date(s.publishedAt).getTime() >= cutoff &&
+            (minSentiment == null || (s.sentimentScore != null && s.sentimentScore >= minSentiment)),
+        );
+        if (!matched) return null;
+        return {
+          signalId: matched.id,
+          signalType: matched.type,
+          signalTitle: matched.title,
+          sentimentScore: matched.sentimentScore ?? null,
+        };
+      }
+
       case 'CUSTOM':
-        // These require more complex evaluation — defer to Strategist reasoning
+        // User-defined expression — no auto-evaluation, defer to Strategist reasoning.
         return null;
 
       default:
-        return null;
+        return assertNever(trigger.type);
     }
   }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled trigger type: ${String(value)}`);
 }

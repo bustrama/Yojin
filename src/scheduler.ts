@@ -19,7 +19,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { JintelClient } from '@yojinhq/jintel-client';
+import type { Entity, JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
 import type { ActionStore } from './actions/action-store.js';
@@ -41,8 +41,9 @@ import type { PortfolioSnapshotStore } from './portfolio/snapshot-store.js';
 import type { TickerProfileStore } from './profiles/profile-store.js';
 import type { SignalArchive } from './signals/archive.js';
 import type { SignalIngestor } from './signals/ingestor.js';
+import type { Signal } from './signals/types.js';
 import { buildPortfolioContext } from './skills/portfolio-context-builder.js';
-import type { SkillEvaluator } from './skills/skill-evaluator.js';
+import type { PortfolioContext, SkillEvaluator } from './skills/skill-evaluator.js';
 import { snapFromInsight } from './snap/snap-from-insight.js';
 import { snapFromMicro } from './snap/snap-from-micro.js';
 import type { SnapStore } from './snap/snap-store.js';
@@ -823,7 +824,7 @@ export class Scheduler {
   private async buildEnrichedContext(snapshot: {
     positions: { symbol: string; currentPrice: number; marketValue: number }[];
     totalValue: number;
-  }): Promise<import('./skills/skill-evaluator.js').PortfolioContext> {
+  }): Promise<PortfolioContext> {
     const tickers = snapshot.positions.map((p) => p.symbol);
     const jintelClient = this.getJintelClient?.();
 
@@ -831,7 +832,17 @@ export class Scheduler {
       return buildPortfolioContext(snapshot, [], []);
     }
 
-    const [quotesResult, entities, priceHistoryResult] = await Promise.all([
+    // `since` is a best-effort file-prune hint for the archive (day-partitioned).
+    // Record-level 24h filtering happens in the SIGNAL_PRESENT evaluator cutoff.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const signalsP: Promise<Signal[]> = this.signalArchive
+      ? this.signalArchive.query({ tickers, since }).catch((err: unknown) => {
+          logger.warn('Failed to query signals for skill evaluation', { error: err });
+          return [];
+        })
+      : Promise.resolve([]);
+
+    const [quotesResult, entities, priceHistoryResult, signals] = await Promise.all([
       jintelClient.quotes(tickers).catch((err: unknown) => {
         logger.warn('Failed to fetch quotes for skill evaluation', { error: err });
         return { success: false as const, error: String(err) };
@@ -841,33 +852,40 @@ export class Scheduler {
         logger.warn('Failed to fetch price history for skill evaluation', { error: err });
         return { success: false as const, error: String(err) };
       }),
+      signalsP,
     ]);
 
     const quotes = quotesResult.success ? quotesResult.data : [];
     const histories = priceHistoryResult.success ? priceHistoryResult.data : [];
+
+    // Group signals by ticker (one signal can link to multiple assets).
+    const signalsByTicker: Record<string, Signal[]> = {};
+    for (const sig of signals) {
+      for (const link of sig.assets) {
+        (signalsByTicker[link.ticker] ??= []).push(sig);
+      }
+    }
 
     logger.info('Built enriched PortfolioContext for skill evaluation', {
       tickers: tickers.length,
       quotesAvailable: quotes.length,
       entitiesAvailable: entities.length,
       historiesAvailable: histories.length,
+      signalsAvailable: signals.length,
     });
 
-    return buildPortfolioContext(snapshot, quotes, entities, histories);
+    return buildPortfolioContext(snapshot, quotes, entities, histories, signalsByTicker);
   }
 
-  /** Batch-enrich tickers in chunks of 20, requesting only market + technicals. */
-  private async batchEnrichForSkills(
-    client: JintelClient,
-    tickers: string[],
-  ): Promise<import('@yojinhq/jintel-client').Entity[]> {
+  /** Batch-enrich tickers in chunks of 20, requesting market + technicals + sentiment. */
+  private async batchEnrichForSkills(client: JintelClient, tickers: string[]): Promise<Entity[]> {
     const CHUNK_SIZE = 20;
-    const results: import('@yojinhq/jintel-client').Entity[] = [];
+    const results: Entity[] = [];
 
     for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
       const chunk = tickers.slice(i, i + CHUNK_SIZE);
       try {
-        const result = await client.batchEnrich(chunk, ['market', 'technicals']);
+        const result = await client.batchEnrich(chunk, ['market', 'technicals', 'sentiment']);
         if (result.success) {
           results.push(...result.data);
         } else {

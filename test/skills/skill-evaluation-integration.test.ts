@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { Entity } from '@yojinhq/jintel-client';
 import { describe, expect, it } from 'vitest';
 
+import type { Signal } from '../../src/signals/types.js';
 import { buildPortfolioContext } from '../../src/skills/portfolio-context-builder.js';
 import { SkillEvaluator } from '../../src/skills/skill-evaluator.js';
 import { SkillStore } from '../../src/skills/skill-store.js';
@@ -222,6 +223,243 @@ describe('skill evaluation integration', () => {
       expect(googResult.context['weight']).toBeCloseTo(0.4);
       expect(googResult.context['maxWeight']).toBe(0.12);
       expect(googResult.skillId).toBe('test-concentration');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // METRIC_THRESHOLD
+  // -------------------------------------------------------------------------
+
+  function makeEntityWithSUE(ticker: string, sue: number | null): Entity {
+    if (sue == null) {
+      return {
+        id: ticker,
+        name: ticker,
+        type: 'COMPANY' as const,
+        tickers: [ticker],
+        market: { quote: null, fundamentals: null },
+      } as Entity;
+    }
+    // Construct 4-quarter diffs [a, b, b, b] where a=1 and b = 1 - 2/sue.
+    // This yields sample stddev = |a - b| / 2 = 1/sue, so SUE = a / stddev = sue exactly.
+    if (sue === 0 || !Number.isFinite(sue)) {
+      throw new Error('SUE must be a finite non-zero value for this fixture');
+    }
+    const a = 1;
+    const b = 1 - 2 / sue;
+    return {
+      id: ticker,
+      name: ticker,
+      type: 'COMPANY' as const,
+      tickers: [ticker],
+      market: {
+        quote: null,
+        fundamentals: {
+          source: 'test',
+          earningsHistory: [
+            { period: '2024-12-31', epsDifference: a },
+            { period: '2024-09-30', epsDifference: b },
+            { period: '2024-06-30', epsDifference: b },
+            { period: '2024-03-31', epsDifference: b },
+          ],
+        },
+      },
+    } as unknown as Entity;
+  }
+
+  it('METRIC_THRESHOLD (SUE) fires when value exceeds threshold', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-sue',
+        triggers: [
+          {
+            type: 'METRIC_THRESHOLD',
+            description: 'SUE above 2.0',
+            params: { metric: 'SUE', threshold: 2.0, direction: 'above' },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot(
+        [
+          { symbol: 'HIGH', currentPrice: 100, marketValue: 1000 },
+          { symbol: 'LOW', currentPrice: 100, marketValue: 1000 },
+          { symbol: 'MISSING', currentPrice: 100, marketValue: 1000 },
+        ],
+        3000,
+      );
+      const entities = [
+        makeEntityWithSUE('HIGH', 3),
+        makeEntityWithSUE('LOW', 1.5),
+        makeEntityWithSUE('MISSING', null),
+      ];
+      const ctx = buildPortfolioContext(snapshot, [], entities);
+
+      expect(ctx.metrics['HIGH'].SUE).toBeCloseTo(3, 5);
+      expect(ctx.metrics['LOW'].SUE).toBeCloseTo(1.5, 5);
+      expect(ctx.metrics['MISSING']).toBeUndefined();
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluate(ctx);
+
+      // Only HIGH (SUE=3) exceeds threshold 2.0
+      expect(results).toHaveLength(1);
+      expect(results[0].context['ticker']).toBe('HIGH');
+      expect(results[0].context['metric']).toBe('SUE');
+      expect(results[0].triggerType).toBe('METRIC_THRESHOLD');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // SIGNAL_PRESENT
+  // -------------------------------------------------------------------------
+
+  function makeNewsSignal(ticker: string, opts: { id: string; hoursAgo: number; sentimentScore?: number }): Signal {
+    const publishedAt = new Date(Date.now() - opts.hoursAgo * 3_600_000).toISOString();
+    return {
+      id: opts.id,
+      type: 'NEWS',
+      title: `${ticker} news ${opts.id}`,
+      sources: [{ id: 'src', name: 'Test', type: 'API', reliability: 0.8 }],
+      assets: [{ ticker, linkType: 'DIRECT' }],
+      publishedAt,
+      ingestedAt: publishedAt,
+      contentHash: opts.id,
+      confidence: 0.8,
+      ...(opts.sentimentScore != null ? { sentimentScore: opts.sentimentScore } : {}),
+    } as unknown as Signal;
+  }
+
+  it('SIGNAL_PRESENT fires on matching type + sentiment threshold', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-signal-present',
+        triggers: [
+          {
+            type: 'SIGNAL_PRESENT',
+            description: 'Recent bullish news',
+            params: { signal_types: ['NEWS'], min_sentiment: 0.3, lookback_hours: 24 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }], 1500);
+      const signalsByTicker = {
+        AAPL: [makeNewsSignal('AAPL', { id: 's1', hoursAgo: 2, sentimentScore: 0.5 })],
+      };
+      const ctx = buildPortfolioContext(snapshot, [], [], undefined, signalsByTicker);
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluate(ctx);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].context['ticker']).toBe('AAPL');
+      expect(results[0].context['signalId']).toBe('s1');
+      expect(results[0].triggerType).toBe('SIGNAL_PRESENT');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('SIGNAL_PRESENT does not fire when sentimentScore is below threshold', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-signal-low',
+        triggers: [
+          {
+            type: 'SIGNAL_PRESENT',
+            description: 'Recent bullish news',
+            params: { signal_types: ['NEWS'], min_sentiment: 0.3 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }], 1500);
+      const signalsByTicker = {
+        AAPL: [makeNewsSignal('AAPL', { id: 's1', hoursAgo: 2, sentimentScore: 0.1 })],
+      };
+      const ctx = buildPortfolioContext(snapshot, [], [], undefined, signalsByTicker);
+
+      const evaluator = new SkillEvaluator(store);
+      expect(evaluator.evaluate(ctx)).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('SIGNAL_PRESENT does not fire when sentiment is missing and a threshold is required', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-signal-nosent',
+        triggers: [
+          {
+            type: 'SIGNAL_PRESENT',
+            description: 'Recent bullish news',
+            params: { signal_types: ['NEWS'], min_sentiment: 0.3 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }], 1500);
+      const signalsByTicker = {
+        AAPL: [makeNewsSignal('AAPL', { id: 's1', hoursAgo: 2 })], // no sentimentScore
+      };
+      const ctx = buildPortfolioContext(snapshot, [], [], undefined, signalsByTicker);
+
+      const evaluator = new SkillEvaluator(store);
+      expect(evaluator.evaluate(ctx)).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('SIGNAL_PRESENT honors the 24h lookback cap (48h request is clamped)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-signal-cap',
+        triggers: [
+          {
+            type: 'SIGNAL_PRESENT',
+            description: 'Any recent news',
+            params: { signal_types: ['NEWS'], lookback_hours: 48 }, // request 48h, should clamp to 24h
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }], 1500);
+      const signalsByTicker = {
+        // 30h ago — inside requested 48h, outside hard-capped 24h
+        AAPL: [makeNewsSignal('AAPL', { id: 'old', hoursAgo: 30 })],
+      };
+      const ctx = buildPortfolioContext(snapshot, [], [], undefined, signalsByTicker);
+
+      const evaluator = new SkillEvaluator(store);
+      // Should NOT fire because 30h > 24h cap
+      expect(evaluator.evaluate(ctx)).toHaveLength(0);
     } finally {
       await rm(dir, { recursive: true });
     }
