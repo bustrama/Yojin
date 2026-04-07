@@ -533,6 +533,11 @@ export class Scheduler {
 
       if (assetsWithNewSignals.length === 0) {
         logger.debug('Micro research skipped — no new signals for batch', { symbols });
+        // Mark all assets as completed today so quiet assets don't block the micro→macro handoff.
+        for (const symbol of symbols) {
+          const state = this.microRegistry.get(symbol);
+          if (state) state.completedToday = true;
+        }
         return;
       }
 
@@ -550,6 +555,11 @@ export class Scheduler {
           symbols: assetsWithNewSignals.map((a) => a.symbol),
           microLlmIntervalMs: this.microLlmIntervalMs,
         });
+        // Mark all assets with new signals as completed today — they were processed, just throttled.
+        for (const asset of assetsWithNewSignals) {
+          const state = this.microRegistry.get(asset.symbol);
+          if (state) state.completedToday = true;
+        }
         return;
       }
 

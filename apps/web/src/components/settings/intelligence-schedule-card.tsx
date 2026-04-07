@@ -37,6 +37,7 @@ const DEFAULT_LLM_INTERVAL_HOURS = 4;
 
 export function IntelligenceScheduleCard() {
   const [selectedHours, setSelectedHours] = useState(DEFAULT_LLM_INTERVAL_HOURS);
+  const [savedHours, setSavedHours] = useState(DEFAULT_LLM_INTERVAL_HOURS);
   const [saving, setSaving] = useState(false);
   const [saved, setSavedState] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,7 @@ export function IntelligenceScheduleCard() {
       const hours = config.microLlmIntervalHours ?? DEFAULT_LLM_INTERVAL_HOURS;
       setTimeout(() => {
         setSelectedHours(hours);
+        setSavedHours(hours);
         setDirty(false);
       }, 0);
     }
@@ -63,7 +65,7 @@ export function IntelligenceScheduleCard() {
 
   function handleSelect(hours: number) {
     setSelectedHours(hours);
-    setDirty(hours !== (config?.microLlmIntervalHours ?? DEFAULT_LLM_INTERVAL_HOURS));
+    setDirty(hours !== savedHours);
     setError(null);
   }
 
@@ -89,6 +91,7 @@ export function IntelligenceScheduleCard() {
     }
 
     setDirty(false);
+    setSavedHours(selectedHours);
     setSavedState(true);
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     savedTimerRef.current = setTimeout(() => setSavedState(false), 2000);
@@ -97,7 +100,7 @@ export function IntelligenceScheduleCard() {
   // Estimated calls/day based on 16 assets, market hours only (~8h), signal-gated
   // Rough heuristic: ~3–5 assets have new signals per cycle on an average day.
   const avgSignaledAssets = 4;
-  const cyclesPerDay = Math.floor(8 / selectedHours);
+  const cyclesPerDay = Math.max(1, Math.floor(8 / selectedHours));
   const estCallsPerDay = avgSignaledAssets * cyclesPerDay;
 
   return (
