@@ -478,10 +478,17 @@ export function buildAnthropicProvider(): ProviderPlugin & AgentLoopProvider {
         yield { type: 'stop' as const, stopReason: finalMessage.stop_reason ?? 'end_turn' };
       };
 
+      // Track whether any content was yielded before a potential auth error.
+      // Only retry if no content has been emitted — retrying mid-stream would
+      // re-yield the full response, doubling any already-streamed text.
+      let hasYieldedContent = false;
       try {
-        yield* execute();
+        for await (const event of execute()) {
+          if (event.type === 'text_delta') hasYieldedContent = true;
+          yield event;
+        }
       } catch (err) {
-        if (authMode === 'oauth' && err instanceof Anthropic.AuthenticationError) {
+        if (authMode === 'oauth' && err instanceof Anthropic.AuthenticationError && !hasYieldedContent) {
           const refreshed = await refreshFromKeychain();
           if (refreshed) {
             yield* execute();
