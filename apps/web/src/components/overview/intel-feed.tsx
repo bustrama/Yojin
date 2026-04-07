@@ -497,9 +497,10 @@ function IntelFeedContent({
   });
   const [, triggerMicroAnalysis] = useMutation(TRIGGER_MICRO_ANALYSIS_MUTATION);
 
-  const [nowMs, setNowMs] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    setTimeout(() => setNowMs(Date.now()), 0);
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
   }, []);
 
   // Auto-trigger micro analysis when user is actively using the page and assets are throttled.
@@ -507,7 +508,7 @@ function IntelFeedContent({
   // running, so a stale trigger (assets already analyzed) is always a no-op.
   const lastTriggeredRef = useRef<number>(0);
   useEffect(() => {
-    if (!schedulerData || schedulerData.schedulerStatus.throttledCount === 0) return;
+    if (!schedulerData || schedulerData.schedulerStatus.pendingCount === 0) return;
 
     const intervalMs = schedulerData.schedulerStatus.microLlmIntervalHours * 60 * 60 * 1000;
 
@@ -820,13 +821,15 @@ function IntelFeedContent({
             </div>
           )}
           {/* Throttle banner — shown when assets have new signals but LLM interval not yet elapsed */}
-          {schedulerData && schedulerData.schedulerStatus.throttledCount > 0 && (
-            <ThrottleBanner
-              throttledCount={schedulerData.schedulerStatus.throttledCount}
-              assets={schedulerData.schedulerStatus.assets}
-              now={nowMs}
-            />
-          )}
+          {schedulerData &&
+            schedulerData.schedulerStatus.pendingCount > 0 &&
+            schedulerData.schedulerStatus.throttledCount > 0 && (
+              <ThrottleBanner
+                throttledCount={schedulerData.schedulerStatus.throttledCount}
+                assets={schedulerData.schedulerStatus.assets}
+                now={nowMs}
+              />
+            )}
           {isLoading ? (
             <div className="flex items-center justify-center pt-12">
               <Spinner size="md" label="Loading intel..." />
