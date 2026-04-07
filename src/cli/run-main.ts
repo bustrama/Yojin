@@ -32,7 +32,7 @@ import {
 } from '../api/graphql/resolvers/onboarding.js';
 import { setPortfolioChangedCallback } from '../api/graphql/resolvers/portfolio.js';
 import { onAppDataCleared } from '../api/graphql/resolvers/profile.js';
-import { setSchedulerStatusProvider } from '../api/graphql/resolvers/scheduler.js';
+import { setSchedulerStatusProvider, setTriggerMicroAnalysis } from '../api/graphql/resolvers/scheduler.js';
 import { setWatchlistChangedCallback } from '../api/graphql/resolvers/watchlist.js';
 import { buildContext } from '../composition.js';
 import { AgentRuntime } from '../core/agent-runtime.js';
@@ -333,6 +333,13 @@ async function startGateway(): Promise<void> {
   setMicroLlmIntervalCallback((hours) => scheduler.setMicroLlmIntervalMs(hours * 60 * 60 * 1000));
   // Expose scheduler status to the schedulerStatus GraphQL query
   setSchedulerStatusProvider(() => scheduler.getStatus());
+  // Allow the UI to force-run micro analysis for throttled assets immediately
+  setTriggerMicroAnalysis(() => {
+    const throttled = scheduler.getStatus().assets.filter((a) => a.pendingAnalysis);
+    if (throttled.length > 0) {
+      scheduler.triggerMicroFlow(throttled.map((a) => a.symbol));
+    }
+  });
 
   const gateway = new Gateway(services.config, agentRuntime, {
     snapshotStore: services.snapshotStore,
