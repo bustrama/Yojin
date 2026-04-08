@@ -595,8 +595,9 @@ function IntelFeedContent({
       };
     });
 
-    // Sort newest first
-    signalItems.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    // Preserve backend ranking (severity DESC → composite score DESC). The
+    // composite score already blends recency, so important recent items still
+    // float to the top while CRITICAL alerts aren't buried by newer LOW noise.
     return signalItems;
   }, [data]);
 
