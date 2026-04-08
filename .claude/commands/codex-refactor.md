@@ -41,7 +41,7 @@ After Codex finishes:
 
 ### Step 5: User decision
 
-Ask whether to:
+Capture the list of files Codex changed (from `git diff --name-only`). Then ask whether to:
 - Accept the refactor and commit
-- Revert (`git checkout -- .`)
+- Revert only Codex-touched files (`git restore -- <file1> <file2> ...` using the captured list)
 - Ask Codex to adjust

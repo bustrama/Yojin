@@ -169,9 +169,10 @@ function ModelPicker() {
       setProvider(resolved);
       const models = PROVIDER_MODELS[resolved];
       const savedModel = result.data.aiConfig.defaultModel;
-      const validModel = models.some((m) => m.id === savedModel) ? savedModel : models[0].id;
+      const modelStillValid = models.some((m) => m.id === savedModel);
+      const validModel = modelStillValid ? savedModel : models[0].id;
       setSelected(validModel);
-      setDirty(false);
+      setDirty(!modelStillValid);
     }
   }, [result.data]);
 
@@ -353,11 +354,15 @@ function ModelPicker() {
 
       {/* Keychain authentication */}
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-2">Keychain Authentication</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-2">
+          {provider === 'codex' ? 'Codex Authentication' : 'Keychain Authentication'}
+        </p>
         <div className="rounded-xl border border-border bg-bg-card px-4 py-3 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-text-primary">macOS Keychain</p>
+              <p className="text-sm text-text-primary">
+                {provider === 'codex' ? 'Codex CLI credentials' : 'macOS Keychain'}
+              </p>
               <p className="text-xs text-text-muted">
                 {keychainResult.fetching
                   ? 'Checking...'

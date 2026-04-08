@@ -33,7 +33,7 @@ Run these concurrently:
 
 Present a unified report:
 
-```
+```md
 ## Dual Review Summary
 
 ### Agreement (both flagged)

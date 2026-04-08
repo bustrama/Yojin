@@ -81,7 +81,8 @@ export class ProviderRouter {
     stopReason: string;
     usage?: { inputTokens: number; outputTokens: number };
   }> {
-    const overrides = { model: params.model, ...params.providerOverrides };
+    const requestedModel = params.providerOverrides?.model ?? params.model;
+    const overrides = { model: requestedModel, ...params.providerOverrides };
     const { provider, model } = this.resolve(overrides);
     const config = this.getConfig();
 
@@ -94,7 +95,7 @@ export class ProviderRouter {
         });
         const fallback = this.backends.get(config.fallbackProvider);
         if (fallback) {
-          const fallbackModel = config.fallbackModel ?? model;
+          const fallbackModel = this.resolveModelTier(config.fallbackProvider, config.fallbackModel ?? requestedModel);
           return await fallback.completeWithTools({ ...params, model: fallbackModel });
         }
       }
@@ -115,7 +116,7 @@ export class ProviderRouter {
     stopReason: string;
     usage?: { inputTokens: number; outputTokens: number };
   }> {
-    const overrides = { model: params.model, ...params.providerOverrides };
+    const overrides = { model: params.providerOverrides?.model ?? params.model, ...params.providerOverrides };
     const { provider, model } = this.resolve(overrides);
 
     if (provider.streamWithTools) {
