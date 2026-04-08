@@ -51,12 +51,13 @@ const PROVIDER_MODELS: Record<AiProviderId, { id: string; label: string; descrip
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', description: 'Fastest — good for high-volume tasks' },
   ],
   codex: [
-    { id: 'o3', label: 'o3', description: 'Most capable reasoning model' },
-    { id: 'o4-mini', label: 'o4-mini', description: 'Fast reasoning model' },
-    { id: 'gpt-4.1', label: 'GPT-4.1', description: 'Latest GPT model' },
-    { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', description: 'Smaller, faster, cheaper' },
-    { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', description: 'Cheapest — high-volume tasks' },
-    { id: 'codex-mini', label: 'Codex Mini', description: 'Default Codex CLI model' },
+    { id: 'gpt-5.4', label: 'GPT-5.4', description: 'Latest frontier agentic coding model' },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', description: 'Smaller frontier agentic model' },
+    { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', description: 'Frontier Codex-optimized model' },
+    { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex', description: 'Frontier agentic coding model' },
+    { id: 'gpt-5.2', label: 'GPT-5.2', description: 'Professional work and long-running agents' },
+    { id: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max', description: 'Deep and fast reasoning' },
+    { id: 'gpt-5.1-codex-mini', label: 'GPT-5.1 Codex Mini', description: 'Cheaper, faster, less capable' },
   ],
 };
 

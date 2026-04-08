@@ -132,11 +132,11 @@ describe('ProviderRouter model tier resolution', () => {
   it('resolves tier aliases to Codex model IDs when codex is active', () => {
     const router = new ProviderRouter({ configPath: 'nonexistent.json' });
     router.registerBackend(mockBackendWithId('codex'));
-    router.setConfig({ defaultProvider: 'codex', defaultModel: 'o3' });
+    router.setConfig({ defaultProvider: 'codex', defaultModel: 'gpt-5.4' });
 
-    expect(router.resolve({ model: 'haiku' }).model).toBe('codex-mini');
-    expect(router.resolve({ model: 'sonnet' }).model).toBe('o4-mini');
-    expect(router.resolve({ model: 'opus' }).model).toBe('o3');
+    expect(router.resolve({ model: 'haiku' }).model).toBe('gpt-5.1-codex-mini');
+    expect(router.resolve({ model: 'sonnet' }).model).toBe('gpt-5.4-mini');
+    expect(router.resolve({ model: 'opus' }).model).toBe('gpt-5.4');
   });
 
   it('passes through concrete model IDs unchanged', () => {
@@ -145,7 +145,7 @@ describe('ProviderRouter model tier resolution', () => {
     router.setConfig({ defaultProvider: 'claude-code', defaultModel: 'claude-opus-4-6' });
 
     expect(router.resolve({ model: 'claude-sonnet-4-6' }).model).toBe('claude-sonnet-4-6');
-    expect(router.resolve({ model: 'gpt-4.1' }).model).toBe('gpt-4.1');
+    expect(router.resolve({ model: 'gpt-5.4' }).model).toBe('gpt-5.4');
   });
 
   it('passes through unknown aliases unchanged', () => {
@@ -165,7 +165,7 @@ describe('ProviderRouter model tier resolution', () => {
     // Explicitly override to codex — tier should resolve to codex model
     const resolved = router.resolve({ provider: 'codex', model: 'haiku' });
     expect(resolved.provider.id).toBe('codex');
-    expect(resolved.model).toBe('codex-mini');
+    expect(resolved.model).toBe('gpt-5.1-codex-mini');
   });
 
   it('resolves tiers for unknown provider as passthrough', () => {
@@ -177,20 +177,35 @@ describe('ProviderRouter model tier resolution', () => {
     expect(router.resolve({ model: 'haiku' }).model).toBe('haiku');
   });
 
-  it('resolves tier in completeWithTools call via providerOverrides', async () => {
+  it('resolves tier from params.model in completeWithTools', async () => {
     const codex = mockBackendWithId('codex');
     const router = new ProviderRouter({ configPath: 'nonexistent.json' });
     router.registerBackend(codex);
-    router.setConfig({ defaultProvider: 'codex', defaultModel: 'o3' });
+    router.setConfig({ defaultProvider: 'codex', defaultModel: 'gpt-5.4' });
 
     await router.completeWithTools({
       model: 'haiku',
       messages: [{ role: 'user', content: 'test' }],
-      providerOverrides: { model: 'haiku' },
     });
 
-    // The provider should receive the resolved model, not the alias
-    expect(codex.completeWithTools).toHaveBeenCalledWith(expect.objectContaining({ model: 'codex-mini' }));
+    // params.model 'haiku' should be resolved to 'gpt-5.1-codex-mini', not ignored
+    expect(codex.completeWithTools).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-5.1-codex-mini' }));
+  });
+
+  it('providerOverrides.model takes precedence over params.model', async () => {
+    const codex = mockBackendWithId('codex');
+    const router = new ProviderRouter({ configPath: 'nonexistent.json' });
+    router.registerBackend(codex);
+    router.setConfig({ defaultProvider: 'codex', defaultModel: 'gpt-5.4' });
+
+    await router.completeWithTools({
+      model: 'haiku',
+      messages: [{ role: 'user', content: 'test' }],
+      providerOverrides: { model: 'sonnet' },
+    });
+
+    // providerOverrides.model wins over params.model
+    expect(codex.completeWithTools).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-5.4-mini' }));
   });
 });
 

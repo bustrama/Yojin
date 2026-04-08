@@ -42,7 +42,7 @@ const PROVIDERS: ProviderConfig[] = [
     logo: '/ai-providers/openai.png',
     backendId: 'codex',
     method: 'codex',
-    defaultModel: 'o3',
+    defaultModel: 'gpt-5.4',
   },
 ];
 

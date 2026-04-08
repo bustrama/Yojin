@@ -18,9 +18,9 @@ const MODEL_TIERS: Record<string, Record<string, string>> = {
     haiku: 'claude-haiku-4-5-20251001',
   },
   codex: {
-    opus: 'o3',
-    sonnet: 'o4-mini',
-    haiku: 'codex-mini',
+    opus: 'gpt-5.4',
+    sonnet: 'gpt-5.4-mini',
+    haiku: 'gpt-5.1-codex-mini',
   },
 };
 
@@ -81,7 +81,8 @@ export class ProviderRouter {
     stopReason: string;
     usage?: { inputTokens: number; outputTokens: number };
   }> {
-    const { provider, model } = this.resolve(params.providerOverrides);
+    const overrides = { model: params.model, ...params.providerOverrides };
+    const { provider, model } = this.resolve(overrides);
     const config = this.getConfig();
 
     try {
@@ -114,7 +115,8 @@ export class ProviderRouter {
     stopReason: string;
     usage?: { inputTokens: number; outputTokens: number };
   }> {
-    const { provider, model } = this.resolve(params.providerOverrides);
+    const overrides = { model: params.model, ...params.providerOverrides };
+    const { provider, model } = this.resolve(overrides);
 
     if (provider.streamWithTools) {
       return provider.streamWithTools({ ...params, model });
