@@ -9,6 +9,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { ClaudeCodeProvider } from '../../../ai-providers/claude-code.js';
+import { registerCredentialErrorHandler } from '../../../ai-providers/credential-error.js';
 import type { ProviderRouter } from '../../../ai-providers/router.js';
 import { AIProviderConfigSchema } from '../../../config/config.js';
 import { createSubsystemLogger } from '../../../logging/logger.js';
@@ -31,6 +32,9 @@ export function setAiConfigProviderRouter(r: ProviderRouter): void {
 
 export function setAiConfigVault(v: EncryptedVault): void {
   vault = v;
+  // Register the credential cleanup handler so agent-loop (and all BE flows)
+  // can trigger it without depending on the API/resolver layer.
+  registerCredentialErrorHandler(clearDefaultProviderCredential);
 }
 
 export function setAiConfigClaudeCodeProvider(ccp: ClaudeCodeProvider): void {
@@ -69,6 +73,49 @@ const PROVIDER_VAULT_KEYS: Record<string, { vaultKey: string; envKey: string }> 
 async function hasVaultKey(key: string): Promise<boolean> {
   if (!vault?.isUnlocked) return false;
   return vault.has(key);
+}
+
+/**
+ * Delete the stored credential for a provider (vault + env var).
+ * Used both by the GraphQL removeAiCredential mutation and by automatic
+ * credential invalidation when a provider returns an auth error.
+ */
+async function deleteProviderCredential(providerId: string): Promise<void> {
+  const mapping = PROVIDER_VAULT_KEYS[providerId];
+  if (!mapping) return;
+  if (vault?.isUnlocked && (await vault.has(mapping.vaultKey))) {
+    await vault.delete(mapping.vaultKey);
+  }
+  process.env[mapping.envKey] = '';
+  logger.info('Provider credential removed', { provider: providerId });
+}
+
+/**
+ * Read the currently configured default provider id from disk.
+ * Falls back to 'claude-code' if the config is absent or unparseable.
+ */
+async function readDefaultProviderId(): Promise<string> {
+  const configPath = join(resolveDataRoot(), 'config', 'ai-provider.json');
+  try {
+    const raw = await readFile(configPath, 'utf-8');
+    const parsed = AIProviderConfigSchema.parse(JSON.parse(raw));
+    return parsed.defaultProvider;
+  } catch {
+    return 'claude-code';
+  }
+}
+
+/**
+ * Programmatically clear the default provider's credential.
+ * Called automatically when the provider returns an auth/invalid-key error
+ * so the user is prompted to reconnect rather than seeing a cryptic error loop.
+ */
+export async function clearDefaultProviderCredential(): Promise<void> {
+  const providerId = await readDefaultProviderId();
+  await deleteProviderCredential(providerId);
+  logger.warn('Default provider credential cleared due to auth failure — user must reconnect', {
+    provider: providerId,
+  });
 }
 
 async function readAiConfig(): Promise<AiConfigGql> {
@@ -198,19 +245,9 @@ export async function removeAiCredentialMutation(
   _: unknown,
   args: { provider: string },
 ): Promise<SaveAiCredentialResult> {
-  const mapping = PROVIDER_VAULT_KEYS[args.provider];
-  if (!mapping) {
+  if (!PROVIDER_VAULT_KEYS[args.provider]) {
     return { success: false, error: `Unknown provider: ${args.provider}` };
   }
-
-  // Remove from vault
-  if (vault?.isUnlocked && (await vault.has(mapping.vaultKey))) {
-    await vault.delete(mapping.vaultKey);
-  }
-
-  // Remove from process env
-  process.env[mapping.envKey] = '';
-
-  logger.info('AI credential removed', { provider: args.provider });
+  await deleteProviderCredential(args.provider);
   return { success: true };
 }

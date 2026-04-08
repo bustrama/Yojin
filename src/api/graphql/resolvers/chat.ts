@@ -6,26 +6,12 @@
  * SessionStore is injected via setSessionStore().
  */
 
+import { handleProviderCredentialError, isProviderCredentialError } from '../../../ai-providers/credential-error.js';
 import { type AgentRuntime, DEFAULT_MODEL } from '../../../core/agent-runtime.js';
 import type { AgentLoopEvent, AgentMessage, ContentBlock, ImageMediaType, ToolUseBlock } from '../../../core/types.js';
 import type { SessionStore } from '../../../sessions/types.js';
 import { pubsub } from '../pubsub.js';
 import type { ChatEvent, ToolCardRef } from '../types.js';
-
-/**
- * Detect 401 / authentication_error from Anthropic SDK.
- * The SDK throws `AuthenticationError` (status 401) when OAuth tokens expire.
- * We check for the status code on the error object to avoid importing the SDK directly.
- */
-function isAuthExpiredError(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const e = err as Record<string, unknown>;
-  // Anthropic SDK APIError subclasses carry a numeric `status` property
-  if (e.status === 401) return true;
-  // Fallback: check the error message for the authentication_error pattern
-  const msg = e.message ?? String(err);
-  return typeof msg === 'string' && msg.includes('authentication_error');
-}
 
 /** Display tool prefix — tools named `display_*` trigger TOOL_CARD events. */
 const DISPLAY_TOOL_PREFIX = 'display_';
@@ -169,19 +155,25 @@ export function sendMessageMutation(
         },
       });
     } catch (err) {
-      const errorMessage = isAuthExpiredError(err)
-        ? '[AUTH_EXPIRED] Your Claude session has expired. Please re-authenticate to continue.'
-        : err instanceof Error
-          ? err.message
-          : String(err);
+      let errorMessage: string;
+      if (isProviderCredentialError(err)) {
+        // The agent-loop already dispatches handleProviderCredentialError() when
+        // it detects an auth error, but the chat path catches errors that may
+        // bypass the loop (e.g. provider.initialize() failures). Call it here
+        // too as a safety net — it is idempotent.
+        void handleProviderCredentialError();
+        errorMessage =
+          'Your AI provider key is invalid or has expired. The key has been removed — please go to Settings → Connections to add a new one.';
+      } else {
+        errorMessage = err instanceof Error ? err.message : String(err);
+      }
 
-      const chatEvent: ChatEvent = {
+      pubsub.publish(`chat:${threadId}`, {
         type: 'ERROR',
         threadId,
         messageId,
         error: errorMessage,
-      };
-      pubsub.publish(`chat:${threadId}`, chatEvent);
+      } satisfies ChatEvent);
     }
   })();
 
