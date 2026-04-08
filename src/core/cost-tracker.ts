@@ -32,9 +32,7 @@ const MODEL_PRICING: ReadonlyMap<string, ModelPricing> = new Map([
   ['claude-opus-4', { inputPerMtok: 15, outputPerMtok: 75, cacheReadPerMtok: 1.5, cacheWritePerMtok: 18.75 }],
   ['claude-sonnet-4', { inputPerMtok: 3, outputPerMtok: 15, cacheReadPerMtok: 0.3, cacheWritePerMtok: 3.75 }],
   ['claude-haiku-4', { inputPerMtok: 0.8, outputPerMtok: 4, cacheReadPerMtok: 0.08, cacheWritePerMtok: 1 }],
-  // Legacy (still used in some configs)
-  ['claude-3-5-sonnet', { inputPerMtok: 3, outputPerMtok: 15, cacheReadPerMtok: 0.3, cacheWritePerMtok: 3.75 }],
-  ['claude-3-5-haiku', { inputPerMtok: 0.8, outputPerMtok: 4, cacheReadPerMtok: 0.08, cacheWritePerMtok: 1 }],
+  ['claude-haiku-4-5-20251001', { inputPerMtok: 0.8, outputPerMtok: 4, cacheReadPerMtok: 0.08, cacheWritePerMtok: 1 }],
   // OpenAI (via Codex CLI)
   ['gpt-5.4', { inputPerMtok: 10, outputPerMtok: 40 }],
   ['gpt-5.4-mini', { inputPerMtok: 5, outputPerMtok: 20 }],
