@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 
 import type { AIProvider } from './types.js';
-import { readCodexCredentials } from '../auth/codex-credentials.js';
 import type { AgentMessage, ContentBlock, ToolSchema } from '../core/types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 
@@ -49,13 +48,6 @@ export class VercelAIProvider implements AIProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    // chatgpt auth mode does not support `codex exec` — only API key mode works
-    const creds = await readCodexCredentials();
-    if (creds?.authMode === 'chatgpt') {
-      logger.debug('Codex CLI uses chatgpt auth — codex exec not supported, marking unavailable');
-      return false;
-    }
-
     return new Promise((resolve) => {
       const child = spawn('codex', ['--version'], { timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] });
       child.on('error', () => resolve(false));
