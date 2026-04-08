@@ -215,6 +215,7 @@ export default function WaterfallFlow({ categoryId, onComplete, onPrefill, onAct
       {/* Header with back button */}
       <div className="mb-4 flex items-center gap-3">
         <button
+          type="button"
           onClick={handleBack}
           className="flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full bg-bg-tertiary text-text-secondary transition-colors hover:bg-bg-hover"
           aria-label="Go back"
@@ -245,6 +246,7 @@ export default function WaterfallFlow({ categoryId, onComplete, onPrefill, onAct
           return (
             <button
               key={opt.id}
+              type="button"
               onClick={() => handleSelect(opt.id)}
               className={cn(
                 'relative cursor-pointer overflow-hidden rounded-xl border text-left transition-all duration-200',

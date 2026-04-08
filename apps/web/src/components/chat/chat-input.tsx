@@ -44,26 +44,40 @@ export default function ChatInput({
   const [image, setImage] = useState<ImageAttachment | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const prefillTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefillRafRef = useRef<number | null>(null);
 
   // Pre-fill the input when prefillKey changes (template selection)
   useEffect(() => {
     if (prefillKey !== undefined && prefillKey > 0 && prefillValue !== undefined) {
+      // Capture prefillValue so the closure isn't affected by later prop changes
+      const captured = prefillValue;
       // Defer setState to avoid synchronous setState-in-effect lint rule
-      setTimeout(() => {
-        setValue(prefillValue);
+      prefillTimeoutRef.current = setTimeout(() => {
+        setValue(captured);
         // Select the [TICKER] placeholder if present so the user can type over it
-        requestAnimationFrame(() => {
+        prefillRafRef.current = requestAnimationFrame(() => {
           const el = textareaRef.current;
           if (!el) return;
           el.focus();
-          const start = prefillValue.indexOf('[');
-          const end = prefillValue.indexOf(']');
+          const start = captured.indexOf('[');
+          const end = captured.indexOf(']');
           if (start !== -1 && end !== -1) {
             el.setSelectionRange(start, end + 1);
           }
         });
       }, 0);
     }
+    return () => {
+      if (prefillTimeoutRef.current !== null) {
+        clearTimeout(prefillTimeoutRef.current);
+        prefillTimeoutRef.current = null;
+      }
+      if (prefillRafRef.current !== null) {
+        cancelAnimationFrame(prefillRafRef.current);
+        prefillRafRef.current = null;
+      }
+    };
   }, [prefillKey]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally keyed on prefillKey only
 
   const resize = useCallback(() => {
