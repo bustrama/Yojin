@@ -62,9 +62,18 @@ interface SaveAiCredentialResult {
 // Vault key mapping
 // ---------------------------------------------------------------------------
 
-const PROVIDER_VAULT_KEYS: Record<string, { vaultKey: string; envKey: string }> = {
-  'claude-code': { vaultKey: 'anthropic_api_key', envKey: 'ANTHROPIC_API_KEY' },
-  codex: { vaultKey: 'openai_api_key', envKey: 'OPENAI_API_KEY' },
+/**
+ * Credential variants per provider. The first entry is the "primary" mapping
+ * that `saveAiCredential` writes to; subsequent entries are additional forms
+ * (e.g. OAuth tokens) that coexist with the primary and must all be cleared
+ * when the credential is removed. Save paths use `[0]`, delete paths iterate.
+ */
+const PROVIDER_VAULT_KEYS: Record<string, ReadonlyArray<{ vaultKey: string; envKey: string }>> = {
+  'claude-code': [
+    { vaultKey: 'anthropic_api_key', envKey: 'ANTHROPIC_API_KEY' },
+    { vaultKey: 'anthropic_oauth_token', envKey: 'CLAUDE_CODE_OAUTH_TOKEN' },
+  ],
+  codex: [{ vaultKey: 'openai_api_key', envKey: 'OPENAI_API_KEY' }],
 };
 
 // ---------------------------------------------------------------------------
@@ -80,14 +89,27 @@ async function hasVaultKey(key: string): Promise<boolean> {
  * Delete the stored credential for a provider (vault + env var).
  * Used both by the GraphQL removeAiCredential mutation and by automatic
  * credential invalidation when a provider returns an auth error.
+ *
+ * Clears every credential variant listed in `PROVIDER_VAULT_KEYS[providerId]`
+ * (for claude-code that's both the API-key entry and the OAuth-token entry)
+ * and then resets the in-memory provider so its cached SDK client stops
+ * serving requests with the now-removed credential.
  */
 async function deleteProviderCredential(providerId: string): Promise<void> {
-  const mapping = PROVIDER_VAULT_KEYS[providerId];
-  if (!mapping) return;
-  if (vault?.isUnlocked && (await vault.has(mapping.vaultKey))) {
-    await vault.delete(mapping.vaultKey);
+  const mappings = PROVIDER_VAULT_KEYS[providerId];
+  if (!mappings) return;
+  for (const mapping of mappings) {
+    if (vault?.isUnlocked && (await vault.has(mapping.vaultKey))) {
+      await vault.delete(mapping.vaultKey);
+    }
+    process.env[mapping.envKey] = '';
   }
-  process.env[mapping.envKey] = '';
+  // Reset the in-memory provider so subsequent requests don't reuse the
+  // cached Anthropic client built with the removed credential. Mirrors the
+  // runtime reconfiguration that saveAiCredentialMutation does after writes.
+  if (providerId === 'claude-code') {
+    claudeCodeProvider?.clearCredentials();
+  }
   logger.info('Provider credential removed', { provider: providerId });
 }
 
@@ -223,10 +245,12 @@ export async function saveAiCredentialMutation(
   _: unknown,
   args: { provider: string; apiKey: string },
 ): Promise<SaveAiCredentialResult> {
-  const mapping = PROVIDER_VAULT_KEYS[args.provider];
-  if (!mapping) {
+  const mappings = PROVIDER_VAULT_KEYS[args.provider];
+  if (!mappings) {
     return { success: false, error: `Unknown provider: ${args.provider}` };
   }
+  // First entry is the primary (api_key) mapping used for saves.
+  const primary = mappings[0];
 
   const apiKey = args.apiKey.trim();
   if (!apiKey) {
@@ -240,11 +264,11 @@ export async function saveAiCredentialMutation(
 
   // Store in vault if available
   if (vault?.isUnlocked) {
-    await vault.set(mapping.vaultKey, apiKey);
+    await vault.set(primary.vaultKey, apiKey);
   }
 
   // Set in process env so the provider picks it up
-  process.env[mapping.envKey] = apiKey;
+  process.env[primary.envKey] = apiKey;
 
   // Reconfigure the provider immediately
   if (args.provider === 'claude-code' && claudeCodeProvider) {

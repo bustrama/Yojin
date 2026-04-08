@@ -227,6 +227,25 @@ export class ClaudeCodeProvider implements AIProvider {
   }
 
   /**
+   * Drop the cached SDK client after a credential removal so the provider
+   * stops serving requests with the old key.
+   *
+   * Called from both the explicit `removeAiCredential` mutation path and
+   * the auto-wipe on an api_key-mode auth failure. Without this, subsequent
+   * `completeWithApiKey` calls would reuse the in-memory `Anthropic` client
+   * that was constructed with the now-removed key, masking the removal
+   * until the process restarts.
+   *
+   * In OAuth mode the credential-error handler already skips the wipe
+   * (see `clearDefaultProviderCredential`), so this method is only ever
+   * invoked against an api_key-mode provider.
+   */
+  clearCredentials(): void {
+    this.client = new Anthropic({ apiKey: '' });
+    logger.info('Cleared cached Anthropic client after credential removal');
+  }
+
+  /**
    * Current auth mode. Used by the credential-error handler to decide whether
    * wiping the vault credential on a 401 is the right call — in OAuth mode
    * the real credential lives in the macOS Keychain (or the keychain bridge
