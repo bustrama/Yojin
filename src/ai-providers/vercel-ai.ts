@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 
 import type { AIProvider } from './types.js';
+import { readCodexCredentials } from '../auth/codex-credentials.js';
 import type { AgentMessage, ContentBlock, ToolSchema } from '../core/types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 
@@ -19,6 +20,8 @@ interface CodexEvent {
   type: string;
   item?: { type?: string; text?: string };
   usage?: { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number };
+  message?: string;
+  error?: { message?: string };
 }
 
 /**
@@ -46,6 +49,13 @@ export class VercelAIProvider implements AIProvider {
   }
 
   async isAvailable(): Promise<boolean> {
+    // chatgpt auth mode does not support `codex exec` — only API key mode works
+    const creds = await readCodexCredentials();
+    if (creds?.authMode === 'chatgpt') {
+      logger.debug('Codex CLI uses chatgpt auth — codex exec not supported, marking unavailable');
+      return false;
+    }
+
     return new Promise((resolve) => {
       const child = spawn('codex', ['--version'], { timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] });
       child.on('error', () => resolve(false));
@@ -79,6 +89,7 @@ export class VercelAIProvider implements AIProvider {
       let fullText = '';
       let buffer = '';
       let stderr = '';
+      let codexError = '';
       const usage = { inputTokens: 0, outputTokens: 0 };
 
       child.stdout.on('data', (chunk: Buffer) => {
@@ -91,6 +102,9 @@ export class VercelAIProvider implements AIProvider {
           if (!line.trim()) continue;
           try {
             const event = JSON.parse(line) as CodexEvent;
+            if (event.type === 'error') {
+              codexError = this.extractErrorMessage(event);
+            }
             this.processEvent(event, { usage }, (text) => {
               fullText = text;
             });
@@ -110,6 +124,9 @@ export class VercelAIProvider implements AIProvider {
         if (buffer.trim()) {
           try {
             const event = JSON.parse(buffer) as CodexEvent;
+            if (event.type === 'error') {
+              codexError = this.extractErrorMessage(event);
+            }
             this.processEvent(event, { usage }, (text) => {
               fullText = text;
             });
@@ -119,7 +136,8 @@ export class VercelAIProvider implements AIProvider {
         }
 
         if (code !== 0) {
-          reject(new Error(`codex exec exited with code ${code}: ${stderr || fullText.slice(0, 500)}`));
+          const detail = codexError || stderr || fullText.slice(0, 500);
+          reject(new Error(`codex exec failed: ${detail}`));
           return;
         }
 
@@ -168,6 +186,18 @@ export class VercelAIProvider implements AIProvider {
     if (event.type === 'turn.completed' && event.usage) {
       state.usage.inputTokens = (event.usage.input_tokens ?? 0) + (event.usage.cached_input_tokens ?? 0);
       state.usage.outputTokens = event.usage.output_tokens ?? 0;
+    }
+  }
+
+  /** Extract a human-readable error from a Codex error event. */
+  private extractErrorMessage(event: CodexEvent): string {
+    const raw = event.message ?? event.error?.message ?? '';
+    // Codex wraps API errors as JSON strings inside the message field
+    try {
+      const parsed = JSON.parse(raw) as { error?: { message?: string } };
+      return parsed.error?.message ?? raw;
+    } catch {
+      return raw;
     }
   }
 }

@@ -117,6 +117,7 @@ async function buildFullRuntime(): Promise<{
   providerRouter.registerBackend(claudeProvider);
   providerRouter.registerBackend(new VercelAIProvider());
   await providerRouter.loadConfig();
+  await providerRouter.verifyDefaultProvider();
   providerRouter.startConfigRefresh();
   setOnboardingProvider(providerRouter);
   setOnboardingClaudeCodeProvider(claudeProvider);

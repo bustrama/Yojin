@@ -69,6 +69,29 @@ export class ProviderRouter {
     return { provider, model };
   }
 
+  /**
+   * Verify the configured default provider is actually usable.
+   * If not, log a warning and clear the override so resolve() falls back.
+   */
+  async verifyDefaultProvider(): Promise<void> {
+    const config = this.getConfig();
+    if (!config.defaultProvider) return;
+
+    const provider = this.backends.get(config.defaultProvider);
+    if (!provider) return;
+
+    const available = await provider.isAvailable();
+    if (!available) {
+      logger.warn(`Default provider "${config.defaultProvider}" is not available, falling back`, {
+        registeredProviders: [...this.backends.keys()],
+      });
+      // Reset to claude-code so resolve() uses the fallback
+      if (this.configOverride) {
+        this.configOverride = { ...this.configOverride, defaultProvider: 'claude-code' };
+      }
+    }
+  }
+
   async completeWithTools(params: {
     model: string;
     system?: string;
