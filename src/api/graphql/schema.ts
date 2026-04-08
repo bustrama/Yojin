@@ -1235,6 +1235,7 @@ export const typeDefs = /* GraphQL */ `
     defaultModel: String!
     defaultProvider: String!
     hasAnthropicKey: Boolean!
+    hasAnthropicApiKey: Boolean!
     hasOpenaiKey: Boolean!
   }
 
@@ -1256,6 +1257,7 @@ export const typeDefs = /* GraphQL */ `
     createAlert(rule: AlertRuleInput!): Alert!
     dismissAlert(id: ID!): Alert!
     dismissSignal(signalId: ID!): Boolean!
+    batchDismissSignals(signalIds: [ID!]!): Boolean!
     sendMessage(threadId: String!, message: String!, imageBase64: String, imageMediaType: String): SendMessagePayload!
     createSession: SessionSummary!
     deleteSession(id: ID!): Boolean!

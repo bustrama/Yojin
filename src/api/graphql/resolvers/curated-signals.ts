@@ -494,6 +494,13 @@ export async function dismissSignalResolver(_parent: unknown, args: { signalId: 
   return true;
 }
 
+export async function batchDismissSignalsResolver(_parent: unknown, args: { signalIds: string[] }): Promise<boolean> {
+  if (!signalArchive) throw new Error('SignalArchive not available');
+  const archive = signalArchive;
+  await Promise.all(args.signalIds.map((id) => archive.dismiss(id)));
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Refresh Intel Feed — fetch data sources
 // ---------------------------------------------------------------------------
