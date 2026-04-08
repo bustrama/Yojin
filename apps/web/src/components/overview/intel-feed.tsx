@@ -429,7 +429,12 @@ export default function IntelFeed({
 /* ── Content ────────────────────────────────────────────────────────── */
 
 const POLL_INTERVAL_MS = 30_000;
-const SEEN_IDS_KEY_PREFIX = 'intel-feed-seen-';
+// v2: bumped alongside the FETCH_LIMIT=100 rollout so old 20-item snapshots
+// don't classify backlog items 21–100 as "new" on first refresh (which would
+// spuriously light up the NEW badge and the important-signals pill).
+const SEEN_IDS_KEY_PREFIX = 'intel-feed-seen-v2-';
+const PAGE_SIZE = 20;
+const FETCH_LIMIT = 100;
 
 function persistSeenIds(key: string, ids: Set<string>) {
   try {
@@ -487,9 +492,25 @@ function IntelFeedContent({
 
   const [{ data, fetching, error }, reexecute] = useQuery<IntelFeedQueryResult, IntelFeedQueryVariables>({
     query: INTEL_FEED_QUERY,
-    variables: { limit: 20, feedTarget },
+    variables: { limit: FETCH_LIMIT, feedTarget },
     requestPolicy: 'cache-and-network',
   });
+
+  // Client-side pagination — backend returns up to FETCH_LIMIT, we show
+  // PAGE_SIZE at a time and reveal more via an IntersectionObserver sentinel.
+  const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+
+  // "N new important signals" pill — tracks HIGH/CRITICAL signals that arrived
+  // after the initial load but haven't been seen yet (user is scrolled away
+  // from the top). Click the pill → smooth-scroll to top and mark as seen.
+  const [unseenImportantIds, setUnseenImportantIds] = useState<Set<string>>(new Set());
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
+  const unseenImportantRef = useRef(unseenImportantIds);
+  useEffect(() => {
+    unseenImportantRef.current = unseenImportantIds;
+  }, [unseenImportantIds]);
 
   const [{ data: schedulerData }] = useQuery<SchedulerStatusQueryResult>({
     query: SCHEDULER_STATUS_QUERY,
@@ -595,8 +616,9 @@ function IntelFeedContent({
       };
     });
 
-    // Sort newest first
-    signalItems.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    // Preserve backend ranking (severity DESC → composite score DESC). The
+    // composite score already blends recency, so important recent items still
+    // float to the top while CRITICAL alerts aren't buried by newer LOW noise.
     return signalItems;
   }, [data]);
 
@@ -616,20 +638,41 @@ function IntelFeedContent({
     }
 
     const seenIds = initialIdsRef.current;
-    const freshIds = items.filter((i) => !seenIds.has(i.id)).map((i) => i.id);
+    const freshIdSet = new Set(items.filter((i) => !seenIds.has(i.id)).map((i) => i.id));
 
     // Always sync current items into the stored set
     for (const item of items) seenIds.add(item.id);
     persistSeenIds(storageKey, seenIds);
 
-    if (freshIds.length === 0) return;
+    if (freshIdSet.size === 0) return;
 
-    // Mark as new
+    // Mark as new (for the 10s "NEW" badge animation)
     setNewIds((prev) => {
       const next = new Set(prev);
-      for (const id of freshIds) next.add(id);
+      for (const id of freshIdSet) next.add(id);
       return next;
     });
+
+    // Surface HIGH/CRITICAL freshly-arrived signals in the "N new" pill, but
+    // only if the user is actually scrolled away from the top — otherwise
+    // they can already see the new item land and don't need a pill reminder.
+    // Reading scrollTop directly (rather than the debounced isScrolledDown
+    // state) avoids a race where fresh items arrive before the scroll
+    // handler has fired for the current viewport.
+    const isAwayFromTop = (scrollContainerRef.current?.scrollTop ?? 0) > 100;
+    if (isAwayFromTop) {
+      const importantFresh = items.filter(
+        (i) => freshIdSet.has(i.id) && (i.severity === 'CRITICAL' || i.severity === 'HIGH'),
+      );
+      if (importantFresh.length > 0) {
+        setUnseenImportantIds((prev) => {
+          const next = new Set(prev);
+          for (const i of importantFresh) next.add(i.id);
+          return next;
+        });
+      }
+    }
+    const freshIds = [...freshIdSet];
 
     // Clear badge after 10s
     for (const id of freshIds) {
@@ -716,6 +759,72 @@ function IntelFeedContent({
   }, [items, activeFilter]);
   const totalCount = filteredItems.length;
 
+  // Reset the visible page (and the unseen-important pill) when the user
+  // switches filter or feed target — a tab switch is a "fresh view", jumping
+  // back to the most-important items. Uses the React "store info from
+  // previous renders" pattern to avoid an effect-driven reset that would
+  // trip `react-hooks/set-state-in-effect`.
+  const [prevViewKey, setPrevViewKey] = useState(`${activeFilter}|${feedTarget ?? ''}`);
+  const viewKey = `${activeFilter}|${feedTarget ?? ''}`;
+  if (viewKey !== prevViewKey) {
+    setPrevViewKey(viewKey);
+    setDisplayedCount(PAGE_SIZE);
+    setUnseenImportantIds(new Set());
+  }
+
+  // Jump the scroll container back to the top on view change. Without this,
+  // the sentinel can still be in the IntersectionObserver root margin and
+  // immediately re-grow `displayedCount`, so the intended reset to PAGE_SIZE
+  // would never visually "stick".
+  useEffect(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [viewKey]);
+
+  // Track whether the scroll container is scrolled away from the top. This
+  // drives the "N new important signals" pill visibility and auto-dismisses
+  // the pill when the user scrolls back to the top.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const scrolled = el.scrollTop > 100;
+      setIsScrolledDown(scrolled);
+      if (!scrolled && unseenImportantRef.current.size > 0) {
+        setUnseenImportantIds(new Set());
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  function scrollToTopAndDismiss() {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    setUnseenImportantIds(new Set());
+  }
+
+  const visibleItems = useMemo(() => filteredItems.slice(0, displayedCount), [filteredItems, displayedCount]);
+  const hasMore = displayedCount < filteredItems.length;
+
+  // IntersectionObserver sentinel — bump displayedCount by PAGE_SIZE as the
+  // sentinel scrolls into view. Scoped to the scroll container so it doesn't
+  // fire when the sentinel is offscreen behind other content.
+  useEffect(() => {
+    if (!hasMore) return;
+    const sentinel = loadMoreSentinelRef.current;
+    const root = scrollContainerRef.current;
+    if (!sentinel || !root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setDisplayedCount((c) => c + PAGE_SIZE);
+        }
+      },
+      { root, rootMargin: '200px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore]);
+
   function openModal(item: IntelFeedItem) {
     setModalData({
       title: item.title,
@@ -777,7 +886,35 @@ function IntelFeedContent({
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-auto px-3 pb-4">
+        <div ref={scrollContainerRef} className="flex-1 overflow-auto px-3 pb-4">
+          {/* "N new important signals" pill — shown only while the user is
+              scrolled away from the top, and never on the Insights tab
+              (HIGH/CRITICAL items classify as alerts, so clicking the CTA
+              there would scroll to a list that can't contain the announced
+              items). Click to jump back and mark as seen. */}
+          {unseenImportantIds.size > 0 && isScrolledDown && activeFilter !== 'insights' && (
+            <div className="pointer-events-none sticky top-2 z-20 flex justify-center">
+              <button
+                type="button"
+                onClick={scrollToTopAndDismiss}
+                className="pointer-events-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-primary px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-lg transition-transform hover:scale-105 motion-safe:animate-[fadeSlideIn_0.25s_ease-out]"
+                aria-label={`Jump to ${unseenImportantIds.size} new important signal${unseenImportantIds.size !== 1 ? 's' : ''}`}
+              >
+                <svg
+                  className="h-3 w-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+                {unseenImportantIds.size} new important signal{unseenImportantIds.size !== 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
           {/* Scan progress / verification banner */}
           {scanState && (
             <div
@@ -890,7 +1027,7 @@ function IntelFeedContent({
                 label={activeFilter === 'all' ? 'All' : activeFilter === 'alerts' ? 'Alerts' : 'Insights'}
               />
               <div className="space-y-2">
-                {filteredItems.map((item) => (
+                {visibleItems.map((item) => (
                   <IntelFeedCard
                     key={item.id}
                     item={item}
@@ -919,6 +1056,11 @@ function IntelFeedContent({
                   />
                 ))}
               </div>
+              {hasMore && (
+                <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-4">
+                  <Spinner size="sm" label="Loading more..." />
+                </div>
+              )}
             </div>
           )}
         </div>
