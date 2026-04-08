@@ -31,7 +31,7 @@ interface CodexEvent {
  * - Text-only (no tool_use support — the CLI handles its own tools)
  * - Model selection via `-m` flag
  */
-export class VercelAIProvider implements AIProvider {
+export class CodexProvider implements AIProvider {
   readonly id = 'codex';
   readonly name = 'Codex';
 
