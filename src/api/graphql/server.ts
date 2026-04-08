@@ -44,6 +44,7 @@ import {
   onConnectionStatusSubscription,
 } from './resolvers/connections.js';
 import {
+  batchDismissSignalsResolver,
   curatedSignalsResolver,
   curationStatusResolver,
   dismissSignalResolver,
@@ -238,6 +239,7 @@ const schema = createSchema({
       runFullCuration: runFullCurationResolver,
       refreshIntelFeed: refreshIntelFeedResolver,
       dismissSignal: dismissSignalResolver,
+      batchDismissSignals: batchDismissSignalsResolver,
       addToWatchlist: addToWatchlistMutation,
       removeFromWatchlist: removeFromWatchlistMutation,
       approveAction: approveActionMutation,

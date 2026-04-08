@@ -515,6 +515,7 @@ export const AI_CONFIG_QUERY = gql`
       defaultModel
       defaultProvider
       hasAnthropicKey
+      hasAnthropicApiKey
       hasOpenaiKey
     }
   }
@@ -526,6 +527,7 @@ export const SAVE_AI_CONFIG_MUTATION = gql`
       defaultModel
       defaultProvider
       hasAnthropicKey
+      hasAnthropicApiKey
       hasOpenaiKey
     }
   }
@@ -1385,6 +1387,12 @@ export const INTEL_FEED_QUERY = gql`
 export const DISMISS_SIGNAL_MUTATION = gql`
   mutation DismissSignal($signalId: ID!) {
     dismissSignal(signalId: $signalId)
+  }
+`;
+
+export const BATCH_DISMISS_SIGNALS_MUTATION = gql`
+  mutation BatchDismissSignals($signalIds: [ID!]!) {
+    batchDismissSignals(signalIds: $signalIds)
   }
 `;
 

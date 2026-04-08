@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery } from 'urql';
 import {
+  BATCH_DISMISS_SIGNALS_MUTATION,
   DISMISS_SIGNAL_MUTATION,
   INTEL_FEED_QUERY,
   SCHEDULER_STATUS_QUERY,
@@ -267,7 +268,9 @@ function IntelFeedCard({
   item,
   expanded,
   isNew,
+  selected,
   onToggle,
+  onToggleSelect,
   onDismiss,
   onViewDetails,
   onAskYojin,
@@ -275,7 +278,9 @@ function IntelFeedCard({
   item: IntelFeedItem;
   expanded: boolean;
   isNew: boolean;
+  selected: boolean;
   onToggle: () => void;
+  onToggleSelect: () => void;
   onDismiss: () => void;
   onViewDetails: () => void;
   onAskYojin: () => void;
@@ -283,13 +288,14 @@ function IntelFeedCard({
   return (
     <div
       className={cn(
-        'relative rounded-xl border border-border-light bg-bg-tertiary/60 transition-colors',
-        expanded ? 'bg-bg-tertiary' : 'hover:bg-bg-tertiary',
+        'relative rounded-xl border transition-colors',
+        selected ? 'border-accent-primary/40 bg-accent-primary/5' : 'border-border-light bg-bg-tertiary/60',
+        !selected && (expanded ? 'bg-bg-tertiary' : 'hover:bg-bg-tertiary'),
         isNew &&
           (item.type === 'alert' ? 'motion-safe:animate-new-event-alert' : 'motion-safe:animate-new-event-insight'),
       )}
     >
-      {isNew && (
+      {isNew && !selected && (
         <span
           className={cn(
             'absolute -top-2 -right-2 z-10 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-white shadow-sm motion-safe:animate-badge-in',
@@ -300,26 +306,53 @@ function IntelFeedCard({
         </span>
       )}
       {/* Collapsed header — always visible */}
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left"
-      >
-        <ItemIcon icon={item.icon} type={item.type} expanded={expanded} />
-        <div className="min-w-0 flex-1">
-          <span
-            className={cn(
-              'inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em]',
-              item.type === 'alert' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success',
-            )}
-          >
-            {item.ticker}
-          </span>
-          <p className="mt-0.5 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
-        </div>
-        <span className="flex-shrink-0 text-2xs text-text-muted">{item.publishedTime}</span>
-      </button>
+      <div className="flex w-full items-center gap-3 px-3 py-2.5">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+        >
+          <ItemIcon icon={item.icon} type={item.type} expanded={expanded} />
+          <div className="min-w-0 flex-1">
+            <span
+              className={cn(
+                'inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em]',
+                item.type === 'alert' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success',
+              )}
+            >
+              {item.ticker}
+            </span>
+            <p className="mt-0.5 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
+          </div>
+          <span className="flex-shrink-0 text-2xs text-text-muted">{item.publishedTime}</span>
+        </button>
+        <button
+          type="button"
+          aria-label={selected ? 'Deselect' : 'Select'}
+          onClick={onToggleSelect}
+          className={cn(
+            'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors',
+            selected
+              ? 'border-accent-primary bg-accent-primary'
+              : 'border-border bg-transparent hover:border-text-muted',
+          )}
+        >
+          {selected && (
+            <svg
+              className="h-2.5 w-2.5 text-white"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          )}
+        </button>
+      </div>
 
       {/* Expanded content */}
       <div
@@ -461,6 +494,8 @@ function IntelFeedContent({
   const initialIdsRef = useRef<Set<string> | null>(null);
   const newIdTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [, dismissSignal] = useMutation(DISMISS_SIGNAL_MUTATION);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [, batchDismissSignals] = useMutation(BATCH_DISMISS_SIGNALS_MUTATION);
 
   // ── Scan lifecycle state ────────────────────────────────────────────
   const [scanState, setScanState] = useState<{
@@ -870,6 +905,7 @@ function IntelFeedContent({
                 onClick={() => {
                   setActiveFilter(tab.key);
                   setExpandedId(null);
+                  setSelectedIds(new Set());
                 }}
                 className={cn(
                   'relative cursor-pointer pb-2.5 pt-1.5 text-xs font-medium transition-colors',
@@ -1033,7 +1069,16 @@ function IntelFeedContent({
                     item={item}
                     expanded={expandedId === item.id}
                     isNew={newIds.has(item.id)}
+                    selected={selectedIds.has(item.id)}
                     onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                    onToggleSelect={() =>
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(item.id)) next.delete(item.id);
+                        else next.add(item.id);
+                        return next;
+                      })
+                    }
                     onDismiss={() => {
                       if (expandedId === item.id) setExpandedId(null);
                       void dismissSignal({ signalId: item.id }).then((result) => {
@@ -1065,6 +1110,39 @@ function IntelFeedContent({
           )}
         </div>
       </div>
+
+      {/* Batch dismiss action bar — appears when any items are checked */}
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t border-border bg-bg-secondary px-4 py-3">
+          <span className="text-xs text-text-muted">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="cursor-pointer text-xs font-medium text-text-muted transition-colors hover:text-text-secondary"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const ids = [...selectedIds];
+                setSelectedIds(new Set());
+                void batchDismissSignals({ signalIds: ids }).then((result) => {
+                  if (result.error) {
+                    console.error('Batch dismiss failed', result.error.message);
+                    return;
+                  }
+                  reexecute({ requestPolicy: 'network-only' });
+                });
+              }}
+              className="cursor-pointer rounded-lg border border-error/30 bg-error/10 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/20"
+            >
+              Dismiss {selectedIds.size}
+            </button>
+          </div>
+        </div>
+      )}
 
       <FeedDetailModal open={modalData !== null} onClose={() => setModalData(null)} data={modalData} />
     </>
