@@ -46,6 +46,10 @@ export class ProviderRouter {
     this.configOverride = config;
   }
 
+  defaultModel(): string {
+    return this.getConfig().defaultModel;
+  }
+
   resolve(overrides?: { provider?: string; model?: string }): { provider: AIProvider; model: string } {
     const config = this.getConfig();
     const providerId = overrides?.provider ?? config.defaultProvider;
