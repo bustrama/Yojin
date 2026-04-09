@@ -44,9 +44,9 @@ const cache = cacheExchange({
     SignalSummary: () => null, // embedded — nested under PositionInsight
     PortfolioInsight: () => null, // embedded — nested under InsightReport
     PortfolioItem: () => null, // embedded — nested under PortfolioInsight
-    SnapActionItem: () => null, // embedded — nested under Snap
     AssetSnap: () => null, // embedded — nested under Snap
     MicroInsight: (data) => data.id as string,
+    Action: (data) => data.id as string,
     EmotionState: () => null, // embedded — nested under InsightReport
     RefreshIntelFeedResult: () => null, // embedded — mutation result
     TickerProfileEntry: (data) => data.id as string,
@@ -72,7 +72,6 @@ const cache = cacheExchange({
     BriefingConfig: () => null, // singleton — no id field
     SchedulerStatus: () => null, // singleton — no id field
     SchedulerAssetStatus: () => null, // embedded — keyed by symbol+source in parent
-    Action: (data) => data.id as string,
   },
   updates: {
     Mutation: {
@@ -195,9 +194,6 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'strategySources');
         cache.invalidate('Query', 'skills');
       },
-      dismissAction(_result, _args, cache) {
-        cache.invalidate('Query', 'actions');
-      },
       clearAppData(_result, _args, cache) {
         cache.invalidate('Query', 'portfolio');
         cache.invalidate('Query', 'riskReport');
@@ -209,6 +205,13 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'insightReports');
         cache.invalidate('Query', 'watchlist');
         cache.invalidate('Query', 'deviceInfo');
+        cache.invalidate('Query', 'actions');
+      },
+      approveAction(_result, _args, cache) {
+        cache.invalidate('Query', 'actions');
+      },
+      rejectAction(_result, _args, cache) {
+        cache.invalidate('Query', 'actions');
       },
     },
   },

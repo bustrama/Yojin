@@ -2,17 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery } from 'urql';
 import {
-  ACTIONS_QUERY,
   BATCH_DISMISS_SIGNALS_MUTATION,
-  DISMISS_ACTION_MUTATION,
   DISMISS_SIGNAL_MUTATION,
   INTEL_FEED_QUERY,
   SCHEDULER_STATUS_QUERY,
   TRIGGER_MICRO_ANALYSIS_MUTATION,
 } from '../../api/documents';
 import type {
-  ActionsQueryResult,
-  ActionsQueryVariables,
   FeedTarget,
   IntelFeedQueryResult,
   IntelFeedQueryVariables,
@@ -28,8 +24,8 @@ import FeedDetailModal from './feed-detail-modal';
 import type { FeedDetailData } from './feed-detail-modal';
 import Spinner from '../common/spinner';
 
-type ItemType = 'alert' | 'insight' | 'action';
-type FilterTab = 'all' | 'alerts' | 'insights' | 'actions';
+type ItemType = 'alert' | 'insight';
+type FilterTab = 'all' | 'alerts' | 'insights';
 type IconName = 'rebalance' | 'dollar' | 'box' | 'warehouse' | 'clock' | 'trending' | 'bubble' | 'trending-up';
 
 export interface FeedPendingUpdate {
@@ -61,10 +57,6 @@ interface IntelFeedItem {
   source: string | null;
   link: string | null;
   data?: DataRow[];
-  isAction?: boolean;
-  skillName?: string;
-  triggerInfo?: string;
-  expiresAt?: string;
 }
 
 /** Map signal type to an icon name. */
@@ -91,26 +83,22 @@ function classifySignal(signal: { outputType?: string | null; severity: IntelFee
 const categoryIconBg: Record<ItemType, { default: string; expanded: string }> = {
   alert: { default: 'bg-warning/10', expanded: 'bg-warning/20' },
   insight: { default: 'bg-success/10', expanded: 'bg-success/20' },
-  action: { default: 'bg-market/10', expanded: 'bg-market/20' },
 };
 
 const categoryIconText: Record<ItemType, string> = {
   alert: 'text-warning',
   insight: 'text-success',
-  action: 'text-market',
 };
 
 const categoryLabel: Record<ItemType, string> = {
   alert: 'ALERT',
   insight: 'INSIGHT',
-  action: 'ACTION',
 };
 
 const filterTabs: { key: FilterTab; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'alerts', label: 'Alerts' },
   { key: 'insights', label: 'Insights' },
-  { key: 'actions', label: 'Actions' },
 ];
 
 /* ── Icons ──────────────────────────────────────────────────────────── */
@@ -313,7 +301,7 @@ function IntelFeedCard({
         <span
           className={cn(
             'absolute -top-2 -right-2 z-10 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-white shadow-sm motion-safe:animate-badge-in',
-            item.type === 'alert' ? 'bg-warning' : item.type === 'action' ? 'bg-market' : 'bg-success',
+            item.type === 'alert' ? 'bg-warning' : 'bg-success',
           )}
         >
           NEW
@@ -332,19 +320,12 @@ function IntelFeedCard({
             <span
               className={cn(
                 'inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em]',
-                item.type === 'alert'
-                  ? 'bg-warning/15 text-warning'
-                  : item.type === 'action'
-                    ? 'bg-market/15 text-market'
-                    : 'bg-success/15 text-success',
+                item.type === 'alert' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success',
               )}
             >
               {item.ticker}
             </span>
             <p className="mt-0.5 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
-            {item.skillName && (
-              <span className="mt-0.5 text-[10px] font-medium text-market/80">{item.skillName}</span>
-            )}
           </div>
           <span className="flex-shrink-0 text-2xs text-text-muted">{item.publishedTime}</span>
         </button>
@@ -389,23 +370,13 @@ function IntelFeedCard({
             )}
 
             {/* Meta row */}
-            {item.isAction ? (
-              <div className="mt-2 flex items-center gap-x-2 rounded-lg border border-border-light bg-bg-primary/50 px-2.5 py-1.5 text-2xs text-text-muted">
-                {item.skillName && <span>{item.skillName}</span>}
-                {item.skillName && item.triggerInfo && <span className="text-border">|</span>}
-                {item.triggerInfo && <span>{item.triggerInfo}</span>}
-                {item.expiresAt && <span className="text-border">|</span>}
-                {item.expiresAt && <span>expires {timeAgo(item.expiresAt)}</span>}
-              </div>
-            ) : (
-              <div className="mt-2 flex items-center gap-x-2 rounded-lg border border-border-light bg-bg-primary/50 px-2.5 py-1.5 text-2xs text-text-muted">
-                {item.source && <span>{item.source}</span>}
-                {item.source && <span className="text-border">|</span>}
-                <span>{timeAgo(item.ingestedAt)}</span>
-                <span className="text-border">|</span>
-                <span>{item.signalType.replace(/_/g, ' ')}</span>
-              </div>
-            )}
+            <div className="mt-2 flex items-center gap-x-2 rounded-lg border border-border-light bg-bg-primary/50 px-2.5 py-1.5 text-2xs text-text-muted">
+              {item.source && <span>{item.source}</span>}
+              {item.source && <span className="text-border">|</span>}
+              <span>{timeAgo(item.ingestedAt)}</span>
+              <span className="text-border">|</span>
+              <span>{item.signalType.replace(/_/g, ' ')}</span>
+            </div>
 
             {/* CTA buttons */}
             <div className="mt-3 flex items-center gap-2">
@@ -525,7 +496,6 @@ function IntelFeedContent({
   const initialIdsRef = useRef<Set<string> | null>(null);
   const newIdTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [, dismissSignal] = useMutation(DISMISS_SIGNAL_MUTATION);
-  const [, dismissAction] = useMutation(DISMISS_ACTION_MUTATION);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [, batchDismissSignals] = useMutation(BATCH_DISMISS_SIGNALS_MUTATION);
 
@@ -560,16 +530,6 @@ function IntelFeedContent({
   const [{ data, fetching, error }, reexecute] = useQuery<IntelFeedQueryResult, IntelFeedQueryVariables>({
     query: INTEL_FEED_QUERY,
     variables: { limit: FETCH_LIMIT, feedTarget },
-    requestPolicy: 'cache-and-network',
-  });
-
-  const actionQueryVars = useMemo<ActionsQueryVariables>(
-    () => ({ status: 'PENDING', limit: FETCH_LIMIT, dismissed: false }),
-    [],
-  );
-  const [{ data: actionsData }, reexecuteActions] = useQuery<ActionsQueryResult, ActionsQueryVariables>({
-    query: ACTIONS_QUERY,
-    variables: actionQueryVars,
     requestPolicy: 'cache-and-network',
   });
 
@@ -638,16 +598,15 @@ function IntelFeedContent({
 
   // Poll for new data
   useEffect(() => {
-    const id = setInterval(() => {
-      reexecute({ requestPolicy: 'network-only' });
-      reexecuteActions({ requestPolicy: 'network-only' });
-    }, POLL_INTERVAL_MS);
+    const id = setInterval(() => reexecute({ requestPolicy: 'network-only' }), POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [reexecute, reexecuteActions]);
+  }, [reexecute]);
 
   // Map API data into IntelFeedItem[]
   const items: IntelFeedItem[] = useMemo(() => {
-    const signalItems: IntelFeedItem[] = (data?.curatedSignals ?? []).map((cs) => {
+    if (!data) return [];
+
+    const signalItems: IntelFeedItem[] = data.curatedSignals.map((cs) => {
       const s = cs.signal;
       const severity = cs.severity ?? 'LOW';
       const itemType = classifySignal({ outputType: s.outputType, severity });
@@ -694,37 +653,11 @@ function IntelFeedContent({
       };
     });
 
-    const actionItems: IntelFeedItem[] = (actionsData?.actions ?? []).map((action) => {
-      const skillName = action.source.startsWith('skill:') ? action.source.slice('skill:'.length).trim() : null;
-      return {
-        id: `action:${action.id}`,
-        type: 'action' as const,
-        severity: 'HIGH' as const,
-        signalType: 'ACTION',
-        ticker: skillName ?? 'ACTION',
-        tickers: [],
-        sentiment: null,
-        title: action.what,
-        time: timeAgo(action.createdAt),
-        publishedAt: action.createdAt,
-        ingestedAt: action.createdAt,
-        publishedTime: timeAgo(action.createdAt),
-        icon: 'clock' as IconName,
-        description: action.why,
-        source: action.source,
-        link: null,
-        isAction: true,
-        skillName: skillName ?? undefined,
-        triggerInfo: action.riskContext ?? undefined,
-        expiresAt: action.expiresAt,
-      };
-    });
-
     // Preserve backend ranking (severity DESC → composite score DESC). The
     // composite score already blends recency, so important recent items still
     // float to the top while CRITICAL alerts aren't buried by newer LOW noise.
-    return [...actionItems, ...signalItems];
-  }, [data, actionsData]);
+    return signalItems;
+  }, [data]);
 
   useEffect(() => {
     latestItemsRef.current = items;
@@ -859,10 +792,7 @@ function IntelFeedContent({
 
   const filteredItems = useMemo(() => {
     if (activeFilter === 'all') return items;
-    if (activeFilter === 'alerts') return items.filter((item) => item.type === 'alert');
-    if (activeFilter === 'insights') return items.filter((item) => item.type === 'insight');
-    if (activeFilter === 'actions') return items.filter((item) => item.type === 'action');
-    return items;
+    return items.filter((item) => item.type === (activeFilter === 'alerts' ? 'alert' : 'insight'));
   }, [items, activeFilter]);
   const totalCount = filteredItems.length;
 
@@ -938,8 +868,8 @@ function IntelFeedContent({
       source: item.source ?? item.signalType,
       time: item.publishedTime,
       link: item.link,
-      tag: item.isAction ? 'ACTION' : categoryLabel[item.type],
-      tagVariant: item.type === 'alert' ? 'warning' : item.isAction ? 'info' : 'success',
+      tag: categoryLabel[item.type],
+      tagVariant: item.type === 'alert' ? 'warning' : 'success',
       sentiment:
         item.sentiment === 'bullish' || item.sentiment === 'bearish' || item.sentiment === 'neutral'
           ? item.sentiment
@@ -1000,7 +930,7 @@ function IntelFeedContent({
               (HIGH/CRITICAL items classify as alerts, so clicking the CTA
               there would scroll to a list that can't contain the announced
               items). Click to jump back and mark as seen. */}
-          {unseenImportantIds.size > 0 && isScrolledDown && activeFilter !== 'insights' && activeFilter !== 'actions' && (
+          {unseenImportantIds.size > 0 && isScrolledDown && activeFilter !== 'insights' && (
             <div className="pointer-events-none sticky top-2 z-20 flex justify-center">
               <button
                 type="button"
@@ -1122,27 +1052,17 @@ function IntelFeedContent({
               </svg>
               <div>
                 <p className="text-sm font-medium text-text-secondary">
-                  {activeFilter === 'actions' ? 'No pending actions' : activeFilter === 'all' ? 'No intel yet' : `No ${activeFilter} yet`}
+                  {activeFilter === 'all' ? 'No intel yet' : `No ${activeFilter} yet`}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-text-muted">
-                  {activeFilter === 'actions'
-                    ? 'Actions will appear here when your strategies detect trading opportunities.'
-                    : 'Intel signals will appear here once your data sources are configured and the curation pipeline runs.'}
+                  Intel signals will appear here once your data sources are configured and the curation pipeline runs.
                 </p>
               </div>
             </div>
           ) : (
             <div>
               <SectionHeader
-                label={
-                  activeFilter === 'all'
-                    ? 'All'
-                    : activeFilter === 'alerts'
-                      ? 'Alerts'
-                      : activeFilter === 'actions'
-                        ? 'Actions'
-                        : 'Insights'
-                }
+                label={activeFilter === 'all' ? 'All' : activeFilter === 'alerts' ? 'Alerts' : 'Insights'}
               />
               <div className="space-y-2">
                 {visibleItems.map((item) => (
@@ -1163,24 +1083,13 @@ function IntelFeedContent({
                     }
                     onDismiss={() => {
                       if (expandedId === item.id) setExpandedId(null);
-                      if (item.isAction) {
-                        const actionId = item.id.replace(/^action:/, '');
-                        void dismissAction({ id: actionId }).then((result) => {
-                          if (result.error) {
-                            console.error('Dismiss action failed', result.error.message);
-                            return;
-                          }
-                          reexecuteActions({ requestPolicy: 'network-only' });
-                        });
-                      } else {
-                        void dismissSignal({ signalId: item.id }).then((result) => {
-                          if (result.error) {
-                            console.error('Dismiss failed', result.error.message);
-                            return;
-                          }
-                          reexecute({ requestPolicy: 'network-only' });
-                        });
-                      }
+                      void dismissSignal({ signalId: item.id }).then((result) => {
+                        if (result.error) {
+                          console.error('Dismiss failed', result.error.message);
+                          return;
+                        }
+                        reexecute({ requestPolicy: 'network-only' });
+                      });
                     }}
                     onViewDetails={() => openModal(item)}
                     onAskYojin={() =>
@@ -1221,22 +1130,13 @@ function IntelFeedContent({
               onClick={() => {
                 const ids = [...selectedIds];
                 setSelectedIds(new Set());
-                const actionIds = ids.filter((id) => id.startsWith('action:')).map((id) => id.replace(/^action:/, ''));
-                const signalIds = ids.filter((id) => !id.startsWith('action:'));
-                if (actionIds.length > 0) {
-                  void Promise.all(actionIds.map((id) => dismissAction({ id }))).then(() => {
-                    reexecuteActions({ requestPolicy: 'network-only' });
-                  });
-                }
-                if (signalIds.length > 0) {
-                  void batchDismissSignals({ signalIds }).then((result) => {
-                    if (result.error) {
-                      console.error('Batch dismiss failed', result.error.message);
-                      return;
-                    }
-                    reexecute({ requestPolicy: 'network-only' });
-                  });
-                }
+                void batchDismissSignals({ signalIds: ids }).then((result) => {
+                  if (result.error) {
+                    console.error('Batch dismiss failed', result.error.message);
+                    return;
+                  }
+                  reexecute({ requestPolicy: 'network-only' });
+                });
               }}
               className="cursor-pointer rounded-lg border border-error/30 bg-error/10 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/20"
             >
@@ -1327,7 +1227,7 @@ function MockIntelFeed() {
           </span>
         </div>
         <div className="flex gap-5 border-b border-border px-4">
-          {(['All', 'Alerts', 'Insights', 'Actions'] as const).map((tab, i) => (
+          {(['All', 'Alerts', 'Insights'] as const).map((tab, i) => (
             <div
               key={tab}
               className={cn(

@@ -583,7 +583,6 @@ export const typeDefs = /* GraphQL */ `
     createdAt: String!
     resolvedAt: String
     resolvedBy: String
-    dismissedAt: String
   }
 
   input DataSourceInput {
@@ -1247,12 +1246,12 @@ export const typeDefs = /* GraphQL */ `
     notificationPreferences: [NotificationPreferences!]!
     snap: Snap
     activityLog(types: [ActivityEventType!], since: String, limit: Int): [ActivityEvent!]!
-    actions(status: ActionStatus, since: String, limit: Int, dismissed: Boolean): [Action!]!
+    actions(status: ActionStatus, since: String, limit: Int): [Action!]!
     action(id: ID!): Action
     skills(category: SkillCategory, active: Boolean, style: String, query: String): [Skill!]!
-    strategySources: [StrategySource!]!
     skill(id: ID!): Skill
     exportSkill(id: ID!): String!
+    strategySources: [StrategySource!]!
     tickerProfile(ticker: String!): TickerProfile
     tickerProfiles(tickers: [String!]!): [TickerProfile!]!
     microInsight(symbol: String!): MicroInsight
@@ -1327,7 +1326,6 @@ export const typeDefs = /* GraphQL */ `
     removeFromWatchlist(symbol: String!): WatchlistResult!
     approveAction(id: ID!): Action!
     rejectAction(id: ID!): Action!
-    dismissAction(id: ID!): Action!
     toggleSkill(id: ID!, active: Boolean!): Skill!
     createSkill(input: CreateSkillInput!): Skill!
     updateSkill(id: ID!, input: UpdateSkillInput!): Skill!

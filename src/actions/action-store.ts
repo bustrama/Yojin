@@ -27,7 +27,6 @@ interface ActionQueryFilter {
   status?: ActionStatus;
   since?: string; // ISO date string
   limit?: number;
-  dismissed?: boolean;
 }
 
 type ActionResult<T> = { success: true; data: T } | { success: false; error: string };
@@ -62,18 +61,30 @@ export class ActionStore {
     return this.resolve(id, 'REJECTED', 'user');
   }
 
-  /** Dismiss an action (soft-hide without changing status). Appends updated version. */
-  async dismiss(id: string): Promise<ActionResult<Action>> {
+  /**
+   * Supersede a pending action — marked EXPIRED with resolvedBy='superseded'.
+   * Used when a higher-priority action replaces an older one for the same ticker.
+   */
+  async supersede(id: string): Promise<ActionResult<Action>> {
     const existing = await this.getById(id);
     if (!existing) {
       return { success: false, error: `Action not found: ${id}` };
     }
+    if (existing.status !== 'PENDING') {
+      return {
+        success: false,
+        error: `Action ${id} is already ${existing.status}, cannot supersede`,
+      };
+    }
+
     const updated: Action = {
       ...existing,
-      dismissedAt: new Date().toISOString(),
+      status: 'EXPIRED',
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: 'superseded',
     };
     await this.appendAction(updated);
-    logger.info('Action dismissed', { id });
+    logger.info('Action superseded', { id });
     return { success: true, data: updated };
   }
 
@@ -85,7 +96,6 @@ export class ActionStore {
 
     for (const action of all) {
       if (action.status !== 'PENDING') continue;
-      if (action.dismissedAt) continue;
 
       if (action.expiresAt <= now) {
         // Auto-expire
@@ -138,9 +148,6 @@ export class ActionStore {
         const effectiveStatus = action.status === 'PENDING' && action.expiresAt <= now ? 'EXPIRED' : action.status;
 
         if (filter.status && effectiveStatus !== filter.status) continue;
-
-        if (filter.dismissed === true && !action.dismissedAt) continue;
-        if (filter.dismissed !== true && action.dismissedAt) continue;
 
         // Return with effective status
         if (effectiveStatus !== action.status) {

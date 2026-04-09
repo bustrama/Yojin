@@ -1,7 +1,10 @@
 {
-  "name": "yojin",
-  "version": "0.1.0",
+  "name": "@yojinhq/yojin",
+  "version": "1.0.0-rc.0",
   "description": "Yojin is a personal AI finance agent that runs locally, connects to all your investment accounts, delivers personalized portfolio intelligence, and executes trades across accounts.",
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -20,7 +23,10 @@
   "files": [
     "dist/",
     "data/default/",
-    "yojin.mjs"
+    "apps/web/dist/",
+    "yojin.mjs",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": "./dist/src/index.js",
@@ -29,6 +35,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:release": "rm -rf dist apps/web/dist && tsc && pnpm --filter @yojin/web build",
+    "prepublishOnly": "pnpm build:release && node scripts/verify-release.mjs",
     "dev": "concurrently -n server,web -c blue,magenta \"pnpm dev:be\" \"pnpm dev:fe\"",
     "chat": "node --disable-warning=DEP0040 --import tsx/esm src/entry.ts chat",
     "setup": "node --disable-warning=DEP0040 --import tsx/esm src/entry.ts setup",

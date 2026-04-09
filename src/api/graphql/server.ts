@@ -7,13 +7,7 @@
 import { createSchema, createYoga } from 'graphql-yoga';
 import type { Hono } from 'hono';
 
-import {
-  actionResolver,
-  actionsResolver,
-  approveActionMutation,
-  dismissActionMutation,
-  rejectActionMutation,
-} from './resolvers/actions.js';
+import { actionResolver, actionsResolver, approveActionMutation, rejectActionMutation } from './resolvers/actions.js';
 import { activityLogQuery } from './resolvers/activity-log.js';
 import {
   aiConfigQuery,
@@ -199,8 +193,8 @@ const schema = createSchema({
       action: actionResolver,
       skills: resolveSkills,
       skill: resolveSkill,
-      strategySources: resolveStrategySources,
       exportSkill: resolveExportSkill,
+      strategySources: resolveStrategySources,
       tickerProfile: tickerProfileQuery,
       tickerProfiles: tickerProfilesQuery,
       microInsight: microInsightQuery,
@@ -259,7 +253,6 @@ const schema = createSchema({
       removeFromWatchlist: removeFromWatchlistMutation,
       approveAction: approveActionMutation,
       rejectAction: rejectActionMutation,
-      dismissAction: dismissActionMutation,
       toggleSkill: resolveToggleSkill,
       createSkill: resolveCreateSkill,
       updateSkill: resolveUpdateSkill,
