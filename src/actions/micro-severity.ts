@@ -3,17 +3,20 @@
  * observation should be promoted into an Action (and supersede older pending
  * ones for the same ticker).
  *
- * Severity acts as priority: 1 = critical, 0 = noise. Computed from the
- * MicroInsight's conviction and rating — the same numbers the LLM already
- * produces, no extra call needed.
+ * Severity acts as priority: 1 = critical, 0 = noise. Source of truth is the
+ * LLM-emitted `severity` field on MicroInsight (the analyzer prompt walks the
+ * model through a 0–1 calibration ladder). For back-compat with insights
+ * written before that field existed, we fall back to a derived formula
+ * (conviction × rating multiplier) — same heuristic we used pre-PR.
  */
 
 import type { InsightRating } from '../insights/types.js';
 
 /**
- * Multiplier per rating. Extremes (VERY_*) dominate, directional takes a
- * modest bump, NEUTRAL is damped — neutral 90% conviction shouldn't outrank
- * a BEARISH 70% conviction on the same ticker.
+ * Fallback multiplier per rating, used only when a MicroInsight lacks an
+ * LLM-emitted severity (older JSONL files). Extremes (VERY_*) dominate,
+ * directional takes a modest bump, NEUTRAL is damped — neutral 90% conviction
+ * shouldn't outrank a BEARISH 70% conviction on the same ticker.
  */
 const RATING_MULTIPLIER: Record<InsightRating, number> = {
   VERY_BULLISH: 1.0,
@@ -23,11 +26,26 @@ const RATING_MULTIPLIER: Record<InsightRating, number> = {
   NEUTRAL: 0.4,
 };
 
-/** Score a micro insight on 0–1. */
-export function computeMicroActionSeverity(insight: { rating: InsightRating; conviction: number }): number {
+export interface SeverityInput {
+  rating: InsightRating;
+  conviction: number;
+  severity?: number;
+}
+
+/**
+ * Score a micro insight on 0–1. Prefers the LLM-emitted `severity` field;
+ * falls back to `conviction × rating multiplier` when absent.
+ */
+export function computeMicroActionSeverity(insight: SeverityInput): number {
+  if (typeof insight.severity === 'number') {
+    return clamp01(insight.severity);
+  }
   const multiplier = RATING_MULTIPLIER[insight.rating] ?? 0.4;
-  const raw = insight.conviction * multiplier;
-  return Math.max(0, Math.min(1, raw));
+  return clamp01(insight.conviction * multiplier);
+}
+
+function clamp01(n: number): number {
+  return Math.max(0, Math.min(1, n));
 }
 
 /** Canonical `source` field value for an action emitted by the micro runner. */
