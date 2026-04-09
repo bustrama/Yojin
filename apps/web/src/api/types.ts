@@ -1130,6 +1130,32 @@ export interface Action {
   resolvedBy: string | null;
 }
 
+export interface ActionsQueryVariables {
+  status?: ActionStatus;
+  since?: string;
+  limit?: number;
+}
+
+export interface ActionsQueryResult {
+  actions: Action[];
+}
+
+export interface ApproveActionVariables {
+  id: string;
+}
+
+export interface ApproveActionMutationResult {
+  approveAction: Action;
+}
+
+export interface RejectActionVariables {
+  id: string;
+}
+
+export interface RejectActionMutationResult {
+  rejectAction: Action;
+}
+
 // ---------------------------------------------------------------------------
 // Intel Feed
 // ---------------------------------------------------------------------------

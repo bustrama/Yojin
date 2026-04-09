@@ -1533,3 +1533,54 @@ export const IMPORT_SKILL_MUTATION = gql`
     }
   }
 `;
+
+// ---------------------------------------------------------------------------
+// Actions — the TLDR/priority surface. Ranked by severity and gated by the
+// micro-runner's supersede logic; new critical items auto-evict weaker ones
+// for the same ticker. See src/insights/micro-runner.ts.
+// ---------------------------------------------------------------------------
+
+export const ACTION_FIELDS = gql`
+  fragment ActionFields on Action {
+    id
+    signalId
+    skillId
+    what
+    why
+    source
+    riskContext
+    severity
+    status
+    expiresAt
+    createdAt
+    resolvedAt
+    resolvedBy
+  }
+`;
+
+export const ACTIONS_QUERY = gql`
+  query Actions($status: ActionStatus, $since: String, $limit: Int) {
+    actions(status: $status, since: $since, limit: $limit) {
+      ...ActionFields
+    }
+  }
+  ${ACTION_FIELDS}
+`;
+
+export const APPROVE_ACTION_MUTATION = gql`
+  mutation ApproveAction($id: ID!) {
+    approveAction(id: $id) {
+      ...ActionFields
+    }
+  }
+  ${ACTION_FIELDS}
+`;
+
+export const REJECT_ACTION_MUTATION = gql`
+  mutation RejectAction($id: ID!) {
+    rejectAction(id: $id) {
+      ...ActionFields
+    }
+  }
+  ${ACTION_FIELDS}
+`;
