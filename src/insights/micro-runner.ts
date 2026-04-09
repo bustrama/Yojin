@@ -91,13 +91,17 @@ export async function runMicroResearch(
     const texts = insight.assetActions.filter((t) => t.trim().length > 0);
     if (texts.length > 0) {
       const newSeverity = computeMicroActionSeverity(insight);
-      const source = microActionSource(ticker);
+      const actionSource = microActionSource(ticker);
 
       // Find pending micro actions already on file for this ticker.
       // We query a window of pending actions and filter by source client-side —
-      // ActionStore has no source filter, and the pending set is small.
+      // ActionStore has no source filter, and the pending set is small in
+      // practice (one entry per tracked ticker at most). The limit is an
+      // upper bound on the whole pending set, not just this ticker's slice;
+      // if we ever exceed 200 pending actions globally we would need to page
+      // or add a source filter to ActionStore.query.
       const pending = await deps.actionStore.query({ status: 'PENDING', limit: 200 });
-      const sameTicker = pending.filter((a) => a.source === source);
+      const sameTicker = pending.filter((a) => a.source === actionSource);
       const maxExistingSeverity = sameTicker.reduce((max, a) => Math.max(max, a.severity ?? 0), 0);
 
       if (sameTicker.length > 0 && newSeverity <= maxExistingSeverity) {
@@ -119,19 +123,23 @@ export async function runMicroResearch(
         const expiresAt = new Date(Date.now() + ACTION_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
         const now = new Date().toISOString();
 
-        // Only push channel notifications for critical insights — extreme ratings
-        // or high-conviction directional signals. All actions are still visible in the web UI.
+        // Only push channel notifications for critical insights. Rating and
+        // conviction alone are not enough — a VERY_BULLISH rating on a
+        // trivial catalyst (severity 0.1) should not wake the user. Require
+        // the LLM-assigned severity to clear the "high" band (≥ 0.7).
+        // All actions remain visible in the web UI regardless of this gate.
         const isCritical =
-          insight.rating === 'VERY_BULLISH' ||
-          insight.rating === 'VERY_BEARISH' ||
-          (insight.conviction >= 0.8 && insight.rating !== 'NEUTRAL');
+          newSeverity >= 0.7 &&
+          (insight.rating === 'VERY_BULLISH' ||
+            insight.rating === 'VERY_BEARISH' ||
+            (insight.conviction >= 0.8 && insight.rating !== 'NEUTRAL'));
 
         for (const actionText of texts) {
           const result = await deps.actionStore.create({
             id: randomUUID(),
             what: actionText,
             why: `Observation from ${ticker} research: ${insight.thesis.slice(0, 100)}`,
-            source,
+            source: actionSource,
             severity: newSeverity,
             status: 'PENDING',
             expiresAt,

@@ -101,6 +101,14 @@ export async function analyzeTicker(
     const parsed: unknown = JSON.parse(jsonMatch[0]);
     const analysis = parsed as Record<string, unknown>;
 
+    // Clamp severity to [0, 1] before schema validation. The LLM occasionally
+    // emits values slightly outside the ladder (e.g. 1.05, -0.02); those would
+    // fail `MicroInsightSchema.parse()` and drop the whole insight to the
+    // fallback path, losing an otherwise-valid analysis.
+    const rawSeverity = typeof analysis.severity === 'number' ? analysis.severity : undefined;
+    const severity =
+      rawSeverity !== undefined && Number.isFinite(rawSeverity) ? Math.max(0, Math.min(1, rawSeverity)) : undefined;
+
     const insight = MicroInsightSchema.parse({
       id: `micro-${randomUUID()}`,
       symbol: brief.symbol,
@@ -108,7 +116,7 @@ export async function analyzeTicker(
       source: options.source,
       rating: analysis.rating,
       conviction: analysis.conviction,
-      severity: typeof analysis.severity === 'number' ? analysis.severity : undefined,
+      severity,
       thesis: analysis.thesis,
       keyDevelopments: analysis.keyDevelopments ?? [],
       risks: analysis.risks ?? [],

@@ -38,7 +38,7 @@ function extractTicker(source: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
-export default function YojinSnapCard() {
+export function YojinSnapCard() {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
   const [result, reexecute] = useActions({ status: 'PENDING', limit: 50 });
   const actions = result.data?.actions;
