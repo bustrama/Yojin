@@ -1122,6 +1122,7 @@ export interface Action {
   why: string;
   source: string;
   riskContext: string | null;
+  severity: number | null;
   status: ActionStatus;
   expiresAt: string;
   createdAt: string;
