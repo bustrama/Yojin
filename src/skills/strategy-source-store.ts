@@ -38,7 +38,7 @@ export class StrategySourceStore {
       await this.seedDefault();
     }
 
-    logger.info(`Loaded ${this.sources.size} strategy sources`);
+    logger.debug(`Loaded ${this.sources.size} strategy sources`);
   }
 
   getAll(): StrategySource[] {

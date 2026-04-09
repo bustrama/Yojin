@@ -578,11 +578,13 @@ export const typeDefs = /* GraphQL */ `
     source: String!
     riskContext: String
     severity: Float
+    severityLabel: String!
     status: ActionStatus!
     expiresAt: String!
     createdAt: String!
     resolvedAt: String
     resolvedBy: String
+    dismissedAt: String
   }
 
   input DataSourceInput {
@@ -1157,6 +1159,7 @@ export const typeDefs = /* GraphQL */ `
     enabled: Boolean!
     lastSyncedAt: String
     label: String
+    isDefault: Boolean!
   }
 
   type StrategySyncResult {
@@ -1164,10 +1167,6 @@ export const typeDefs = /* GraphQL */ `
     skipped: Int!
     failed: Int!
     errors: [String!]!
-  }
-
-  input AddStrategySourceInput {
-    url: String!
   }
 
   # ---------------------------------------------------------------------------
@@ -1246,7 +1245,7 @@ export const typeDefs = /* GraphQL */ `
     notificationPreferences: [NotificationPreferences!]!
     snap: Snap
     activityLog(types: [ActivityEventType!], since: String, limit: Int): [ActivityEvent!]!
-    actions(status: ActionStatus, since: String, limit: Int): [Action!]!
+    actions(status: ActionStatus, since: String, limit: Int, dismissed: Boolean): [Action!]!
     action(id: ID!): Action
     skills(category: SkillCategory, active: Boolean, style: String, query: String): [Skill!]!
     skill(id: ID!): Skill
@@ -1326,12 +1325,13 @@ export const typeDefs = /* GraphQL */ `
     removeFromWatchlist(symbol: String!): WatchlistResult!
     approveAction(id: ID!): Action!
     rejectAction(id: ID!): Action!
+    dismissAction(id: ID!): Action!
     toggleSkill(id: ID!, active: Boolean!): Skill!
     createSkill(input: CreateSkillInput!): Skill!
     updateSkill(id: ID!, input: UpdateSkillInput!): Skill!
     deleteSkill(id: ID!): Boolean!
     importSkill(markdown: String!): Skill!
-    addStrategySource(input: AddStrategySourceInput!): StrategySource!
+    addStrategySource(url: String!): StrategySource!
     removeStrategySource(id: ID!): Boolean!
     toggleStrategySource(id: ID!, enabled: Boolean!): StrategySource!
     syncStrategies: StrategySyncResult!

@@ -1550,17 +1550,19 @@ export const ACTION_FIELDS = gql`
     source
     riskContext
     severity
+    severityLabel
     status
     expiresAt
     createdAt
     resolvedAt
     resolvedBy
+    dismissedAt
   }
 `;
 
 export const ACTIONS_QUERY = gql`
-  query Actions($status: ActionStatus, $since: String, $limit: Int) {
-    actions(status: $status, since: $since, limit: $limit) {
+  query Actions($status: ActionStatus, $since: String, $limit: Int, $dismissed: Boolean) {
+    actions(status: $status, since: $since, limit: $limit, dismissed: $dismissed) {
       ...ActionFields
     }
   }
@@ -1585,34 +1587,45 @@ export const REJECT_ACTION_MUTATION = gql`
   ${ACTION_FIELDS}
 `;
 
-export const STRATEGY_SOURCES_QUERY = gql`
-  query StrategySources {
-    strategySources {
-      id
-      owner
-      repo
-      path
-      ref
-      enabled
-      lastSyncedAt
-      label
+export const DISMISS_ACTION_MUTATION = gql`
+  mutation DismissAction($id: ID!) {
+    dismissAction(id: $id) {
+      ...ActionFields
     }
+  }
+  ${ACTION_FIELDS}
+`;
+
+export const STRATEGY_SOURCE_FIELDS = gql`
+  fragment StrategySourceFields on StrategySource {
+    id
+    owner
+    repo
+    path
+    ref
+    enabled
+    lastSyncedAt
+    label
+    isDefault
   }
 `;
 
-export const ADD_STRATEGY_SOURCE_MUTATION = gql`
-  mutation AddStrategySource($input: AddStrategySourceInput!) {
-    addStrategySource(input: $input) {
-      id
-      owner
-      repo
-      path
-      ref
-      enabled
-      lastSyncedAt
-      label
+export const STRATEGY_SOURCES_QUERY = gql`
+  query StrategySources {
+    strategySources {
+      ...StrategySourceFields
     }
   }
+  ${STRATEGY_SOURCE_FIELDS}
+`;
+
+export const ADD_STRATEGY_SOURCE_MUTATION = gql`
+  mutation AddStrategySource($url: String!) {
+    addStrategySource(url: $url) {
+      ...StrategySourceFields
+    }
+  }
+  ${STRATEGY_SOURCE_FIELDS}
 `;
 
 export const REMOVE_STRATEGY_SOURCE_MUTATION = gql`

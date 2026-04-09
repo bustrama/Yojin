@@ -4,7 +4,7 @@ import { fetchStrategiesFromSource } from '../../../skills/strategy-source-fetch
 import type { StrategySourceStore } from '../../../skills/strategy-source-store.js';
 import { syncFromFetched, syncStrategies } from '../../../skills/strategy-source-sync.js';
 import type { StrategySyncResult } from '../../../skills/strategy-source-sync.js';
-import { parseGitHubUrl } from '../../../skills/strategy-source-types.js';
+import { DEFAULT_SOURCE_ID, parseGitHubUrl } from '../../../skills/strategy-source-types.js';
 import type { StrategySource } from '../../../skills/strategy-source-types.js';
 
 const logger = createSubsystemLogger('strategy-source-resolvers');
@@ -36,6 +36,7 @@ function toGraphQL(source: StrategySource) {
     enabled: source.enabled,
     lastSyncedAt: source.lastSyncedAt ?? null,
     label: source.label ?? null,
+    isDefault: source.id === DEFAULT_SOURCE_ID,
   };
 }
 
@@ -44,9 +45,9 @@ export function resolveStrategySources() {
   return strategySourceStore.getAll().map(toGraphQL);
 }
 
-export async function resolveAddStrategySource(_: unknown, args: { input: { url: string } }) {
-  const { sourceStore, skillStore: skills } = requireStores();
-  const parsed = parseGitHubUrl(args.input.url);
+export async function resolveAddStrategySource(_: unknown, args: { url: string }) {
+  const { sourceStore, skillStore } = requireStores();
+  const parsed = parseGitHubUrl(args.url);
   const source = await sourceStore.add({
     owner: parsed.owner,
     repo: parsed.repo,
@@ -58,7 +59,7 @@ export async function resolveAddStrategySource(_: unknown, args: { input: { url:
 
   try {
     const { strategies } = await fetchStrategiesFromSource(source);
-    await syncFromFetched(strategies, skills, source);
+    await syncFromFetched(strategies, skillStore, source);
     await sourceStore.updateLastSynced(source.id);
   } catch (err) {
     logger.warn('Initial sync failed for new source', { sourceId: source.id, error: err });
@@ -80,18 +81,18 @@ export async function resolveToggleStrategySource(_: unknown, args: { id: string
 }
 
 export async function resolveSyncStrategies(): Promise<StrategySyncResult> {
-  const { sourceStore, skillStore: skills } = requireStores();
+  const { sourceStore, skillStore } = requireStores();
   const enabled = sourceStore.getEnabled();
-  return syncStrategies(enabled, skills, sourceStore);
+  return syncStrategies(enabled, skillStore, sourceStore);
 }
 
 export async function resolveSyncStrategySource(_: unknown, args: { id: string }): Promise<StrategySyncResult> {
-  const { sourceStore, skillStore: skills } = requireStores();
+  const { sourceStore, skillStore } = requireStores();
   const source = sourceStore.getById(args.id);
   if (!source) throw new Error(`Strategy source not found: ${args.id}`);
 
   const { strategies, errors: fetchErrors } = await fetchStrategiesFromSource(source);
-  const result = await syncFromFetched(strategies, skills, source);
+  const result = await syncFromFetched(strategies, skillStore, source);
   if (fetchErrors.length === 0 && result.failed === 0) {
     await sourceStore.updateLastSynced(source.id);
   }

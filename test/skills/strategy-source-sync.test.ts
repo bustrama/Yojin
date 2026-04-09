@@ -1,11 +1,16 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../src/skills/strategy-source-fetcher.js', () => ({
+  fetchStrategiesFromSource: vi.fn(),
+}));
 
 import { SkillStore } from '../../src/skills/skill-store.js';
+import { fetchStrategiesFromSource } from '../../src/skills/strategy-source-fetcher.js';
 import type { FetchedStrategy } from '../../src/skills/strategy-source-fetcher.js';
-import { syncFromFetched } from '../../src/skills/strategy-source-sync.js';
+import { syncFromFetched, syncStrategies } from '../../src/skills/strategy-source-sync.js';
 import { DEFAULT_STRATEGY_SOURCE } from '../../src/skills/strategy-source-types.js';
 
 const TEST_DIR = join(import.meta.dirname, '.tmp-sync-test');
@@ -131,5 +136,34 @@ describe('syncFromFetched', () => {
 
     expect(result.added).toBe(2);
     expect(store.getAll()).toHaveLength(2);
+  });
+});
+
+describe('syncStrategies', () => {
+  beforeEach(() => {
+    vi.mocked(fetchStrategiesFromSource).mockReset();
+    mkdirSync(SKILLS_DIR, { recursive: true });
+  });
+
+  it('syncs from multiple sources and aggregates results', async () => {
+    const store = new SkillStore({ dir: SKILLS_DIR });
+    await store.initialize();
+
+    const source1 = { ...DEFAULT_STRATEGY_SOURCE, id: 'a/b', owner: 'a', repo: 'b' };
+    const source2 = { ...DEFAULT_STRATEGY_SOURCE, id: 'c/d', owner: 'c', repo: 'd' };
+
+    vi.mocked(fetchStrategiesFromSource)
+      .mockResolvedValueOnce({
+        strategies: [{ filename: 'a.md', markdown: validMarkdown, source: source1 }],
+        errors: [],
+      })
+      .mockResolvedValueOnce({
+        strategies: [{ filename: 'b.md', markdown: validMarkdown2, source: source2 }],
+        errors: [],
+      });
+
+    const result = await syncStrategies([source1, source2], store);
+    expect(result.added).toBe(2);
+    expect(result.errors).toHaveLength(0);
   });
 });

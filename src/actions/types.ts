@@ -43,5 +43,6 @@ export const ActionSchema = z.object({
   createdAt: DateTimeField,
   resolvedAt: DateTimeField.optional(),
   resolvedBy: z.string().optional(), // 'user' | 'timeout' | 'superseded'
+  dismissedAt: DateTimeField.optional(),
 });
 export type Action = z.infer<typeof ActionSchema>;

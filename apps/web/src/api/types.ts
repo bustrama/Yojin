@@ -1120,21 +1120,23 @@ export interface Action {
   source: string;
   riskContext: string | null;
   severity: number | null;
+  severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
   createdAt: string;
   resolvedAt: string | null;
   resolvedBy: string | null;
-}
-
-export interface ActionsQueryVariables {
-  status?: ActionStatus;
-  since?: string;
-  limit?: number;
+  dismissedAt: string | null;
 }
 
 export interface ActionsQueryResult {
   actions: Action[];
+}
+export interface ActionsQueryVariables {
+  status?: ActionStatus;
+  since?: string;
+  limit?: number;
+  dismissed?: boolean;
 }
 
 export interface ApproveActionVariables {
@@ -1356,6 +1358,7 @@ export interface StrategySource {
   enabled: boolean;
   lastSyncedAt: string | null;
   label: string | null;
+  isDefault: boolean;
 }
 
 export interface StrategySyncResult {
@@ -1371,6 +1374,10 @@ export interface StrategySourcesQueryResult {
 
 export interface AddStrategySourceResult {
   addStrategySource: StrategySource;
+}
+
+export interface AddStrategySourceVariables {
+  url: string;
 }
 
 export interface RemoveStrategySourceResult {

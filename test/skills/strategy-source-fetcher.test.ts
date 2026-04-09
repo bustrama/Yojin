@@ -114,4 +114,19 @@ describe('fetchStrategiesFromSource', () => {
     await fetchStrategiesFromSource(rootSource);
     expect(fetchMock.mock.calls[0][0]).toContain('api.github.com/repos/test/repo/contents?ref=main');
   });
+
+  it('reports error when rate limit is exhausted', async () => {
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(mockDirListing), {
+        status: 200,
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.ceil(Date.now() / 1000) + 3600) },
+      }),
+    );
+
+    const result = await fetchStrategiesFromSource(mockSource);
+    expect(result.strategies).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('rate limit');
+  });
 });

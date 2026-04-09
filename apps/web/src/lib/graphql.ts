@@ -194,6 +194,9 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'strategySources');
         cache.invalidate('Query', 'skills');
       },
+      dismissAction(_result, _args, cache) {
+        cache.invalidate('Query', 'actions');
+      },
       clearAppData(_result, _args, cache) {
         cache.invalidate('Query', 'portfolio');
         cache.invalidate('Query', 'riskReport');

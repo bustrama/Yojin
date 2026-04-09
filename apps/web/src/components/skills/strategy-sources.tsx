@@ -14,8 +14,6 @@ import {
 import type { StrategySource } from '../../api/types.js';
 import { cn, timeAgo } from '../../lib/utils.js';
 
-const DEFAULT_SOURCE_ID = 'YojinHQ/trading-strategies';
-
 function SourceRow({
   source,
   onToggle,
@@ -25,7 +23,7 @@ function SourceRow({
   onToggle: (id: string, enabled: boolean) => void;
   onRemove: (id: string) => void;
 }) {
-  const isDefault = source.id === DEFAULT_SOURCE_ID;
+  const isDefault = source.isDefault;
   const displayName = source.label ?? `${source.owner}/${source.repo}`;
 
   return (
@@ -149,6 +147,12 @@ export function StrategySources() {
           )}
         >
           {syncToast.message}
+        </div>
+      )}
+
+      {result.error && (
+        <div className="mb-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">
+          Failed to load sources: {result.error.message.replace('[GraphQL] ', '')}
         </div>
       )}
 

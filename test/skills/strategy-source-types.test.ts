@@ -62,6 +62,12 @@ describe('parseGitHubUrl', () => {
   it('throws on /tree without a branch', () => {
     expect(() => parseGitHubUrl('https://github.com/owner/repo/tree')).toThrow('/tree requires a branch');
   });
+
+  it('treats first segment after /tree/ as branch (slash-in-branch limitation)', () => {
+    const result = parseGitHubUrl('https://github.com/owner/repo/tree/feature/my-branch/strategies');
+    expect(result.ref).toBe('feature');
+    expect(result.path).toBe('my-branch/strategies');
+  });
 });
 
 describe('DEFAULT_STRATEGY_SOURCE', () => {

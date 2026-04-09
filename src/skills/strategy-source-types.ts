@@ -47,6 +47,10 @@ interface ParsedGitHubUrl {
  * - `https://github.com/owner/repo`
  * - `https://github.com/owner/repo/tree/branch/path/to/dir`
  *
+ * Limitation: Branch names containing `/` (e.g. `feature/my-branch`) are
+ * ambiguous in GitHub URLs — the parser treats the first segment after `/tree/`
+ * as the branch. Use simple branch names or omit the tree path (defaults to `main`).
+ *
  * @throws Error on invalid or non-GitHub URLs.
  */
 export function parseGitHubUrl(url: string): ParsedGitHubUrl {

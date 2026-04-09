@@ -29,6 +29,7 @@ import type {
   ImportSkillVariables,
   StrategySourcesQueryResult,
   AddStrategySourceResult,
+  AddStrategySourceVariables,
   RemoveStrategySourceResult,
   ToggleStrategySourceResult,
   SyncStrategiesResult,
@@ -76,15 +77,15 @@ export function useStrategySources() {
 }
 
 export function useAddStrategySource() {
-  return useMutation<AddStrategySourceResult>(ADD_STRATEGY_SOURCE_MUTATION);
+  return useMutation<AddStrategySourceResult, AddStrategySourceVariables>(ADD_STRATEGY_SOURCE_MUTATION);
 }
 
 export function useRemoveStrategySource() {
-  return useMutation<RemoveStrategySourceResult>(REMOVE_STRATEGY_SOURCE_MUTATION);
+  return useMutation<RemoveStrategySourceResult, { id: string }>(REMOVE_STRATEGY_SOURCE_MUTATION);
 }
 
 export function useToggleStrategySource() {
-  return useMutation<ToggleStrategySourceResult>(TOGGLE_STRATEGY_SOURCE_MUTATION);
+  return useMutation<ToggleStrategySourceResult, { id: string; enabled: boolean }>(TOGGLE_STRATEGY_SOURCE_MUTATION);
 }
 
 export function useSyncStrategies() {

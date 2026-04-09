@@ -17,13 +17,16 @@ interface GitHubContentEntry {
   download_url: string | null;
 }
 
-function checkRateLimit(res: Response, sourceId: string): void {
+function checkRateLimit(res: Response, sourceId: string): boolean {
   const remaining = res.headers.get('x-ratelimit-remaining');
-  if (remaining !== null && parseInt(remaining, 10) <= 10) {
+  if (remaining === null) return false;
+  const count = parseInt(remaining, 10);
+  if (count <= 10) {
     const resetEpoch = res.headers.get('x-ratelimit-reset');
     const resetsIn = resetEpoch ? Math.ceil((parseInt(resetEpoch, 10) * 1000 - Date.now()) / 60_000) : '?';
     logger.warn(`GitHub API rate limit low for ${sourceId}: ${remaining} remaining, resets in ~${resetsIn}min`);
   }
+  return count === 0;
 }
 
 export async function fetchStrategiesFromSource(
@@ -40,9 +43,13 @@ export async function fetchStrategiesFromSource(
     const res = await fetch(contentsPath, {
       headers: { Accept: 'application/vnd.github.v3+json' },
     });
-    checkRateLimit(res, source.id);
+    const exhausted = checkRateLimit(res, source.id);
     if (!res.ok) {
       errors.push(`Failed to list ${source.id}: HTTP ${res.status}`);
+      return { strategies: [], errors };
+    }
+    if (exhausted) {
+      errors.push(`GitHub API rate limit exhausted for ${source.id}, skipping file downloads`);
       return { strategies: [], errors };
     }
     const body = await res.json();

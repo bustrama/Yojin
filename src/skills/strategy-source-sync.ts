@@ -61,8 +61,22 @@ export async function syncStrategies(
 ): Promise<StrategySyncResult> {
   const totalResult: StrategySyncResult = { added: 0, skipped: 0, failed: 0, errors: [] };
 
-  for (const source of sources) {
-    const { strategies: fetched, errors: fetchErrors } = await fetchStrategiesFromSource(source);
+  const fetchResults = await Promise.allSettled(
+    sources.map(async (source) => ({
+      source,
+      ...(await fetchStrategiesFromSource(source)),
+    })),
+  );
+
+  for (const fetchResult of fetchResults) {
+    if (fetchResult.status === 'rejected') {
+      totalResult.errors.push(
+        fetchResult.reason instanceof Error ? fetchResult.reason.message : String(fetchResult.reason),
+      );
+      continue;
+    }
+
+    const { source, strategies: fetched, errors: fetchErrors } = fetchResult.value;
     totalResult.errors.push(...fetchErrors);
 
     const result = await syncFromFetched(fetched, skillStore, source);

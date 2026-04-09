@@ -7,6 +7,13 @@
 import type { ActionStore } from '../../../actions/action-store.js';
 import type { Action, ActionStatus } from '../../../actions/types.js';
 
+function deriveSeverityLabel(severity: number | undefined): string {
+  if (severity == null) return 'MEDIUM';
+  if (severity >= 0.7) return 'CRITICAL';
+  if (severity >= 0.4) return 'HIGH';
+  return 'MEDIUM';
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -30,11 +37,13 @@ interface ActionGql {
   source: string;
   riskContext: string | null;
   severity: number | null;
-  status: string;
+  severityLabel: string;
+  status: ActionStatus;
   expiresAt: string;
   createdAt: string;
   resolvedAt: string | null;
   resolvedBy: string | null;
+  dismissedAt: string | null;
 }
 
 function toGql(action: Action): ActionGql {
@@ -47,11 +56,13 @@ function toGql(action: Action): ActionGql {
     source: action.source,
     riskContext: action.riskContext ?? null,
     severity: action.severity ?? null,
+    severityLabel: deriveSeverityLabel(action.severity),
     status: action.status,
     expiresAt: action.expiresAt,
     createdAt: action.createdAt,
     resolvedAt: action.resolvedAt ?? null,
     resolvedBy: action.resolvedBy ?? null,
+    dismissedAt: action.dismissedAt ?? null,
   };
 }
 
@@ -61,7 +72,7 @@ function toGql(action: Action): ActionGql {
 
 export async function actionsResolver(
   _parent: unknown,
-  args: { status?: ActionStatus; since?: string; limit?: number },
+  args: { status?: ActionStatus; since?: string; limit?: number; dismissed?: boolean },
 ): Promise<ActionGql[]> {
   if (!store) return [];
 
@@ -69,6 +80,7 @@ export async function actionsResolver(
     status: args.status,
     since: args.since,
     limit: args.limit ?? 50,
+    dismissed: args.dismissed,
   });
 
   return actions.map(toGql);
@@ -104,5 +116,12 @@ export async function rejectActionMutation(_parent: unknown, args: { id: string 
     throw new Error(result.error);
   }
 
+  return toGql(result.data);
+}
+
+export async function dismissActionMutation(_parent: unknown, args: { id: string }): Promise<ActionGql> {
+  if (!store) throw new Error('Action store not initialized');
+  const result = await store.dismiss(args.id);
+  if (!result.success) throw new Error(result.error);
   return toGql(result.data);
 }
