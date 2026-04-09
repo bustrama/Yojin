@@ -687,6 +687,7 @@ export const typeDefs = /* GraphQL */ `
     time: String!
     timezone: String!
     sections: [String!]!
+    microLlmIntervalHours: Int
   }
 
   type BriefingConfig {
@@ -694,6 +695,23 @@ export const typeDefs = /* GraphQL */ `
     timezone: String!
     sections: [String!]!
     enabled: Boolean!
+    microLlmIntervalHours: Int!
+  }
+
+  type SchedulerAssetStatus {
+    symbol: String!
+    source: String!
+    lastSignalFetchAt: String
+    lastLlmAt: String
+    nextLlmEligibleAt: String!
+    pendingAnalysis: Boolean!
+  }
+
+  type SchedulerStatus {
+    microLlmIntervalHours: Float!
+    pendingCount: Int!
+    throttledCount: Int!
+    assets: [SchedulerAssetStatus!]!
   }
 
   enum ChannelStatus {
@@ -1196,6 +1214,7 @@ export const typeDefs = /* GraphQL */ `
     watchlist: [WatchlistEntry!]!
     insightsWorkflowStatus: WorkflowStatus!
     briefingConfig: BriefingConfig
+    schedulerStatus: SchedulerStatus!
     listChannels: [Channel!]!
     notificationPreferences: [NotificationPreferences!]!
     snap: Snap
@@ -1216,6 +1235,7 @@ export const typeDefs = /* GraphQL */ `
     defaultModel: String!
     defaultProvider: String!
     hasAnthropicKey: Boolean!
+    hasAnthropicApiKey: Boolean!
     hasOpenaiKey: Boolean!
   }
 
@@ -1237,6 +1257,7 @@ export const typeDefs = /* GraphQL */ `
     createAlert(rule: AlertRuleInput!): Alert!
     dismissAlert(id: ID!): Alert!
     dismissSignal(signalId: ID!): Boolean!
+    batchDismissSignals(signalIds: [ID!]!): Boolean!
     sendMessage(threadId: String!, message: String!, imageBase64: String, imageMediaType: String): SendMessagePayload!
     createSession: SessionSummary!
     deleteSession(id: ID!): Boolean!
@@ -1286,6 +1307,7 @@ export const typeDefs = /* GraphQL */ `
     saveAiConfig(input: AiConfigInput!): AiConfig!
     saveAiCredential(provider: String!, apiKey: String!): SaveAiCredentialResult!
     removeAiCredential(provider: String!): SaveAiCredentialResult!
+    triggerMicroAnalysis: Boolean!
   }
 
   # ---------------------------------------------------------------------------

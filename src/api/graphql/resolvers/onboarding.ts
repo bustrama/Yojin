@@ -11,14 +11,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import type { ClaudeCodeProvider } from '../../../ai-providers/claude-code.js';
-import {
-  buildClaudeOAuthUrl,
-  exchangeClaudeOAuthCode,
-  generatePkceParams,
-  refreshClaudeOAuthToken,
-} from '../../../auth/claude-oauth.js';
+import { buildClaudeOAuthUrl, exchangeClaudeOAuthCode, generatePkceParams } from '../../../auth/claude-oauth.js';
 import { readCodexCredentials } from '../../../auth/codex-credentials.js';
-import { readRefreshTokenFromKeychain, readTokenFromKeychain } from '../../../auth/keychain.js';
+import { readTokenFromKeychain } from '../../../auth/keychain.js';
 import { completeMagicLinkFlow, startMagicLinkFlow } from '../../../auth/magic-link-flow.js';
 import type { PersonaManager } from '../../../brain/types.js';
 import type { AgentLoopProvider } from '../../../core/types.js';
@@ -39,6 +34,7 @@ let snapshotStore: PortfolioSnapshotStore | undefined;
 let claudeCodeProvider: ClaudeCodeProvider | undefined;
 let dataRoot = '.';
 let onJintelKeyValidatedCb: ((apiKey: string) => void) | undefined;
+let onMicroLlmIntervalChangedCb: ((hours: number) => void) | undefined;
 
 export function setOnboardingVault(v: EncryptedVault): void {
   vault = v;
@@ -71,6 +67,10 @@ export function setOnboardingDataRoot(root: string): void {
 
 export function setJintelKeyValidatedCallback(cb: (apiKey: string) => void): void {
   onJintelKeyValidatedCb = cb;
+}
+
+export function setMicroLlmIntervalCallback(cb: (hours: number) => void): void {
+  onMicroLlmIntervalChangedCb = cb;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,8 +136,11 @@ async function activateOAuthToken(token: string): Promise<void> {
  * Validate an OAuth token with a lightweight API call.
  */
 async function validateOAuthToken(token: string): Promise<boolean> {
-  // Use claude-3-haiku for validation — lightweight and available on all OAuth plans
-  // (newer models like claude-sonnet-4 may return 400 on Max/subscription OAuth tokens)
+  // Use the current Haiku model for validation — lightweight and available on
+  // all OAuth plans. The previous `claude-3-haiku-20240307` was deprecated by
+  // Anthropic and now returns HTTP 404, which this validator read as "token
+  // expired" and misled detectKeychainTokenQuery into reporting every live
+  // token as invalid.
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -148,7 +151,7 @@ async function validateOAuthToken(token: string): Promise<boolean> {
         'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20',
       },
       body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1,
         messages: [{ role: 'user', content: 'hi' }],
       }),
@@ -175,23 +178,11 @@ export async function detectKeychainTokenQuery(): Promise<KeychainTokenResult> {
     return { found: true, model: 'Claude (Keychain)' };
   }
 
-  // Token expired/invalid — try refreshing
-  const refreshToken = await readRefreshTokenFromKeychain();
-  if (refreshToken) {
-    try {
-      const refreshed = await refreshClaudeOAuthToken(refreshToken);
-      if (await validateOAuthToken(refreshed.accessToken)) {
-        activateOAuthToken(refreshed.accessToken);
-        if (vault?.isUnlocked && refreshed.refreshToken) {
-          await vault.set('anthropic_oauth_refresh_token', refreshed.refreshToken);
-        }
-        return { found: true, model: 'Claude (Keychain)' };
-      }
-    } catch {
-      // Refresh failed — token is truly expired
-    }
-  }
-
+  // Token expired/invalid. Claude Code CLI owns the rotation lifecycle and
+  // writes the fresh token to the keychain silently — do NOT call the OAuth
+  // refresh endpoint here. Doing so rotates the refresh token at the server,
+  // which invalidates the refresh token still stored in Claude Code CLI's
+  // own keychain entry and forces the user to re-login via `claude login`.
   return {
     found: true,
     error: 'Keychain token found but expired. Re-authenticate Claude Code with: claude auth login',
@@ -671,13 +662,14 @@ interface BriefingConfigInput {
   time: string;
   timezone: string;
   sections: string[];
+  microLlmIntervalHours?: number | null;
 }
 
 export async function saveBriefingConfigMutation(
   _parent: unknown,
   args: { input: BriefingConfigInput },
 ): Promise<boolean> {
-  const { time, timezone, sections } = args.input;
+  const { time, timezone, sections, microLlmIntervalHours } = args.input;
 
   // Write digest config to alerts.json
   const alertsPath = `${dataRoot}/config/alerts.json`;
@@ -707,6 +699,10 @@ export async function saveBriefingConfigMutation(
     cron: `${minutes} ${hours} * * *`,
   };
   alertsConfig.digestSections = sections;
+  if (microLlmIntervalHours != null) {
+    alertsConfig.microLlmIntervalHours = microLlmIntervalHours;
+    onMicroLlmIntervalChangedCb?.(microLlmIntervalHours);
+  }
 
   await writeFile(alertsPath, JSON.stringify(alertsConfig, null, 2), 'utf-8');
 
@@ -788,6 +784,7 @@ interface BriefingConfigResult {
   timezone: string;
   sections: string[];
   enabled: boolean;
+  microLlmIntervalHours: number;
 }
 
 export async function briefingConfigQuery(): Promise<BriefingConfigResult | null> {
@@ -804,6 +801,7 @@ export async function briefingConfigQuery(): Promise<BriefingConfigResult | null
       timezone: schedule.timezone,
       sections: alertsConfig.digestSections ?? [],
       enabled: true,
+      microLlmIntervalHours: alertsConfig.microLlmIntervalHours ?? 4,
     };
   } catch {
     return null;

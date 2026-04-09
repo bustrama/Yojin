@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery } from 'urql';
-import { DISMISS_SIGNAL_MUTATION, INTEL_FEED_QUERY } from '../../api/documents';
-import type { FeedTarget, IntelFeedQueryResult, IntelFeedQueryVariables } from '../../api/types';
+import {
+  BATCH_DISMISS_SIGNALS_MUTATION,
+  DISMISS_SIGNAL_MUTATION,
+  INTEL_FEED_QUERY,
+  SCHEDULER_STATUS_QUERY,
+  TRIGGER_MICRO_ANALYSIS_MUTATION,
+} from '../../api/documents';
+import type {
+  FeedTarget,
+  IntelFeedQueryResult,
+  IntelFeedQueryVariables,
+  SchedulerAssetStatus,
+  SchedulerStatusQueryResult,
+} from '../../api/types';
 import { cn, timeAgo } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
 import Button from '../common/button';
@@ -59,10 +71,12 @@ const signalTypeIcon: Record<string, IconName> = {
   TRADING_LOGIC_TRIGGER: 'clock',
 };
 
-/** Promote higher-severity items into the alerts lane. */
+/** Promote higher-severity items into the alerts lane.
+ * Only CRITICAL signals and explicit ACTION outputs qualify as alerts —
+ * HIGH signals remain visible as prominent insights but don't clutter the alerts tab. */
 function classifySignal(signal: { outputType?: string | null; severity: IntelFeedItem['severity'] }): ItemType {
-  if (signal.severity === 'CRITICAL' || signal.severity === 'HIGH') return 'alert';
-  if (signal.outputType === 'ALERT') return 'alert';
+  if (signal.severity === 'CRITICAL') return 'alert';
+  if (signal.outputType === 'ACTION') return 'alert';
   return 'insight';
 }
 
@@ -256,7 +270,9 @@ function IntelFeedCard({
   item,
   expanded,
   isNew,
+  selected,
   onToggle,
+  onToggleSelect,
   onDismiss,
   onViewDetails,
   onAskYojin,
@@ -264,7 +280,9 @@ function IntelFeedCard({
   item: IntelFeedItem;
   expanded: boolean;
   isNew: boolean;
+  selected: boolean;
   onToggle: () => void;
+  onToggleSelect: () => void;
   onDismiss: () => void;
   onViewDetails: () => void;
   onAskYojin: () => void;
@@ -272,13 +290,14 @@ function IntelFeedCard({
   return (
     <div
       className={cn(
-        'relative rounded-xl border border-border-light bg-bg-tertiary/60 transition-colors',
-        expanded ? 'bg-bg-tertiary' : 'hover:bg-bg-tertiary',
+        'relative rounded-xl border transition-colors',
+        selected ? 'border-accent-primary/40 bg-accent-primary/5' : 'border-border-light bg-bg-tertiary/60',
+        !selected && (expanded ? 'bg-bg-tertiary' : 'hover:bg-bg-tertiary'),
         isNew &&
           (item.type === 'alert' ? 'motion-safe:animate-new-event-alert' : 'motion-safe:animate-new-event-insight'),
       )}
     >
-      {isNew && (
+      {isNew && !selected && (
         <span
           className={cn(
             'absolute -top-2 -right-2 z-10 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-white shadow-sm motion-safe:animate-badge-in',
@@ -289,26 +308,53 @@ function IntelFeedCard({
         </span>
       )}
       {/* Collapsed header — always visible */}
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left"
-      >
-        <ItemIcon icon={item.icon} type={item.type} expanded={expanded} />
-        <div className="min-w-0 flex-1">
-          <span
-            className={cn(
-              'inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em]',
-              item.type === 'alert' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success',
-            )}
-          >
-            {item.ticker}
-          </span>
-          <p className="mt-0.5 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
-        </div>
-        <span className="flex-shrink-0 text-2xs text-text-muted">{item.publishedTime}</span>
-      </button>
+      <div className="flex w-full items-center gap-3 px-3 py-2.5">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+        >
+          <ItemIcon icon={item.icon} type={item.type} expanded={expanded} />
+          <div className="min-w-0 flex-1">
+            <span
+              className={cn(
+                'inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em]',
+                item.type === 'alert' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success',
+              )}
+            >
+              {item.ticker}
+            </span>
+            <p className="mt-0.5 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
+          </div>
+          <span className="flex-shrink-0 text-2xs text-text-muted">{item.publishedTime}</span>
+        </button>
+        <button
+          type="button"
+          aria-label={selected ? 'Deselect' : 'Select'}
+          onClick={onToggleSelect}
+          className={cn(
+            'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors',
+            selected
+              ? 'border-accent-primary bg-accent-primary'
+              : 'border-border bg-transparent hover:border-text-muted',
+          )}
+        >
+          {selected && (
+            <svg
+              className="h-2.5 w-2.5 text-white"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          )}
+        </button>
+      </div>
 
       {/* Expanded content */}
       <div
@@ -418,7 +464,12 @@ export default function IntelFeed({
 /* ── Content ────────────────────────────────────────────────────────── */
 
 const POLL_INTERVAL_MS = 30_000;
-const SEEN_IDS_KEY_PREFIX = 'intel-feed-seen-';
+// v2: bumped alongside the FETCH_LIMIT=100 rollout so old 20-item snapshots
+// don't classify backlog items 21–100 as "new" on first refresh (which would
+// spuriously light up the NEW badge and the important-signals pill).
+const SEEN_IDS_KEY_PREFIX = 'intel-feed-seen-v2-';
+const PAGE_SIZE = 20;
+const FETCH_LIMIT = 100;
 
 function persistSeenIds(key: string, ids: Set<string>) {
   try {
@@ -445,6 +496,8 @@ function IntelFeedContent({
   const initialIdsRef = useRef<Set<string> | null>(null);
   const newIdTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [, dismissSignal] = useMutation(DISMISS_SIGNAL_MUTATION);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [, batchDismissSignals] = useMutation(BATCH_DISMISS_SIGNALS_MUTATION);
 
   // ── Scan lifecycle state ────────────────────────────────────────────
   const [scanState, setScanState] = useState<{
@@ -476,9 +529,65 @@ function IntelFeedContent({
 
   const [{ data, fetching, error }, reexecute] = useQuery<IntelFeedQueryResult, IntelFeedQueryVariables>({
     query: INTEL_FEED_QUERY,
-    variables: { limit: 20, feedTarget },
+    variables: { limit: FETCH_LIMIT, feedTarget },
     requestPolicy: 'cache-and-network',
   });
+
+  // Client-side pagination — backend returns up to FETCH_LIMIT, we show
+  // PAGE_SIZE at a time and reveal more via an IntersectionObserver sentinel.
+  const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+
+  // "N new important signals" pill — tracks HIGH/CRITICAL signals that arrived
+  // after the initial load but haven't been seen yet (user is scrolled away
+  // from the top). Click the pill → smooth-scroll to top and mark as seen.
+  const [unseenImportantIds, setUnseenImportantIds] = useState<Set<string>>(new Set());
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
+  const unseenImportantRef = useRef(unseenImportantIds);
+  useEffect(() => {
+    unseenImportantRef.current = unseenImportantIds;
+  }, [unseenImportantIds]);
+
+  const [{ data: schedulerData }] = useQuery<SchedulerStatusQueryResult>({
+    query: SCHEDULER_STATUS_QUERY,
+    requestPolicy: 'cache-and-network',
+  });
+  const [, triggerMicroAnalysis] = useMutation(TRIGGER_MICRO_ANALYSIS_MUTATION);
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Auto-trigger micro analysis when user is actively using the page and assets are throttled.
+  // Fires at most once per configured LLM interval — the server re-checks pendingAnalysis before
+  // running, so a stale trigger (assets already analyzed) is always a no-op.
+  const lastTriggeredRef = useRef<number>(0);
+  useEffect(() => {
+    if (!schedulerData || schedulerData.schedulerStatus.pendingCount === 0) return;
+
+    const intervalMs = schedulerData.schedulerStatus.microLlmIntervalHours * 60 * 60 * 1000;
+
+    function onActivity() {
+      const now = Date.now();
+      if (now - lastTriggeredRef.current < intervalMs) return;
+      lastTriggeredRef.current = now;
+      void triggerMicroAnalysis({});
+    }
+
+    window.addEventListener('mousemove', onActivity);
+    window.addEventListener('mousedown', onActivity);
+    window.addEventListener('keydown', onActivity);
+    window.addEventListener('touchstart', onActivity);
+    return () => {
+      window.removeEventListener('mousemove', onActivity);
+      window.removeEventListener('mousedown', onActivity);
+      window.removeEventListener('keydown', onActivity);
+      window.removeEventListener('touchstart', onActivity);
+    };
+  }, [schedulerData, triggerMicroAnalysis]);
 
   // Refetch when watchlist changes (add/remove)
   useEffect(() => {
@@ -544,8 +653,9 @@ function IntelFeedContent({
       };
     });
 
-    // Sort newest first
-    signalItems.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    // Preserve backend ranking (severity DESC → composite score DESC). The
+    // composite score already blends recency, so important recent items still
+    // float to the top while CRITICAL alerts aren't buried by newer LOW noise.
     return signalItems;
   }, [data]);
 
@@ -565,20 +675,41 @@ function IntelFeedContent({
     }
 
     const seenIds = initialIdsRef.current;
-    const freshIds = items.filter((i) => !seenIds.has(i.id)).map((i) => i.id);
+    const freshIdSet = new Set(items.filter((i) => !seenIds.has(i.id)).map((i) => i.id));
 
     // Always sync current items into the stored set
     for (const item of items) seenIds.add(item.id);
     persistSeenIds(storageKey, seenIds);
 
-    if (freshIds.length === 0) return;
+    if (freshIdSet.size === 0) return;
 
-    // Mark as new
+    // Mark as new (for the 10s "NEW" badge animation)
     setNewIds((prev) => {
       const next = new Set(prev);
-      for (const id of freshIds) next.add(id);
+      for (const id of freshIdSet) next.add(id);
       return next;
     });
+
+    // Surface HIGH/CRITICAL freshly-arrived signals in the "N new" pill, but
+    // only if the user is actually scrolled away from the top — otherwise
+    // they can already see the new item land and don't need a pill reminder.
+    // Reading scrollTop directly (rather than the debounced isScrolledDown
+    // state) avoids a race where fresh items arrive before the scroll
+    // handler has fired for the current viewport.
+    const isAwayFromTop = (scrollContainerRef.current?.scrollTop ?? 0) > 100;
+    if (isAwayFromTop) {
+      const importantFresh = items.filter(
+        (i) => freshIdSet.has(i.id) && (i.severity === 'CRITICAL' || i.severity === 'HIGH'),
+      );
+      if (importantFresh.length > 0) {
+        setUnseenImportantIds((prev) => {
+          const next = new Set(prev);
+          for (const i of importantFresh) next.add(i.id);
+          return next;
+        });
+      }
+    }
+    const freshIds = [...freshIdSet];
 
     // Clear badge after 10s
     for (const id of freshIds) {
@@ -665,6 +796,72 @@ function IntelFeedContent({
   }, [items, activeFilter]);
   const totalCount = filteredItems.length;
 
+  // Reset the visible page (and the unseen-important pill) when the user
+  // switches filter or feed target — a tab switch is a "fresh view", jumping
+  // back to the most-important items. Uses the React "store info from
+  // previous renders" pattern to avoid an effect-driven reset that would
+  // trip `react-hooks/set-state-in-effect`.
+  const [prevViewKey, setPrevViewKey] = useState(`${activeFilter}|${feedTarget ?? ''}`);
+  const viewKey = `${activeFilter}|${feedTarget ?? ''}`;
+  if (viewKey !== prevViewKey) {
+    setPrevViewKey(viewKey);
+    setDisplayedCount(PAGE_SIZE);
+    setUnseenImportantIds(new Set());
+  }
+
+  // Jump the scroll container back to the top on view change. Without this,
+  // the sentinel can still be in the IntersectionObserver root margin and
+  // immediately re-grow `displayedCount`, so the intended reset to PAGE_SIZE
+  // would never visually "stick".
+  useEffect(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [viewKey]);
+
+  // Track whether the scroll container is scrolled away from the top. This
+  // drives the "N new important signals" pill visibility and auto-dismisses
+  // the pill when the user scrolls back to the top.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const scrolled = el.scrollTop > 100;
+      setIsScrolledDown(scrolled);
+      if (!scrolled && unseenImportantRef.current.size > 0) {
+        setUnseenImportantIds(new Set());
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  function scrollToTopAndDismiss() {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    setUnseenImportantIds(new Set());
+  }
+
+  const visibleItems = useMemo(() => filteredItems.slice(0, displayedCount), [filteredItems, displayedCount]);
+  const hasMore = displayedCount < filteredItems.length;
+
+  // IntersectionObserver sentinel — bump displayedCount by PAGE_SIZE as the
+  // sentinel scrolls into view. Scoped to the scroll container so it doesn't
+  // fire when the sentinel is offscreen behind other content.
+  useEffect(() => {
+    if (!hasMore) return;
+    const sentinel = loadMoreSentinelRef.current;
+    const root = scrollContainerRef.current;
+    if (!sentinel || !root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setDisplayedCount((c) => c + PAGE_SIZE);
+        }
+      },
+      { root, rootMargin: '200px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore]);
+
   function openModal(item: IntelFeedItem) {
     setModalData({
       title: item.title,
@@ -710,6 +907,7 @@ function IntelFeedContent({
                 onClick={() => {
                   setActiveFilter(tab.key);
                   setExpandedId(null);
+                  setSelectedIds(new Set());
                 }}
                 className={cn(
                   'relative cursor-pointer pb-2.5 pt-1.5 text-xs font-medium transition-colors',
@@ -726,7 +924,35 @@ function IntelFeedContent({
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-auto px-3 pb-4">
+        <div ref={scrollContainerRef} className="flex-1 overflow-auto px-3 pb-4">
+          {/* "N new important signals" pill — shown only while the user is
+              scrolled away from the top, and never on the Insights tab
+              (HIGH/CRITICAL items classify as alerts, so clicking the CTA
+              there would scroll to a list that can't contain the announced
+              items). Click to jump back and mark as seen. */}
+          {unseenImportantIds.size > 0 && isScrolledDown && activeFilter !== 'insights' && (
+            <div className="pointer-events-none sticky top-2 z-20 flex justify-center">
+              <button
+                type="button"
+                onClick={scrollToTopAndDismiss}
+                className="pointer-events-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-primary px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-lg transition-transform hover:scale-105 motion-safe:animate-[fadeSlideIn_0.25s_ease-out]"
+                aria-label={`Jump to ${unseenImportantIds.size} new important signal${unseenImportantIds.size !== 1 ? 's' : ''}`}
+              >
+                <svg
+                  className="h-3 w-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+                {unseenImportantIds.size} new important signal{unseenImportantIds.size !== 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
           {/* Scan progress / verification banner */}
           {scanState && (
             <div
@@ -769,6 +995,16 @@ function IntelFeedContent({
               <span>{pendingUpdate.symbol} removed from feed</span>
             </div>
           )}
+          {/* Throttle banner — shown when assets have new signals but LLM interval not yet elapsed */}
+          {schedulerData &&
+            schedulerData.schedulerStatus.pendingCount > 0 &&
+            schedulerData.schedulerStatus.throttledCount > 0 && (
+              <ThrottleBanner
+                throttledCount={schedulerData.schedulerStatus.throttledCount}
+                assets={schedulerData.schedulerStatus.assets}
+                now={nowMs}
+              />
+            )}
           {isLoading ? (
             <div className="flex items-center justify-center pt-12">
               <Spinner size="md" label="Loading intel..." />
@@ -829,13 +1065,22 @@ function IntelFeedContent({
                 label={activeFilter === 'all' ? 'All' : activeFilter === 'alerts' ? 'Alerts' : 'Insights'}
               />
               <div className="space-y-2">
-                {filteredItems.map((item) => (
+                {visibleItems.map((item) => (
                   <IntelFeedCard
                     key={item.id}
                     item={item}
                     expanded={expandedId === item.id}
                     isNew={newIds.has(item.id)}
+                    selected={selectedIds.has(item.id)}
                     onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                    onToggleSelect={() =>
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(item.id)) next.delete(item.id);
+                        else next.add(item.id);
+                        return next;
+                      })
+                    }
                     onDismiss={() => {
                       if (expandedId === item.id) setExpandedId(null);
                       void dismissSignal({ signalId: item.id }).then((result) => {
@@ -858,13 +1103,108 @@ function IntelFeedContent({
                   />
                 ))}
               </div>
+              {hasMore && (
+                <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-4">
+                  <Spinner size="sm" label="Loading more..." />
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
+      {/* Batch dismiss action bar — appears when any items are checked */}
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t border-border bg-bg-secondary px-4 py-3">
+          <span className="text-xs text-text-muted">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="cursor-pointer text-xs font-medium text-text-muted transition-colors hover:text-text-secondary"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const ids = [...selectedIds];
+                setSelectedIds(new Set());
+                void batchDismissSignals({ signalIds: ids }).then((result) => {
+                  if (result.error) {
+                    console.error('Batch dismiss failed', result.error.message);
+                    return;
+                  }
+                  reexecute({ requestPolicy: 'network-only' });
+                });
+              }}
+              className="cursor-pointer rounded-lg border border-error/30 bg-error/10 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/20"
+            >
+              Dismiss {selectedIds.size}
+            </button>
+          </div>
+        </div>
+      )}
+
       <FeedDetailModal open={modalData !== null} onClose={() => setModalData(null)} data={modalData} />
     </>
+  );
+}
+
+/* ── Throttle banner ─────────────────────────────────────────────────── */
+
+function ThrottleBanner({
+  throttledCount,
+  assets,
+  now,
+}: {
+  throttledCount: number;
+  assets: SchedulerAssetStatus[];
+  now: number;
+}) {
+  // Find the asset whose next eligible time is soonest
+  const nextLabel = useMemo(() => {
+    const soonestMs = assets
+      .filter((a) => a.lastLlmAt !== null)
+      .map((a) => new Date(a.nextLlmEligibleAt).getTime() - now)
+      .filter((ms) => ms > 0)
+      .sort((a, b) => a - b)[0];
+    return soonestMs != null ? formatMinutes(soonestMs) : null;
+  }, [assets, now]);
+
+  return (
+    <div className="mx-0.5 mt-3 flex items-center gap-2.5 rounded-lg border border-border-light bg-bg-tertiary px-3 py-2 text-xs text-text-muted">
+      <ClockMiniIcon />
+      <span>
+        AI analysis paused for{' '}
+        <span className="font-medium text-text-secondary">
+          {throttledCount} asset{throttledCount !== 1 ? 's' : ''}
+        </span>
+        {nextLabel ? (
+          <>
+            {' '}
+            · next in <span className="font-medium text-text-secondary">{nextLabel}</span>
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function formatMinutes(ms: number): string {
+  const totalMin = Math.ceil(ms / 60_000);
+  if (totalMin < 60) return `${totalMin}m`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function ClockMiniIcon() {
+  return (
+    <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M12 7v5l3 2" />
+    </svg>
   );
 }
 

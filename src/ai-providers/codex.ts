@@ -19,6 +19,8 @@ interface CodexEvent {
   type: string;
   item?: { type?: string; text?: string };
   usage?: { input_tokens?: number; cached_input_tokens?: number; output_tokens?: number };
+  message?: string;
+  error?: { message?: string };
 }
 
 /**
@@ -29,7 +31,7 @@ interface CodexEvent {
  * - Text-only (no tool_use support — the CLI handles its own tools)
  * - Model selection via `-m` flag
  */
-export class VercelAIProvider implements AIProvider {
+export class CodexProvider implements AIProvider {
   readonly id = 'codex';
   readonly name = 'Codex';
 
@@ -47,7 +49,7 @@ export class VercelAIProvider implements AIProvider {
 
   async isAvailable(): Promise<boolean> {
     return new Promise((resolve) => {
-      const child = spawn('codex', ['--version'], { timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn('codex', ['--version'], { timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] });
       child.on('error', () => resolve(false));
       child.on('close', (code) => resolve(code === 0));
     });
@@ -65,7 +67,21 @@ export class VercelAIProvider implements AIProvider {
     usage?: { inputTokens: number; outputTokens: number };
   }> {
     const prompt = this.buildPrompt(params);
-    const args = ['exec', '--json', '--ephemeral', '--skip-git-repo-check', '-m', params.model, prompt];
+    // Pin reasoning effort to a value supported by every codex model — overrides
+    // any user-level `model_reasoning_effort` in ~/.codex/config.toml that may be
+    // incompatible with the model we're calling (e.g. `xhigh` is not accepted by
+    // `gpt-5.1-codex-mini`).
+    const args = [
+      'exec',
+      '--json',
+      '--ephemeral',
+      '--skip-git-repo-check',
+      '-c',
+      'model_reasoning_effort=high',
+      '-m',
+      params.model,
+      prompt,
+    ];
 
     logger.debug('Spawning codex exec', { model: params.model });
 
@@ -73,12 +89,13 @@ export class VercelAIProvider implements AIProvider {
       const child = spawn('codex', args, {
         timeout: 120_000,
         cwd: '/tmp',
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       let fullText = '';
       let buffer = '';
       let stderr = '';
+      let codexError = '';
       const usage = { inputTokens: 0, outputTokens: 0 };
 
       child.stdout.on('data', (chunk: Buffer) => {
@@ -91,6 +108,9 @@ export class VercelAIProvider implements AIProvider {
           if (!line.trim()) continue;
           try {
             const event = JSON.parse(line) as CodexEvent;
+            if (event.type === 'error') {
+              codexError = this.extractErrorMessage(event);
+            }
             this.processEvent(event, { usage }, (text) => {
               fullText = text;
             });
@@ -110,6 +130,9 @@ export class VercelAIProvider implements AIProvider {
         if (buffer.trim()) {
           try {
             const event = JSON.parse(buffer) as CodexEvent;
+            if (event.type === 'error') {
+              codexError = this.extractErrorMessage(event);
+            }
             this.processEvent(event, { usage }, (text) => {
               fullText = text;
             });
@@ -119,7 +142,8 @@ export class VercelAIProvider implements AIProvider {
         }
 
         if (code !== 0) {
-          reject(new Error(`codex exec exited with code ${code}: ${stderr || fullText.slice(0, 500)}`));
+          const detail = codexError || stderr || fullText.slice(0, 500);
+          reject(new Error(`codex exec failed: ${detail}`));
           return;
         }
 
@@ -129,8 +153,6 @@ export class VercelAIProvider implements AIProvider {
           usage,
         });
       });
-
-      child.stdin.end();
     });
   }
 
@@ -170,6 +192,18 @@ export class VercelAIProvider implements AIProvider {
     if (event.type === 'turn.completed' && event.usage) {
       state.usage.inputTokens = (event.usage.input_tokens ?? 0) + (event.usage.cached_input_tokens ?? 0);
       state.usage.outputTokens = event.usage.output_tokens ?? 0;
+    }
+  }
+
+  /** Extract a human-readable error from a Codex error event. */
+  private extractErrorMessage(event: CodexEvent): string {
+    const raw = event.message ?? event.error?.message ?? '';
+    // Codex wraps API errors as JSON strings inside the message field
+    try {
+      const parsed = JSON.parse(raw) as { error?: { message?: string } };
+      return parsed.error?.message ?? raw;
+    } catch {
+      return raw;
     }
   }
 }

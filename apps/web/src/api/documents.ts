@@ -379,6 +379,7 @@ export const BRIEFING_CONFIG_QUERY = gql`
       timezone
       sections
       enabled
+      microLlmIntervalHours
     }
   }
 `;
@@ -386,6 +387,34 @@ export const BRIEFING_CONFIG_QUERY = gql`
 export const SAVE_BRIEFING_CONFIG_MUTATION = gql`
   mutation SaveBriefingConfig($input: BriefingConfigInput!) {
     saveBriefingConfig(input: $input)
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Scheduler status
+// ---------------------------------------------------------------------------
+
+export const SCHEDULER_STATUS_QUERY = gql`
+  query SchedulerStatus {
+    schedulerStatus {
+      microLlmIntervalHours
+      pendingCount
+      throttledCount
+      assets {
+        symbol
+        source
+        lastSignalFetchAt
+        lastLlmAt
+        nextLlmEligibleAt
+        pendingAnalysis
+      }
+    }
+  }
+`;
+
+export const TRIGGER_MICRO_ANALYSIS_MUTATION = gql`
+  mutation TriggerMicroAnalysis {
+    triggerMicroAnalysis
   }
 `;
 
@@ -486,6 +515,7 @@ export const AI_CONFIG_QUERY = gql`
       defaultModel
       defaultProvider
       hasAnthropicKey
+      hasAnthropicApiKey
       hasOpenaiKey
     }
   }
@@ -497,6 +527,7 @@ export const SAVE_AI_CONFIG_MUTATION = gql`
       defaultModel
       defaultProvider
       hasAnthropicKey
+      hasAnthropicApiKey
       hasOpenaiKey
     }
   }
@@ -1356,6 +1387,12 @@ export const INTEL_FEED_QUERY = gql`
 export const DISMISS_SIGNAL_MUTATION = gql`
   mutation DismissSignal($signalId: ID!) {
     dismissSignal(signalId: $signalId)
+  }
+`;
+
+export const BATCH_DISMISS_SIGNALS_MUTATION = gql`
+  mutation BatchDismissSignals($signalIds: [ID!]!) {
+    batchDismissSignals(signalIds: $signalIds)
   }
 `;
 

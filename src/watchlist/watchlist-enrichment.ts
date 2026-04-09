@@ -70,18 +70,11 @@ export class WatchlistEnrichment {
       if (elapsed < retryWindow) return undefined;
     }
 
-    // Try symbol first
-    const bySymbol = await this.jintelClient.searchEntities(key, { limit: 1 });
-    if (bySymbol.success && bySymbol.data.length > 0) {
-      const entityId = bySymbol.data[0].id;
-      await this.store.updateEntry(key, { jintelEntityId: entityId, resolveAttemptedAt: new Date().toISOString() });
-      return entityId;
-    }
-
-    // Fallback to name
-    const byName = await this.jintelClient.searchEntities(entry.name, { limit: 1 });
-    if (byName.success && byName.data.length > 0) {
-      const entityId = byName.data[0].id;
+    // Search by symbol only
+    const query = key;
+    const result = await this.jintelClient.searchEntities(query, { limit: 1 });
+    if (result.success && result.data.length > 0) {
+      const entityId = result.data[0].id;
       await this.store.updateEntry(key, { jintelEntityId: entityId, resolveAttemptedAt: new Date().toISOString() });
       return entityId;
     }
@@ -135,7 +128,7 @@ export class WatchlistEnrichment {
     return this.enrichSymbol(key, options);
   }
 
-  /** Enrich all symbols concurrently, flushing cache once at the end (avoids O(N²) writes). */
+  /** Enrich all symbols in a single batch call, flushing cache once at the end. */
   async getEnrichedBatch(symbols: string[]): Promise<Map<string, EnrichmentCacheEntry | null>> {
     // No client — return whatever is cached
     if (!this.jintelClient) {
@@ -151,19 +144,54 @@ export class WatchlistEnrichment {
       }
     }
 
-    // Phase 2: enrich concurrently (enrichSymbol only writes to the in-memory cache with skipFlush)
-    let cacheUpdated = false;
-    const results = await Promise.all(
-      symbols.map(async (s) => {
+    // Phase 2: identify which symbols need enrichment (stale or missing cache)
+    const staleKeys: string[] = [];
+    for (const s of symbols) {
+      const key = s.toUpperCase();
+      const cached = this.cache.get(key);
+      if (!cached || this.isStale(cached)) {
+        staleKeys.push(key);
+      }
+    }
+
+    // Phase 3: single batch enrich call instead of N per-ticker calls
+    if (staleKeys.length > 0) {
+      const result = await this.jintelClient.batchEnrich(staleKeys, ENRICHMENT_FIELDS);
+      if (result.success) {
+        // Build a case-insensitive lookup: entity ticker → entity
+        const entityByTicker = new Map<string, (typeof result.data)[number]>();
+        for (const entity of result.data) {
+          for (const t of entity.tickers ?? []) {
+            entityByTicker.set(t.toUpperCase(), entity);
+          }
+        }
+
+        for (const key of staleKeys) {
+          const entity = entityByTicker.get(key);
+          if (entity) {
+            const cacheEntry: EnrichmentCacheEntry = {
+              symbol: key,
+              enrichedAt: new Date().toISOString(),
+              quote: entity.market?.quote ?? null,
+              riskScore: entity.risk?.overallScore ?? null,
+            };
+            this.cache.set(key, cacheEntry);
+          } else {
+            log.warn('No entity returned in batch for ticker', { symbol: key });
+          }
+        }
+      } else {
+        log.warn('Batch enrichment failed, falling back to cached data', { error: result.error });
+      }
+      await this.flush();
+    }
+
+    return new Map(
+      symbols.map((s) => {
         const key = s.toUpperCase();
-        const cached = this.cache.get(key);
-        if (cached && !this.isStale(cached)) return [key, cached] as const;
-        cacheUpdated = true;
-        return [key, await this.enrichSymbol(key, { skipFlush: true })] as const;
+        return [key, this.cache.get(key) ?? null];
       }),
     );
-    if (cacheUpdated) await this.flush();
-    return new Map(results);
   }
 
   /**
@@ -197,6 +225,27 @@ export class WatchlistEnrichment {
     const key = symbol.toUpperCase();
     this.cache.delete(key);
     await this.flush();
+  }
+
+  /**
+   * Invalidate enrichment cache for multiple symbols.
+   * Called after new signals arrive for watchlist tickers so the next enrichment
+   * call pulls fresh Jintel data instead of serving a stale snapshot.
+   */
+  async invalidateTickers(symbols: string[]): Promise<void> {
+    let changed = false;
+    for (const sym of symbols) {
+      const key = sym.toUpperCase();
+      if (this.cache.has(key)) {
+        this.cache.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) await this.flush();
+    // Also clear the JintelClient response cache so the next batchEnrich
+    // call fetches live data rather than serving the in-memory cached result.
+    // Double-optional for runtime safety against pre-0.12.0 installs.
+    this.jintelClient?.invalidateCache?.(symbols);
   }
 
   private isStale(entry: EnrichmentCacheEntry): boolean {

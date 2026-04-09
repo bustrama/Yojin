@@ -12,6 +12,7 @@ import {
   SAVE_AI_CREDENTIAL_MUTATION,
   REMOVE_AI_CREDENTIAL_MUTATION,
   DETECT_KEYCHAIN_TOKEN_QUERY,
+  DETECT_CODEX_TOKEN_QUERY,
 } from '../../api/documents';
 import type {
   AiConfigQueryResult,
@@ -23,6 +24,7 @@ import type {
   RemoveAiCredentialMutationResult,
   RemoveAiCredentialVariables,
   DetectKeychainTokenResult,
+  DetectCodexTokenResult,
 } from '../../api/types';
 
 // ---------------------------------------------------------------------------
@@ -66,10 +68,20 @@ function resolveProvider(provider: string): AiProviderId {
 
 const PROVIDER_KEY_INFO: Record<
   AiProviderId,
-  { placeholder: string; prefix: string; configField: 'hasAnthropicKey' | 'hasOpenaiKey' }
+  {
+    placeholder: string;
+    prefix: string;
+    configField: 'hasAnthropicKey' | 'hasOpenaiKey';
+    apiKeyField: 'hasAnthropicApiKey' | 'hasOpenaiKey';
+  }
 > = {
-  'claude-code': { placeholder: 'sk-ant-...', prefix: 'sk-ant-', configField: 'hasAnthropicKey' },
-  codex: { placeholder: 'sk-...', prefix: 'sk-', configField: 'hasOpenaiKey' },
+  'claude-code': {
+    placeholder: 'sk-ant-...',
+    prefix: 'sk-ant-',
+    configField: 'hasAnthropicKey',
+    apiKeyField: 'hasAnthropicApiKey',
+  },
+  codex: { placeholder: 'sk-...', prefix: 'sk-', configField: 'hasOpenaiKey', apiKeyField: 'hasOpenaiKey' },
 };
 
 // ---------------------------------------------------------------------------
@@ -146,11 +158,20 @@ function ModelPicker() {
   const [keyError, setKeyError] = useState<string | null>(null);
   const [keySuccess, setKeySuccess] = useState(false);
 
-  const [keychainResult, reexecuteKeychain] = useQuery<DetectKeychainTokenResult>({
+  const [claudeKeychainResult, reexecuteClaudeKeychain] = useQuery<DetectKeychainTokenResult>({
     query: DETECT_KEYCHAIN_TOKEN_QUERY,
     requestPolicy: 'network-only',
     pause: provider !== 'claude-code',
   });
+
+  const [codexKeychainResult, reexecuteCodexKeychain] = useQuery<DetectCodexTokenResult>({
+    query: DETECT_CODEX_TOKEN_QUERY,
+    requestPolicy: 'network-only',
+    pause: provider !== 'codex',
+  });
+
+  const keychainResult = provider === 'codex' ? codexKeychainResult : claudeKeychainResult;
+  const reexecuteKeychain = provider === 'codex' ? reexecuteCodexKeychain : reexecuteClaudeKeychain;
 
   useEffect(() => {
     if (result.data?.aiConfig) {
@@ -158,13 +179,14 @@ function ModelPicker() {
       setProvider(resolved);
       const models = PROVIDER_MODELS[resolved];
       const savedModel = result.data.aiConfig.defaultModel;
-      const validModel = models.some((m) => m.id === savedModel) ? savedModel : models[0].id;
+      const modelStillValid = models.some((m) => m.id === savedModel);
+      const validModel = modelStillValid ? savedModel : models[0].id;
       setSelected(validModel);
-      setDirty(false);
+      setDirty(!modelStillValid);
     }
   }, [result.data]);
 
-  const hasKey = result.data?.aiConfig?.[PROVIDER_KEY_INFO[provider].configField] ?? false;
+  const hasKey = result.data?.aiConfig?.[PROVIDER_KEY_INFO[provider].apiKeyField] ?? false;
 
   const handleSelectProvider = (p: AiProviderId) => {
     if (p === provider) return;
@@ -250,7 +272,10 @@ function ModelPicker() {
 
   const models = PROVIDER_MODELS[provider];
   const keyInfo = PROVIDER_KEY_INFO[provider];
-  const keychain = keychainResult.data?.detectKeychainToken;
+  const keychain =
+    provider === 'codex'
+      ? (keychainResult.data as DetectCodexTokenResult | undefined)?.detectCodexToken
+      : (keychainResult.data as DetectKeychainTokenResult | undefined)?.detectKeychainToken;
   const keychainConnected = keychain?.found && !keychain.error;
 
   return (
@@ -337,39 +362,43 @@ function ModelPicker() {
         )}
       </div>
 
-      {/* Keychain authentication (Claude Code only) */}
-      {provider === 'claude-code' && (
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-2">Keychain Authentication</p>
-          <div className="rounded-xl border border-border bg-bg-card px-4 py-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-text-primary">macOS Keychain</p>
-                <p className="text-xs text-text-muted">
-                  {keychainResult.fetching
-                    ? 'Checking...'
-                    : keychainConnected
-                      ? `Connected · ${keychain?.model ?? 'Claude'}`
-                      : keychain?.error
-                        ? 'Token expired or invalid'
-                        : 'Not connected'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {keychainConnected && <span className="text-xs font-medium text-success">Active</span>}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  loading={keychainResult.fetching}
-                  onClick={() => reexecuteKeychain({ requestPolicy: 'network-only' })}
-                >
-                  Refresh
-                </Button>
-              </div>
+      {/* Keychain authentication */}
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-2">
+          {provider === 'codex' ? 'Codex Authentication' : 'Keychain Authentication'}
+        </p>
+        <div className="rounded-xl border border-border bg-bg-card px-4 py-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-text-primary">
+                {provider === 'codex' ? 'Codex CLI credentials' : 'macOS Keychain'}
+              </p>
+              <p className="text-xs text-text-muted">
+                {keychainResult.fetching
+                  ? 'Checking...'
+                  : keychainConnected
+                    ? `Connected · ${keychain?.model ?? (provider === 'codex' ? 'Codex' : 'Claude')}`
+                    : keychain?.error
+                      ? keychain.error.includes('claude auth login')
+                        ? 'Token expired — run: claude auth login, then Refresh'
+                        : keychain.error
+                      : 'Not connected'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {keychainConnected && <span className="text-xs font-medium text-success">Active</span>}
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={keychainResult.fetching}
+                onClick={() => reexecuteKeychain({ requestPolicy: 'network-only' })}
+              >
+                Refresh
+              </Button>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Model selector */}
       <div>

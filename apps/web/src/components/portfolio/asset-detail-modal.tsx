@@ -34,7 +34,7 @@ const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOStrin
 // Scale selector types & mapping
 // ---------------------------------------------------------------------------
 
-type Scale = '15m' | '30m' | '1h' | '1d' | '1wk' | '1mo';
+type Scale = '15m' | '30m' | '1h' | '1d' | '1wk' | '1mo' | '5y';
 
 const INTRADAY_SCALES: { value: Scale; label: string }[] = [
   { value: '15m', label: '15min' },
@@ -46,6 +46,7 @@ const PERIOD_SCALES: { value: Scale; label: string }[] = [
   { value: '1d', label: 'Daily' },
   { value: '1wk', label: 'Weekly' },
   { value: '1mo', label: 'Monthly' },
+  { value: '5y', label: '5Y' },
 ];
 
 const SCALE_CONFIG: Record<Scale, { interval: string; range: string }> = {
@@ -55,6 +56,7 @@ const SCALE_CONFIG: Record<Scale, { interval: string; range: string }> = {
   '1d': { interval: '1d', range: '3m' },
   '1wk': { interval: '1wk', range: '1y' },
   '1mo': { interval: '1mo', range: '1y' },
+  '5y': { interval: '1wk', range: '5y' },
 };
 
 function isIntraday(scale: Scale): boolean {

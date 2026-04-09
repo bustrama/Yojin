@@ -44,6 +44,7 @@ import {
   onConnectionStatusSubscription,
 } from './resolvers/connections.js';
 import {
+  batchDismissSignalsResolver,
   curatedSignalsResolver,
   curationStatusResolver,
   dismissSignalResolver,
@@ -106,6 +107,7 @@ import {
 import { clearAppDataMutation, deviceInfoResolver } from './resolvers/profile.js';
 import { tickerProfileQuery, tickerProfilesQuery } from './resolvers/profiles.js';
 import { riskReportQuery } from './resolvers/risk.js';
+import { schedulerStatusQuery, triggerMicroAnalysisMutation } from './resolvers/scheduler.js';
 import { assessmentStatusResolver, signalAssessmentsResolver } from './resolvers/signal-assessments.js';
 import { signalGroupFieldResolvers, signalGroupResolver, signalGroupsResolver } from './resolvers/signal-groups.js';
 import { signalsByIdsResolver } from './resolvers/signals.js';
@@ -174,6 +176,7 @@ const schema = createSchema({
       watchlist: watchlistQuery,
       insightsWorkflowStatus: () => getInsightsWorkflowStatus(),
       briefingConfig: briefingConfigQuery,
+      schedulerStatus: schedulerStatusQuery,
       listChannels: listChannelsQuery,
       notificationPreferences: notificationPreferencesQuery,
       snap: snapQuery,
@@ -236,6 +239,7 @@ const schema = createSchema({
       runFullCuration: runFullCurationResolver,
       refreshIntelFeed: refreshIntelFeedResolver,
       dismissSignal: dismissSignalResolver,
+      batchDismissSignals: batchDismissSignalsResolver,
       addToWatchlist: addToWatchlistMutation,
       removeFromWatchlist: removeFromWatchlistMutation,
       approveAction: approveActionMutation,
@@ -249,6 +253,7 @@ const schema = createSchema({
       saveAiConfig: saveAiConfigMutation,
       saveAiCredential: saveAiCredentialMutation,
       removeAiCredential: removeAiCredentialMutation,
+      triggerMicroAnalysis: triggerMicroAnalysisMutation,
     },
     Subscription: {
       onAlert: onAlertSubscription,

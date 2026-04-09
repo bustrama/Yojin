@@ -223,7 +223,7 @@ export function deriveSignalSeverity(signal: Signal, assessment?: SignalAssessme
     ) {
       return 'CRITICAL';
     }
-    if (importance >= 0.7 && urgency >= 0.45) return 'HIGH';
+    if (importance >= 0.75 && urgency >= 0.65) return 'HIGH';
     if (urgency >= 0.55) return 'MEDIUM';
     if (importance >= 0.6) return 'MEDIUM';
     if (importance >= 0.45 && urgency >= 0.3) return 'MEDIUM';
@@ -234,7 +234,7 @@ export function deriveSignalSeverity(signal: Signal, assessment?: SignalAssessme
   if (metadataSeverity) return metadataSeverity;
 
   if (signal.outputType === 'ACTION') return 'HIGH';
-  if (signal.outputType === 'ALERT') return recencyUrgency >= 0.65 ? 'HIGH' : 'MEDIUM';
+  if (signal.outputType === 'ALERT') return recencyUrgency >= 0.8 ? 'HIGH' : 'MEDIUM';
 
   if (signal.sentiment === 'BEARISH' && signal.confidence >= 0.75) return 'MEDIUM';
   if (signal.type === 'FILINGS' || signal.type === 'TRADING_LOGIC_TRIGGER') return 'MEDIUM';
@@ -491,6 +491,13 @@ export function getCurationWorkflowStatus(): { running: boolean; startedAt: stri
 export async function dismissSignalResolver(_parent: unknown, args: { signalId: string }): Promise<boolean> {
   if (!signalArchive) throw new Error('SignalArchive not available');
   await signalArchive.dismiss(args.signalId);
+  return true;
+}
+
+export async function batchDismissSignalsResolver(_parent: unknown, args: { signalIds: string[] }): Promise<boolean> {
+  if (!signalArchive) throw new Error('SignalArchive not available');
+  const archive = signalArchive;
+  await Promise.all(args.signalIds.map((id) => archive.dismiss(id)));
   return true;
 }
 
