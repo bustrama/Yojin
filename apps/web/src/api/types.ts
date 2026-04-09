@@ -1347,10 +1347,6 @@ export interface ImportSkillVariables {
   markdown: string;
 }
 
-// ---------------------------------------------------------------------------
-// Strategy Sources
-// ---------------------------------------------------------------------------
-
 export interface StrategySource {
   id: string;
   owner: string;
@@ -1362,7 +1358,7 @@ export interface StrategySource {
   label: string | null;
 }
 
-export interface SyncResult {
+export interface StrategySyncResult {
   added: number;
   skipped: number;
   failed: number;
@@ -1386,11 +1382,7 @@ export interface ToggleStrategySourceResult {
 }
 
 export interface SyncStrategiesResult {
-  syncStrategies: SyncResult;
-}
-
-export interface SyncStrategySourceResult {
-  syncStrategySource: SyncResult;
+  syncStrategies: StrategySyncResult;
 }
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,6 @@ import {
   REMOVE_STRATEGY_SOURCE_MUTATION,
   TOGGLE_STRATEGY_SOURCE_MUTATION,
   SYNC_STRATEGIES_MUTATION,
-  SYNC_STRATEGY_SOURCE_MUTATION,
 } from '../documents.js';
 import type {
   SkillsQueryResult,
@@ -33,7 +32,6 @@ import type {
   RemoveStrategySourceResult,
   ToggleStrategySourceResult,
   SyncStrategiesResult,
-  SyncStrategySourceResult,
 } from '../types.js';
 
 export function useSkills(variables?: SkillsQueryVariables) {
@@ -91,8 +89,4 @@ export function useToggleStrategySource() {
 
 export function useSyncStrategies() {
   return useMutation<SyncStrategiesResult>(SYNC_STRATEGIES_MUTATION);
-}
-
-export function useSyncStrategySource() {
-  return useMutation<SyncStrategySourceResult>(SYNC_STRATEGY_SOURCE_MUTATION);
 }

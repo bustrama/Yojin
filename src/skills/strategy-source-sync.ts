@@ -9,7 +9,7 @@ import { createSubsystemLogger } from '../logging/logger.js';
 
 const logger = createSubsystemLogger('strategy-source-sync');
 
-export interface SyncResult {
+export interface StrategySyncResult {
   added: number;
   skipped: number;
   failed: number;
@@ -24,8 +24,8 @@ export async function syncFromFetched(
   fetched: FetchedStrategy[],
   skillStore: SkillStore,
   source: StrategySource,
-): Promise<SyncResult> {
-  const result: SyncResult = { added: 0, skipped: 0, failed: 0, errors: [] };
+): Promise<StrategySyncResult> {
+  const result: StrategySyncResult = { added: 0, skipped: 0, failed: 0, errors: [] };
   const isDefault = source.id === DEFAULT_SOURCE_ID;
 
   for (const { filename, markdown } of fetched) {
@@ -58,8 +58,8 @@ export async function syncStrategies(
   sources: StrategySource[],
   skillStore: SkillStore,
   sourceStore?: StrategySourceStore,
-): Promise<SyncResult> {
-  const totalResult: SyncResult = { added: 0, skipped: 0, failed: 0, errors: [] };
+): Promise<StrategySyncResult> {
+  const totalResult: StrategySyncResult = { added: 0, skipped: 0, failed: 0, errors: [] };
 
   for (const source of sources) {
     const { strategies: fetched, errors: fetchErrors } = await fetchStrategiesFromSource(source);

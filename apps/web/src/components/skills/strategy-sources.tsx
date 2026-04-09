@@ -88,13 +88,6 @@ export function StrategySources() {
     const trimmed = url.trim();
     if (!trimmed) return;
 
-    try {
-      new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
-    } catch {
-      setError('Invalid URL. Use a GitHub repository URL (e.g. https://github.com/owner/repo).');
-      return;
-    }
-
     const res = await addSource({ url: trimmed });
     if (res.error) {
       setError(res.error.message.replace('[GraphQL] ', ''));

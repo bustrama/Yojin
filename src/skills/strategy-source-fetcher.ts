@@ -17,10 +17,18 @@ interface GitHubContentEntry {
   download_url: string | null;
 }
 
+function checkRateLimit(res: Response, sourceId: string): void {
+  const remaining = res.headers.get('x-ratelimit-remaining');
+  if (remaining !== null && parseInt(remaining, 10) <= 10) {
+    const resetEpoch = res.headers.get('x-ratelimit-reset');
+    const resetsIn = resetEpoch ? Math.ceil((parseInt(resetEpoch, 10) * 1000 - Date.now()) / 60_000) : '?';
+    logger.warn(`GitHub API rate limit low for ${sourceId}: ${remaining} remaining, resets in ~${resetsIn}min`);
+  }
+}
+
 export async function fetchStrategiesFromSource(
   source: StrategySource,
 ): Promise<{ strategies: FetchedStrategy[]; errors: string[] }> {
-  const strategies: FetchedStrategy[] = [];
   const errors: string[] = [];
 
   const contentsPath = source.path
@@ -32,40 +40,45 @@ export async function fetchStrategiesFromSource(
     const res = await fetch(contentsPath, {
       headers: { Accept: 'application/vnd.github.v3+json' },
     });
+    checkRateLimit(res, source.id);
     if (!res.ok) {
       errors.push(`Failed to list ${source.id}: HTTP ${res.status}`);
-      return { strategies, errors };
+      return { strategies: [], errors };
     }
     const body = await res.json();
     if (!Array.isArray(body)) {
       errors.push(`Unexpected response from ${source.id}: expected directory listing`);
-      return { strategies, errors };
+      return { strategies: [], errors };
     }
     entries = body as GitHubContentEntry[];
   } catch (err) {
     errors.push(`Failed to list ${source.id}: ${err instanceof Error ? err.message : String(err)}`);
-    return { strategies, errors };
+    return { strategies: [], errors };
   }
 
   const mdFiles = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md') && !EXCLUDED_FILES.has(e.name));
 
-  for (const file of mdFiles) {
-    const rawUrl =
-      file.download_url ??
-      `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${source.ref}/${source.path ? source.path + '/' : ''}${file.name}`;
+  const results = await Promise.allSettled(
+    mdFiles.map(async (file) => {
+      const rawUrl =
+        file.download_url ??
+        `https://raw.githubusercontent.com/${source.owner}/${source.repo}/${source.ref}/${source.path ? source.path + '/' : ''}${file.name}`;
 
-    try {
       const res = await fetch(rawUrl);
       if (!res.ok) {
-        errors.push(`Failed to fetch ${file.name} from ${source.id}: HTTP ${res.status}`);
-        continue;
+        throw new Error(`Failed to fetch ${file.name} from ${source.id}: HTTP ${res.status}`);
       }
       const markdown = await res.text();
-      strategies.push({ filename: file.name, markdown, source });
-    } catch (err) {
-      errors.push(
-        `Failed to fetch ${file.name} from ${source.id}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      return { filename: file.name, markdown, source };
+    }),
+  );
+
+  const strategies: FetchedStrategy[] = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      strategies.push(result.value);
+    } else {
+      errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
     }
   }
 

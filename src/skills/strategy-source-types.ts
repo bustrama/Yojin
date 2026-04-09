@@ -1,15 +1,4 @@
-/**
- * Strategy source types — external GitHub repositories that provide trading strategies.
- *
- * A StrategySource points to a GitHub repo (owner/repo) with an optional subdirectory
- * and branch ref. The sync engine pulls Markdown strategy files from these sources.
- */
-
 import { z } from 'zod';
-
-// ---------------------------------------------------------------------------
-// Strategy source schema
-// ---------------------------------------------------------------------------
 
 export const StrategySourceSchema = z.object({
   /** Unique identifier, typically "owner/repo". */
@@ -32,10 +21,6 @@ export const StrategySourceSchema = z.object({
 
 export type StrategySource = z.infer<typeof StrategySourceSchema>;
 
-// ---------------------------------------------------------------------------
-// Default source — Yojin's official strategy repo
-// ---------------------------------------------------------------------------
-
 export const DEFAULT_STRATEGY_SOURCE: StrategySource = {
   id: 'YojinHQ/trading-strategies',
   owner: 'YojinHQ',
@@ -47,10 +32,6 @@ export const DEFAULT_STRATEGY_SOURCE: StrategySource = {
 };
 
 export const DEFAULT_SOURCE_ID = DEFAULT_STRATEGY_SOURCE.id;
-
-// ---------------------------------------------------------------------------
-// GitHub URL parser
-// ---------------------------------------------------------------------------
 
 interface ParsedGitHubUrl {
   owner: string;

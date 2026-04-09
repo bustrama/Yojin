@@ -1585,10 +1585,6 @@ export const REJECT_ACTION_MUTATION = gql`
   ${ACTION_FIELDS}
 `;
 
-// ---------------------------------------------------------------------------
-// Queries — Strategy Sources
-// ---------------------------------------------------------------------------
-
 export const STRATEGY_SOURCES_QUERY = gql`
   query StrategySources {
     strategySources {
@@ -1603,10 +1599,6 @@ export const STRATEGY_SOURCES_QUERY = gql`
     }
   }
 `;
-
-// ---------------------------------------------------------------------------
-// Mutations — Strategy Sources
-// ---------------------------------------------------------------------------
 
 export const ADD_STRATEGY_SOURCE_MUTATION = gql`
   mutation AddStrategySource($input: AddStrategySourceInput!) {
@@ -1641,17 +1633,6 @@ export const TOGGLE_STRATEGY_SOURCE_MUTATION = gql`
 export const SYNC_STRATEGIES_MUTATION = gql`
   mutation SyncStrategies {
     syncStrategies {
-      added
-      skipped
-      failed
-      errors
-    }
-  }
-`;
-
-export const SYNC_STRATEGY_SOURCE_MUTATION = gql`
-  mutation SyncStrategySource($id: ID!) {
-    syncStrategySource(id: $id) {
       added
       skipped
       failed

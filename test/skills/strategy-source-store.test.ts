@@ -35,7 +35,7 @@ describe('StrategySourceStore', () => {
   it('loads existing sources from disk', async () => {
     const store1 = new StrategySourceStore(configPath);
     await store1.initialize();
-    store1.add({ owner: 'acme', repo: 'strats', path: '', ref: 'main', enabled: true });
+    await store1.add({ owner: 'acme', repo: 'strats', path: '', ref: 'main', enabled: true });
 
     const store2 = new StrategySourceStore(configPath);
     await store2.initialize();
@@ -49,7 +49,7 @@ describe('StrategySourceStore', () => {
     const store = new StrategySourceStore(configPath);
     await store.initialize();
 
-    const added = store.add({ owner: 'foo', repo: 'bar', path: 'strategies', ref: 'develop', enabled: true });
+    const added = await store.add({ owner: 'foo', repo: 'bar', path: 'strategies', ref: 'develop', enabled: true });
     expect(added.id).toBe('foo/bar');
     expect(added.ref).toBe('develop');
 
@@ -61,9 +61,9 @@ describe('StrategySourceStore', () => {
   it('throws on duplicate source', async () => {
     const store = new StrategySourceStore(configPath);
     await store.initialize();
-    store.add({ owner: 'dup', repo: 'test', path: '', ref: 'main', enabled: true });
+    await store.add({ owner: 'dup', repo: 'test', path: '', ref: 'main', enabled: true });
 
-    expect(() => store.add({ owner: 'dup', repo: 'test', path: '', ref: 'main', enabled: true })).toThrow(
+    await expect(store.add({ owner: 'dup', repo: 'test', path: '', ref: 'main', enabled: true })).rejects.toThrow(
       'Strategy source already exists: dup/test',
     );
   });
@@ -71,9 +71,9 @@ describe('StrategySourceStore', () => {
   it('removes a non-default source', async () => {
     const store = new StrategySourceStore(configPath);
     await store.initialize();
-    store.add({ owner: 'removable', repo: 'repo', path: '', ref: 'main', enabled: true });
+    await store.add({ owner: 'removable', repo: 'repo', path: '', ref: 'main', enabled: true });
 
-    store.remove('removable/repo');
+    await store.remove('removable/repo');
     expect(store.getAll()).toHaveLength(1);
     expect(store.getById('removable/repo')).toBeUndefined();
   });
@@ -82,7 +82,7 @@ describe('StrategySourceStore', () => {
     const store = new StrategySourceStore(configPath);
     await store.initialize();
 
-    expect(() => store.remove(DEFAULT_SOURCE_ID)).toThrow(
+    await expect(store.remove(DEFAULT_SOURCE_ID)).rejects.toThrow(
       'Cannot remove the default strategy source. Disable it instead.',
     );
   });
@@ -91,18 +91,18 @@ describe('StrategySourceStore', () => {
     const store = new StrategySourceStore(configPath);
     await store.initialize();
 
-    const disabled = store.setEnabled(DEFAULT_SOURCE_ID, false);
+    const disabled = await store.setEnabled(DEFAULT_SOURCE_ID, false);
     expect(disabled.enabled).toBe(false);
 
-    const enabled = store.setEnabled(DEFAULT_SOURCE_ID, true);
+    const enabled = await store.setEnabled(DEFAULT_SOURCE_ID, true);
     expect(enabled.enabled).toBe(true);
   });
 
   it('getEnabled filters disabled sources', async () => {
     const store = new StrategySourceStore(configPath);
     await store.initialize();
-    store.add({ owner: 'extra', repo: 'repo', path: '', ref: 'main', enabled: true });
-    store.setEnabled(DEFAULT_SOURCE_ID, false);
+    await store.add({ owner: 'extra', repo: 'repo', path: '', ref: 'main', enabled: true });
+    await store.setEnabled(DEFAULT_SOURCE_ID, false);
 
     const enabled = store.getEnabled();
     expect(enabled).toHaveLength(1);
@@ -116,7 +116,7 @@ describe('StrategySourceStore', () => {
     expect(store.getById(DEFAULT_SOURCE_ID)?.lastSyncedAt).toBeUndefined();
 
     const before = new Date().toISOString();
-    const updated = store.updateLastSynced(DEFAULT_SOURCE_ID);
+    const updated = await store.updateLastSynced(DEFAULT_SOURCE_ID);
     const after = new Date().toISOString();
 
     expect(updated.lastSyncedAt).toBeDefined();

@@ -1159,7 +1159,7 @@ export const typeDefs = /* GraphQL */ `
     label: String
   }
 
-  type SyncResult {
+  type StrategySyncResult {
     added: Int!
     skipped: Int!
     failed: Int!
@@ -1334,8 +1334,8 @@ export const typeDefs = /* GraphQL */ `
     addStrategySource(input: AddStrategySourceInput!): StrategySource!
     removeStrategySource(id: ID!): Boolean!
     toggleStrategySource(id: ID!, enabled: Boolean!): StrategySource!
-    syncStrategies: SyncResult!
-    syncStrategySource(id: ID!): SyncResult!
+    syncStrategies: StrategySyncResult!
+    syncStrategySource(id: ID!): StrategySyncResult!
     clearAppData: Boolean!
     saveAiConfig(input: AiConfigInput!): AiConfig!
     saveAiCredential(provider: String!, apiKey: String!): SaveAiCredentialResult!
