@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router';
 
 import { useActions } from '../../api';
 import type { Action } from '../../api/types';
@@ -17,10 +18,26 @@ import { cn, timeAgo } from '../../lib/utils';
 import { CardBlurGate } from '../common/card-blur-gate';
 import { DashboardCard } from '../common/dashboard-card';
 import { FeatureCardGate } from '../common/feature-gate';
+import Modal from '../common/modal';
 import Spinner from '../common/spinner';
 
 const POLL_INTERVAL_MS = 30_000;
 const UPDATED_GLOW_MS = 3_000;
+/**
+ * Each `what` is already a full sentence from the analyzer, so one per ticker
+ * is enough — joining two produces a paragraph and only one ticker fits on screen.
+ */
+const MAX_WHATS_PER_TICKER = 1;
+
+interface TickerGroup {
+  key: string;
+  ticker: string | null;
+  topSeverity: number | null;
+  topActionId: string;
+  latestCreatedAt: string;
+  /** All `what` strings for this ticker, sorted by severity DESC. */
+  whats: string[];
+}
 
 /** Map a 0–1 severity score to a bullet color (matches the analyzer prompt's ladder). */
 function severityBulletColor(severity: number | null): string {
@@ -36,6 +53,12 @@ function severityBulletColor(severity: number | null): string {
 function extractTicker(source: string): string | null {
   const match = source.match(/^micro-observation:\s*(.+)$/i);
   return match?.[1]?.trim() ?? null;
+}
+
+/** Build the insights deep-link for a ticker (matches the App.tsx redirect shape). */
+function insightsHrefForTicker(ticker: string): string {
+  const params = new URLSearchParams({ tab: 'all', ticker });
+  return `/insights?${params.toString()}`;
 }
 
 export function YojinSnapCard() {
@@ -54,22 +77,60 @@ export function YojinSnapCard() {
     return () => clearInterval(id);
   }, [reexecute, unlocked]);
 
-  // Sort by severity DESC, then createdAt DESC. Null severity sinks.
-  const sorted: Action[] = useMemo(() => {
+  // Group actions by ticker — one row per ticker with its top 1-2 whats joined.
+  // Row severity is the max severity seen for that ticker. Groups sort by that
+  // severity DESC, then latest createdAt DESC. Null-ticker actions fall into a
+  // single trailing group rendered without a symbol label.
+  const grouped: TickerGroup[] = useMemo(() => {
     const list = actions ?? [];
-    return [...list].sort((a, b) => {
-      const sa = a.severity ?? -1;
-      const sb = b.severity ?? -1;
+    const byTicker = new Map<string, Action[]>();
+    for (const action of list) {
+      const key = extractTicker(action.source) ?? '';
+      const bucket = byTicker.get(key) ?? [];
+      bucket.push(action);
+      byTicker.set(key, bucket);
+    }
+    const groups: TickerGroup[] = [];
+    for (const [key, items] of byTicker) {
+      const sortedItems = [...items].sort((a, b) => {
+        const sa = a.severity ?? -1;
+        const sb = b.severity ?? -1;
+        if (sa !== sb) return sb - sa;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+      const top = sortedItems[0];
+      if (!top) continue;
+      groups.push({
+        key: key || '__untagged__',
+        ticker: key || null,
+        topSeverity: top.severity,
+        topActionId: top.id,
+        latestCreatedAt: top.createdAt,
+        whats: sortedItems.map((a) => a.what),
+      });
+    }
+    return groups.sort((a, b) => {
+      const sa = a.topSeverity ?? -1;
+      const sb = b.topSeverity ?? -1;
       if (sa !== sb) return sb - sa;
-      return b.createdAt.localeCompare(a.createdAt);
+      return b.latestCreatedAt.localeCompare(a.latestCreatedAt);
     });
   }, [actions]);
 
-  // Glow-pulse when the top action changes (new critical item landed).
+  const totalActions = actions?.length ?? 0;
+
+  // Click "+N more" to open the full per-ticker list in a modal.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectedGroup = useMemo(
+    () => (selectedKey ? (grouped.find((g) => g.key === selectedKey) ?? null) : null),
+    [selectedKey, grouped],
+  );
+
+  // Glow-pulse when the top ticker's top action changes (new critical item landed).
   const [justUpdated, setJustUpdated] = useState(false);
   const prevTopIdRef = useRef<string | null>(null);
   useEffect(() => {
-    const topId = sorted[0]?.id ?? null;
+    const topId = grouped[0]?.topActionId ?? null;
     if (topId === null) return;
     const isUpdate = prevTopIdRef.current !== null && prevTopIdRef.current !== topId;
     prevTopIdRef.current = topId;
@@ -80,7 +141,7 @@ export function YojinSnapCard() {
       clearTimeout(start);
       clearTimeout(end);
     };
-  }, [sorted]);
+  }, [grouped]);
 
   if (!jintelConfigured) {
     return (
@@ -112,7 +173,7 @@ export function YojinSnapCard() {
     );
   }
 
-  if (sorted.length === 0) {
+  if (grouped.length === 0) {
     return (
       <DashboardCard title="Actions" variant="feature" className="flex-1">
         <div className="flex flex-1 items-center justify-center px-5 pb-5">
@@ -122,7 +183,7 @@ export function YojinSnapCard() {
     );
   }
 
-  const latestCreatedAt = sorted[0]?.createdAt;
+  const latestCreatedAt = grouped[0]?.latestCreatedAt;
 
   return (
     <DashboardCard
@@ -131,26 +192,80 @@ export function YojinSnapCard() {
       className={cn('flex-1', justUpdated && 'animate-new-item')}
       headerAction={
         <span className="text-xs text-text-muted">
-          {sorted.length} pending{latestCreatedAt && <> &middot; {timeAgo(latestCreatedAt)}</>}
+          {grouped.length} {grouped.length === 1 ? 'ticker' : 'tickers'} &middot; {totalActions} pending
+          {latestCreatedAt && <> &middot; {timeAgo(latestCreatedAt)}</>}
         </span>
       }
     >
       <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-5 pb-5">
-        {sorted.map((action) => {
-          const ticker = extractTicker(action.source);
+        {grouped.map((group) => {
+          const visibleWhats = group.whats.slice(0, MAX_WHATS_PER_TICKER);
+          const hiddenCount = group.whats.length - visibleWhats.length;
           return (
-            <li key={action.id} className="flex items-start gap-2">
+            <li key={group.key} className="flex items-start gap-2">
               <span
-                className={cn('mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full', severityBulletColor(action.severity))}
+                className={cn('mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full', severityBulletColor(group.topSeverity))}
               />
-              <div className="min-w-0 flex-1">
-                {ticker && <span className="mr-1.5 text-sm font-semibold text-text-primary">{ticker}</span>}
-                <span className="text-sm leading-relaxed text-text-secondary">{action.what}</span>
-              </div>
+              <p className="min-w-0 flex-1 text-sm leading-relaxed text-text-secondary">
+                {group.ticker && (
+                  <Link
+                    to={insightsHrefForTicker(group.ticker)}
+                    className="mr-1.5 font-semibold text-text-primary underline-offset-2 hover:underline focus:underline focus:outline-none"
+                  >
+                    {group.ticker}
+                  </Link>
+                )}
+                {visibleWhats.join(' · ')}
+                {hiddenCount > 0 && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedKey(group.key)}
+                      className="text-text-muted underline-offset-2 hover:text-text-primary hover:underline focus:text-text-primary focus:underline focus:outline-none"
+                    >
+                      (+{hiddenCount} more)
+                    </button>
+                  </>
+                )}
+              </p>
             </li>
           );
         })}
       </ul>
+      <Modal
+        open={selectedGroup !== null}
+        onClose={() => setSelectedKey(null)}
+        title={selectedGroup?.ticker ? `${selectedGroup.ticker} actions` : 'Actions'}
+        maxWidth="max-w-xl"
+      >
+        {selectedGroup && (
+          <div className="flex flex-col gap-4">
+            <ul className="flex flex-col gap-3">
+              {selectedGroup.whats.map((what, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span
+                    className={cn(
+                      'mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full',
+                      severityBulletColor(selectedGroup.topSeverity),
+                    )}
+                  />
+                  <span className="text-sm leading-relaxed text-text-secondary">{what}</span>
+                </li>
+              ))}
+            </ul>
+            {selectedGroup.ticker && (
+              <Link
+                to={insightsHrefForTicker(selectedGroup.ticker)}
+                onClick={() => setSelectedKey(null)}
+                className="self-start text-sm font-medium text-accent-primary underline-offset-2 hover:underline focus:underline focus:outline-none"
+              >
+                View {selectedGroup.ticker} in Insights →
+              </Link>
+            )}
+          </div>
+        )}
+      </Modal>
     </DashboardCard>
   );
 }
