@@ -6,9 +6,11 @@
  * and returns evaluations that should be routed to the Strategist.
  */
 
+import { SUPPORTED_LOOKBACK_MONTHS } from './portfolio-context-builder.js';
 import type { SkillStore } from './skill-store.js';
 import type { SkillEvaluation, SkillTrigger } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
+import { SignalTypeSchema } from '../signals/types.js';
 import type { Signal, SignalType } from '../signals/types.js';
 
 const logger = createSubsystemLogger('skill-evaluator');
@@ -114,12 +116,10 @@ ${sections.join('\n\n---\n\n')}`;
 
         let change: number | undefined;
         if (lookbackMonths != null) {
-          // Prefetched periods are 3, 6, 12 (see buildPortfolioContext). Any other
-          // value silently misses — warn loudly so strategy authors see it.
           change = ctx.periodReturns?.[`${ticker}:${lookbackMonths}`];
-          if (change === undefined) {
+          if (change === undefined && !(SUPPORTED_LOOKBACK_MONTHS as readonly number[]).includes(lookbackMonths)) {
             logger.warn(
-              `PRICE_MOVE: unsupported lookback_months=${lookbackMonths} (supported: 3, 6, 12). ` +
+              `PRICE_MOVE: unsupported lookback_months=${lookbackMonths} (supported: ${SUPPORTED_LOOKBACK_MONTHS.join(', ')}). ` +
                 `Trigger will not fire for ${ticker}.`,
             );
           }
@@ -178,7 +178,9 @@ ${sections.join('\n\n---\n\n')}`;
 
       case 'SIGNAL_PRESENT': {
         const rawTypes = params['signal_types'];
-        const signalTypes: SignalType[] = Array.isArray(rawTypes) ? (rawTypes as SignalType[]) : [];
+        const signalTypes: SignalType[] = Array.isArray(rawTypes)
+          ? rawTypes.filter((t): t is SignalType => SignalTypeSchema.safeParse(t).success)
+          : [];
         if (signalTypes.length === 0) return null;
         const minSentiment = params['min_sentiment'] != null ? Number(params['min_sentiment']) : undefined;
         const requestedLookback = params['lookback_hours'] != null ? Number(params['lookback_hours']) : 24;

@@ -229,6 +229,147 @@ describe('skill evaluation integration', () => {
   });
 
   // -------------------------------------------------------------------------
+  // PRICE_MOVE with lookback_months (multi-period returns)
+  // -------------------------------------------------------------------------
+
+  it('PRICE_MOVE with lookback_months fires on 6-month return exceeding threshold', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-price-momentum-6m',
+        triggers: [
+          {
+            type: 'PRICE_MOVE',
+            description: '6-month return above 10%',
+            params: { threshold: 0.1, lookback_months: 6 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot(
+        [
+          { symbol: 'AAPL', currentPrice: 165, marketValue: 8250 },
+          { symbol: 'GOOG', currentPrice: 100, marketValue: 5000 },
+        ],
+        13250,
+      );
+
+      // Build price histories: AAPL +15% over 6 months (fires), GOOG +5% (doesn't fire)
+      const now = new Date();
+      const sixMonthsAgo = new Date(now);
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const priceHistories = [
+        {
+          ticker: 'AAPL',
+          history: [
+            { date: sixMonthsAgo.toISOString().slice(0, 10), open: 100, high: 100, low: 100, close: 100, volume: 1000 },
+            { date: now.toISOString().slice(0, 10), open: 115, high: 115, low: 115, close: 115, volume: 1000 },
+          ],
+        },
+        {
+          ticker: 'GOOG',
+          history: [
+            { date: sixMonthsAgo.toISOString().slice(0, 10), open: 100, high: 100, low: 100, close: 100, volume: 1000 },
+            { date: now.toISOString().slice(0, 10), open: 105, high: 105, low: 105, close: 105, volume: 1000 },
+          ],
+        },
+      ];
+
+      const ctx = buildPortfolioContext(snapshot, [], [], priceHistories);
+
+      // Verify period returns are populated
+      expect(ctx.periodReturns?.['AAPL:6']).toBeCloseTo(0.15, 1);
+      expect(ctx.periodReturns?.['GOOG:6']).toBeCloseTo(0.05, 1);
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluate(ctx);
+
+      // Only AAPL fires (15% > 10% threshold)
+      expect(results).toHaveLength(1);
+      expect(results[0].context['ticker']).toBe('AAPL');
+      expect(results[0].triggerType).toBe('PRICE_MOVE');
+      expect(results[0].context['threshold']).toBe(0.1);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // SIGNAL_PRESENT — invalid signal_types validation
+  // -------------------------------------------------------------------------
+
+  it('SIGNAL_PRESENT filters out invalid signal_types entries', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-signal-invalid-type',
+        triggers: [
+          {
+            type: 'SIGNAL_PRESENT',
+            description: 'Recent news',
+            // 'NEWZ' is a typo — should be filtered out, leaving only 'NEWS'
+            params: { signal_types: ['NEWZ', 'NEWS'], lookback_hours: 24 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }], 1500);
+      const signalsByTicker = {
+        AAPL: [makeNewsSignal('AAPL', { id: 's1', hoursAgo: 2 })],
+      };
+      const ctx = buildPortfolioContext(snapshot, [], [], undefined, signalsByTicker);
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluate(ctx);
+
+      // Should still fire because 'NEWS' is valid even though 'NEWZ' was filtered
+      expect(results).toHaveLength(1);
+      expect(results[0].context['signalType']).toBe('NEWS');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('SIGNAL_PRESENT returns null when all signal_types are invalid', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-signal-all-invalid',
+        triggers: [
+          {
+            type: 'SIGNAL_PRESENT',
+            description: 'Broken types',
+            params: { signal_types: ['NEWZ', 'FAKETYPE'], lookback_hours: 24 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 1500 }], 1500);
+      const signalsByTicker = {
+        AAPL: [makeNewsSignal('AAPL', { id: 's1', hoursAgo: 2 })],
+      };
+      const ctx = buildPortfolioContext(snapshot, [], [], undefined, signalsByTicker);
+
+      const evaluator = new SkillEvaluator(store);
+      // All signal types are invalid → filter leaves empty array → trigger returns null
+      expect(evaluator.evaluate(ctx)).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // METRIC_THRESHOLD
   // -------------------------------------------------------------------------
 

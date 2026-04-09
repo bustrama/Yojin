@@ -31,6 +31,9 @@ interface MinimalSnapshot {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Supported lookback periods (months) for PRICE_MOVE triggers. */
+export const SUPPORTED_LOOKBACK_MONTHS = [3, 6, 12] as const;
+
 /** Map Jintel TechnicalIndicators to a flat key→number record for trigger evaluation. */
 export function mapIndicators(technicals: TechnicalIndicators | null | undefined): Record<string, number> {
   if (!technicals) return {};
@@ -249,7 +252,10 @@ export function buildPortfolioContext(
   // Compute multi-period returns if price history is available
   const periodReturns =
     priceHistories && priceHistories.length > 0
-      ? computePeriodReturns(priceHistories, [{ months: 12, skipMonths: 1 }, { months: 6 }, { months: 3 }])
+      ? computePeriodReturns(
+          priceHistories,
+          SUPPORTED_LOOKBACK_MONTHS.map((m) => (m === 12 ? { months: m, skipMonths: 1 } : { months: m })),
+        )
       : undefined;
 
   return {
