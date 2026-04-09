@@ -74,13 +74,17 @@ export async function snapFromMicro(
     return b.conviction - a.conviction;
   });
 
-  // Build context for AI synthesis — include portfolio weight
+  // Build context for AI synthesis — include portfolio weight AND per-asset
+  // severity so the model has the raw inputs for its exposure × severity
+  // ranking. Without an explicit severity value the model would have to infer
+  // priority from prose, which weakens the supersede heuristic.
   const assetSummaries = sortedInsights
     .map((mi) => {
       const exp = exposureMap.get(mi.symbol.toUpperCase());
       const weightStr = exp ? ` | ${(exp.weight * 100).toFixed(1)}% of portfolio` : '';
+      const severityStr = typeof mi.severity === 'number' ? ` | severity ${mi.severity.toFixed(2)}` : '';
       return (
-        `${mi.symbol} (${mi.rating}, ${(mi.conviction * 100).toFixed(0)}% conviction${weightStr}): ${mi.assetSnap}` +
+        `${mi.symbol} (${mi.rating}, ${(mi.conviction * 100).toFixed(0)}% conviction${weightStr}${severityStr}): ${mi.assetSnap}` +
         (mi.assetActions.length > 0 ? `\n  Observations: ${mi.assetActions.join('; ')}` : '')
       );
     })

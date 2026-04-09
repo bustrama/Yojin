@@ -804,7 +804,10 @@ export class Scheduler {
       //         what materially changed. Net effect: the snap evolves rather
       //         than being rebuilt from scratch every 2 hours, so it stays
       //         short and users see continuity between macro/micro cycles.
-      await this.regenerateSnap();
+      // Suppress the baseline publish — only the merged snap written by
+      // `regenerateSnapFromMicro()` should fire `snap.ready`, so downstream
+      // consumers pin to the final (post-merge) snapId.
+      await this.regenerateSnap({ skipPublish: true });
       await this.regenerateSnapFromMicro();
 
       // Mark completion only on success so a failed macro run doesn't start
@@ -908,8 +911,14 @@ export class Scheduler {
   /**
    * Regenerate the snap brief from the latest insight report.
    * Runs as part of the macro flow.
+   *
+   * When the macro flow is about to follow up with `regenerateSnapFromMicro()`
+   * to merge the baseline with fresh micro observations, pass `skipPublish: true`
+   * so the baseline doesn't fire `snap.ready` ahead of the merged snap. Without
+   * this, `maybePublishSnap`'s 1-hour cooldown would swallow the merged-snap
+   * notification and downstream consumers would hold the pre-merge snapId.
    */
-  private async regenerateSnap(): Promise<void> {
+  private async regenerateSnap(options?: { skipPublish?: boolean }): Promise<void> {
     if (!this.snapStore || !this.insightStore) return;
 
     try {
@@ -921,7 +930,9 @@ export class Scheduler {
       snap.contentHash = snapContentHash(snap);
       await this.snapStore.save(snap);
       logger.info('Snap brief regenerated', { snapId: snap.id });
-      this.maybePublishSnap(snap);
+      if (!options?.skipPublish) {
+        this.maybePublishSnap(snap);
+      }
 
       if (this.eventLog) {
         await this.eventLog.append({

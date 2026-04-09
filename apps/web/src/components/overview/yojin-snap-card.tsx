@@ -40,14 +40,19 @@ function extractTicker(source: string): string | null {
 
 export function YojinSnapCard() {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
-  const [result, reexecute] = useActions({ status: 'PENDING', limit: 50 });
+  // Pause the query until both prerequisites are satisfied so a gated user
+  // doesn't spam `actions(status: PENDING)` every 30s behind the blur overlay.
+  const unlocked = aiConfigured && jintelConfigured;
+  const [result, reexecute] = useActions({ status: 'PENDING', limit: 50, pause: !unlocked });
   const actions = result.data?.actions;
 
-  // Poll to keep the card fresh without a manual refresh.
+  // Poll to keep the card fresh without a manual refresh. Only runs once the
+  // card is actually visible to the user — otherwise there is nothing to refresh.
   useEffect(() => {
+    if (!unlocked) return;
     const id = setInterval(() => reexecute({ requestPolicy: 'cache-and-network' }), POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [reexecute]);
+  }, [reexecute, unlocked]);
 
   // Sort by severity DESC, then createdAt DESC. Null severity sinks.
   const sorted: Action[] = useMemo(() => {

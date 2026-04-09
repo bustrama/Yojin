@@ -17,11 +17,15 @@ import type {
  * user's attention. Uses `cache-and-network` so the UI paints from cache
  * immediately, then reconciles against the server on each poll cycle.
  */
-export function useActions(variables?: ActionsQueryVariables) {
+export function useActions(variables?: ActionsQueryVariables & { pause?: boolean }) {
+  const { pause, ...rest } = variables ?? {};
+  const queryVars: ActionsQueryVariables =
+    Object.keys(rest).length > 0 ? (rest as ActionsQueryVariables) : { status: 'PENDING', limit: 50 };
   return useQuery<ActionsQueryResult, ActionsQueryVariables>({
     query: ACTIONS_QUERY,
-    variables: variables ?? { status: 'PENDING', limit: 50 },
+    variables: queryVars,
     requestPolicy: 'cache-and-network',
+    pause,
   });
 }
 
