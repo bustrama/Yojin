@@ -378,6 +378,11 @@ export function buildWebChannel(): ChannelPlugin {
 
     async teardown(): Promise<void> {
       if (server) {
+        // Force-close all keep-alive / SSE connections so .close() resolves
+        // immediately instead of waiting for clients to disconnect.
+        // ServerType includes Http2Server which lacks this in its type defs,
+        // but we always use Http1 and Node >= 18.2 provides it.
+        (server as import('node:http').Server).closeAllConnections();
         await new Promise<void>((resolve, reject) => {
           server?.close((err) => (err ? reject(err) : resolve()));
         });

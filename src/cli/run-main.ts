@@ -362,14 +362,23 @@ async function startGateway(): Promise<void> {
     extraPlugins: [slackPlugin, telegramPlugin, whatsAppPlugin],
   });
 
-  // Graceful shutdown
+  // Graceful shutdown — first SIGINT tries clean stop, second forces exit
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) {
+      process.exit(1);
+    }
+    shuttingDown = true;
     scheduler.stop();
-    await gateway.stop();
+    try {
+      await gateway.stop();
+    } catch {
+      // Best-effort — don't block exit
+    }
     process.exit(0);
   };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
 
   await gateway.start();
   setChannelRegistry(gateway.getRegistry());
