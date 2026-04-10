@@ -81,8 +81,13 @@ try {
   // Clean up
   rmSync(dmgPath, { force: true });
 
+  // Launch the menu bar app
+  try {
+    execFileSync('open', [APP_PATH]);
+  } catch {}
+
   console.log(`Yojin.app installed to ${INSTALL_DIR}`);
-  console.log('Open it from Applications or Spotlight to start the menu bar app.');
+  console.log('Yojin menu bar app is running — look for the icon in your toolbar.');
 } catch (err) {
   // Best-effort — don't fail the npm install
   console.log(`Note: Could not install Yojin menu bar app (${err.message})`);
