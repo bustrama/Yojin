@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Signal } from '../../src/signals/types.js';
 import {
   buildPortfolioContext,
+  buildSingleTickerContext,
   computeDrawdown,
   computePeriodReturns,
   computeSUE,
@@ -465,5 +466,186 @@ describe('buildPortfolioContext — signals passthrough', () => {
     const ctx = buildPortfolioContext(snapshot, [], []);
     expect(ctx.signals).toEqual({});
     expect(ctx.metrics).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSingleTickerContext — lightweight context from micro flow data
+// ---------------------------------------------------------------------------
+
+describe('buildSingleTickerContext', () => {
+  function makeEntity(
+    ticker: string,
+    opts?: {
+      rsi?: number;
+      fiftyTwoWeekHigh?: number;
+      earningsDate?: string;
+      priceToBook?: number;
+    },
+  ): Entity {
+    return {
+      id: ticker,
+      name: ticker,
+      type: 'COMPANY' as const,
+      tickers: [ticker],
+      technicals: opts?.rsi != null ? { ticker, rsi: opts.rsi } : null,
+      market: {
+        quote: null,
+        fundamentals: {
+          source: 'test',
+          fiftyTwoWeekHigh: opts?.fiftyTwoWeekHigh ?? null,
+          earningsDate: opts?.earningsDate ?? null,
+          priceToBook: opts?.priceToBook ?? null,
+        },
+      },
+    } as Entity;
+  }
+
+  it('computes weight from marketValue / totalValue', () => {
+    const entity = makeEntity('AAPL');
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 2.5 },
+      { marketValue: 3000, totalValue: 10000 },
+      [],
+    );
+    expect(ctx.weights.AAPL).toBeCloseTo(0.3);
+  });
+
+  it('converts changePercent to fraction for priceChanges', () => {
+    const entity = makeEntity('AAPL');
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 3.3 },
+      { marketValue: 1500, totalValue: 5000 },
+      [],
+    );
+    expect(ctx.priceChanges.AAPL).toBeCloseTo(0.033);
+  });
+
+  it('maps indicators from entity technicals', () => {
+    const entity = makeEntity('AAPL', { rsi: 72 });
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 0 },
+      { marketValue: 1500, totalValue: 5000 },
+      [],
+    );
+    expect(ctx.indicators.AAPL).toEqual({ RSI: 72 });
+  });
+
+  it('computes position drawdown from fiftyTwoWeekHigh', () => {
+    const entity = makeEntity('AAPL', { fiftyTwoWeekHigh: 200 });
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 160, changePercent: 0 },
+      { marketValue: 1600, totalValue: 5000 },
+      [],
+    );
+    // (160 - 200) / 200 = -0.2
+    expect(ctx.positionDrawdowns.AAPL).toBeCloseTo(-0.2);
+  });
+
+  it('computes earningsDays for a future earnings date', () => {
+    const futureDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const entity = makeEntity('AAPL', { earningsDate: futureDate });
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 0 },
+      { marketValue: 1500, totalValue: 5000 },
+      [],
+    );
+    expect(ctx.earningsDays.AAPL).toBeGreaterThanOrEqual(2);
+    expect(ctx.earningsDays.AAPL).toBeLessThanOrEqual(4);
+  });
+
+  it('omits earningsDays for a past earnings date', () => {
+    const pastDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const entity = makeEntity('AAPL', { earningsDate: pastDate });
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 0 },
+      { marketValue: 1500, totalValue: 5000 },
+      [],
+    );
+    expect(ctx.earningsDays.AAPL).toBeUndefined();
+  });
+
+  it('maps metrics from entity (priceToBook)', () => {
+    const entity = makeEntity('AAPL', { priceToBook: 45.2 });
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 0 },
+      { marketValue: 1500, totalValue: 5000 },
+      [],
+    );
+    expect(ctx.metrics.AAPL?.priceToBook).toBe(45.2);
+  });
+
+  it('passes signals through unchanged', () => {
+    const signal = {
+      id: 's1',
+      type: 'NEWS',
+      title: 'AAPL up',
+      sources: [{ id: 'src', name: 'Src', type: 'API', reliability: 0.8 }],
+      assets: [{ ticker: 'AAPL', linkType: 'DIRECT' }],
+      publishedAt: new Date().toISOString(),
+      ingestedAt: new Date().toISOString(),
+      contentHash: 'h1',
+      confidence: 0.8,
+    } as unknown as Signal;
+    const entity = makeEntity('AAPL');
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 0 },
+      { marketValue: 1500, totalValue: 5000 },
+      [signal],
+    );
+    expect(ctx.signals.AAPL).toHaveLength(1);
+    expect(ctx.signals.AAPL[0].id).toBe('s1');
+  });
+
+  it('sets portfolioDrawdown to 0 (not meaningful for single ticker)', () => {
+    const entity = makeEntity('AAPL', { fiftyTwoWeekHigh: 200 });
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 160, changePercent: 0 },
+      { marketValue: 1600, totalValue: 5000 },
+      [],
+    );
+    expect(ctx.portfolioDrawdown).toBe(0);
+  });
+
+  it('does not include periodReturns', () => {
+    const entity = makeEntity('AAPL');
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 0 },
+      { marketValue: 1500, totalValue: 5000 },
+      [],
+    );
+    expect(ctx.periodReturns).toBeUndefined();
+  });
+
+  it('handles zero totalValue gracefully (weight = 0)', () => {
+    const entity = makeEntity('AAPL');
+    const ctx = buildSingleTickerContext(
+      'AAPL',
+      entity,
+      { price: 150, changePercent: 0 },
+      { marketValue: 1500, totalValue: 0 },
+      [],
+    );
+    expect(ctx.weights.AAPL).toBe(0);
   });
 });

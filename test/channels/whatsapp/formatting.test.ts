@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   chunkMessage,
-  formatAction,
   formatInsight,
   formatSnap,
+  formatSummary,
   toWhatsApp,
 } from '../../../channels/whatsapp/src/formatting.js';
-import type { Action } from '../../../src/actions/types.js';
 import type { InsightReport } from '../../../src/insights/types.js';
 import type { Snap } from '../../../src/snap/types.js';
+import type { Summary } from '../../../src/summaries/types.js';
 
 describe('toWhatsApp', () => {
   it('converts HTML <b> to WhatsApp bold', () => {
@@ -154,18 +154,18 @@ describe('formatSnap', () => {
     expect(result).toContain('Markets are mixed');
   });
 
-  it('includes action items label with WhatsApp bold', () => {
+  it('includes summary items label with WhatsApp bold', () => {
     const result = formatSnap(snap);
-    expect(result).toContain('*Actions:*');
+    expect(result).toContain('*Summaries:*');
   });
 
-  it('includes action item text', () => {
+  it('includes summary item text', () => {
     const result = formatSnap(snap);
     expect(result).toContain('AAPL earnings beat expectations');
     expect(result).toContain('Oil prices declining');
   });
 
-  it('handles snap with no action items', () => {
+  it('handles snap with no summary items', () => {
     const emptySnap: Snap = {
       id: 'snap-2',
       generatedAt: '2026-03-30T08:00:00Z',
@@ -175,7 +175,7 @@ describe('formatSnap', () => {
     };
     const result = formatSnap(emptySnap);
     expect(result).toContain('All quiet.');
-    expect(result).not.toContain('*Actions:*');
+    expect(result).not.toContain('*Summaries:*');
   });
 
   it('does not use HTML tags', () => {
@@ -184,8 +184,8 @@ describe('formatSnap', () => {
   });
 });
 
-describe('formatAction', () => {
-  const action: Action = {
+describe('formatSummary', () => {
+  const summary: Summary = {
     id: 'act-1',
     what: 'Review AAPL — bearish divergence detected',
     why: 'RSI divergence on daily chart',
@@ -196,30 +196,30 @@ describe('formatAction', () => {
   };
 
   it('includes the New Action header with WhatsApp bold', () => {
-    const result = formatAction(action);
+    const result = formatSummary(summary);
     expect(result).toContain('*New Action*');
   });
 
   it('uses ticker as header for micro-observation actions', () => {
-    const microAction = { ...action, source: 'micro-observation: AAPL' };
-    const result = formatAction(microAction);
+    const microSummary = { ...summary, source: 'micro-observation: AAPL' };
+    const result = formatSummary(microSummary);
     expect(result).toContain('*AAPL*');
     expect(result).not.toContain('New Action');
   });
 
   it('includes the what field', () => {
-    const result = formatAction(action);
+    const result = formatSummary(summary);
     expect(result).toContain('Review AAPL');
   });
 
   it('does not include why or source fields', () => {
-    const result = formatAction(action);
+    const result = formatSummary(summary);
     expect(result).not.toContain('_Why:_');
     expect(result).not.toContain('_Source:_');
   });
 
   it('does not use HTML tags', () => {
-    const result = formatAction(action);
+    const result = formatSummary(summary);
     expect(result).not.toMatch(/<[a-z]+>/i);
   });
 });

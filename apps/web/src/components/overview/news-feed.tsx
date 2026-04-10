@@ -14,7 +14,7 @@ import { SignalChips } from './signal-chips';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
-type EventCategory = 'Action' | 'Alert' | 'Insight';
+type EventCategory = 'Summary' | 'Alert' | 'Insight';
 type FilterTab = 'All' | EventCategory;
 
 export interface SignalLink {
@@ -49,23 +49,23 @@ const categoryConfig: Record<
   EventCategory,
   { variant: 'accent' | 'warning' | 'success'; color: string; iconBg: string }
 > = {
-  Action: { variant: 'accent', color: 'text-accent-primary/60', iconBg: 'bg-accent-primary/5' },
+  Summary: { variant: 'accent', color: 'text-accent-primary/60', iconBg: 'bg-accent-primary/5' },
   Alert: { variant: 'warning', color: 'text-warning/60', iconBg: 'bg-warning/5' },
   Insight: { variant: 'success', color: 'text-success/60', iconBg: 'bg-success/5' },
 };
 
-const SECTION_ORDER: EventCategory[] = ['Action', 'Alert', 'Insight'];
+const SECTION_ORDER: EventCategory[] = ['Summary', 'Alert', 'Insight'];
 
 const FILTER_TABS: { label: string; value: FilterTab }[] = [
   { label: 'All', value: 'All' },
-  { label: 'Actions', value: 'Action' },
+  { label: 'Summaries', value: 'Summary' },
   { label: 'Alerts', value: 'Alert' },
   { label: 'Insights', value: 'Insight' },
 ];
 
 /* ── Icons ──────────────────────────────────────────────────────────── */
 
-function ActionIcon({ className }: { className?: string }) {
+function SummaryIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
       <path
@@ -101,8 +101,8 @@ function InsightIcon({ className }: { className?: string }) {
   );
 }
 
-const categoryIcon: Record<EventCategory, typeof ActionIcon> = {
-  Action: ActionIcon,
+const categoryIcon: Record<EventCategory, typeof SummaryIcon> = {
+  Summary: SummaryIcon,
   Alert: AlertIcon,
   Insight: InsightIcon,
 };
@@ -167,10 +167,10 @@ function buildFeedItems(report: {
   const resolveSignals = (ids: string[]): SignalLink[] =>
     ids.map((id) => signalMap.get(id)).filter((s): s is SignalLink => s != null);
 
-  // Actions from actionItems
+  // Summaries from actionItems
   for (const action of report.portfolio.actionItems) {
     items.push({
-      category: 'Action',
+      category: 'Summary',
       source: 'Strategist',
       time: ts,
       title: stripPrefix(action.text).slice(0, 60),

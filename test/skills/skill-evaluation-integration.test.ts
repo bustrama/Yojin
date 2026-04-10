@@ -606,3 +606,273 @@ describe('skill evaluation integration', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// evaluateForTickers — per-asset micro flow evaluation
+// ---------------------------------------------------------------------------
+
+describe('evaluateForTickers', () => {
+  it('only evaluates specified tickers', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-rsi',
+        triggers: [
+          {
+            type: 'INDICATOR_THRESHOLD',
+            description: 'RSI below 30',
+            params: { indicator: 'RSI', threshold: 30, direction: 'below' },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      // Both AAPL and GOOG have low RSI, but we only evaluate AAPL
+      const snapshot = makeSnapshot(
+        [
+          { symbol: 'AAPL', currentPrice: 150, marketValue: 5000 },
+          { symbol: 'GOOG', currentPrice: 100, marketValue: 5000 },
+        ],
+        10000,
+      );
+      const entities = [makeEntity('AAPL', { rsi: 25 }), makeEntity('GOOG', { rsi: 20 })];
+      const ctx = buildPortfolioContext(snapshot, [], entities);
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluateForTickers(ctx, ['AAPL']);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].context['ticker']).toBe('AAPL');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('skips CONCENTRATION_DRIFT triggers (macro-only)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-conc',
+        triggers: [
+          {
+            type: 'CONCENTRATION_DRIFT',
+            description: 'Position exceeds 12%',
+            params: { maxWeight: 0.12 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 10000 }], 10000);
+      const ctx = buildPortfolioContext(snapshot, [], []);
+      // AAPL is 100% weight, far above 12% — but should NOT fire in micro
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluateForTickers(ctx, ['AAPL']);
+
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('skips CUSTOM triggers (macro-only)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-custom',
+        triggers: [
+          {
+            type: 'CUSTOM',
+            description: 'Custom condition',
+            params: {},
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 5000 }], 5000);
+      const ctx = buildPortfolioContext(snapshot, [], []);
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluateForTickers(ctx, ['AAPL']);
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('skips PRICE_MOVE with lookback_months (needs price history)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-price-lookback',
+        triggers: [
+          {
+            type: 'PRICE_MOVE',
+            description: '6-month return above 10%',
+            params: { threshold: 0.1, lookback_months: 6 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const now = new Date();
+      const sixMonthsAgo = new Date(now);
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const priceHistories = [
+        {
+          ticker: 'AAPL',
+          history: [
+            { date: sixMonthsAgo.toISOString().slice(0, 10), open: 100, high: 100, low: 100, close: 100, volume: 1000 },
+            { date: now.toISOString().slice(0, 10), open: 150, high: 150, low: 150, close: 150, volume: 1000 },
+          ],
+        },
+      ];
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 7500 }], 7500);
+      const ctx = buildPortfolioContext(snapshot, [], [], priceHistories);
+
+      // Verify the period return IS there (would fire in macro)
+      expect(ctx.periodReturns?.['AAPL:6']).toBeCloseTo(0.5, 1);
+
+      const evaluator = new SkillEvaluator(store);
+      // But evaluateForTickers skips it
+      const results = evaluator.evaluateForTickers(ctx, ['AAPL']);
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('allows daily PRICE_MOVE (no lookback_months) in micro', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-price-daily',
+        triggers: [
+          {
+            type: 'PRICE_MOVE',
+            description: 'Daily drop > 5%',
+            params: { threshold: -0.05 },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 142, marketValue: 7100 }], 7100);
+      const entities = [makeEntity('AAPL')];
+      const quotes = [
+        {
+          ticker: 'AAPL',
+          price: 142,
+          change: -8,
+          changePercent: -5.3,
+          volume: 1_000_000,
+          timestamp: new Date().toISOString(),
+          source: 'test',
+        },
+      ];
+      const ctx = buildPortfolioContext(snapshot, quotes, entities);
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluateForTickers(ctx, ['AAPL']);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].context['ticker']).toBe('AAPL');
+      expect(results[0].triggerType).toBe('PRICE_MOVE');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('only evaluates skills whose tickers overlap with specified tickers', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skillAAPL = makeSkill({
+        id: 'test-aapl-only',
+        tickers: ['AAPL'],
+        triggers: [
+          {
+            type: 'INDICATOR_THRESHOLD',
+            description: 'RSI below 30',
+            params: { indicator: 'RSI', threshold: 30, direction: 'below' },
+          },
+        ],
+      });
+      const skillGOOG = makeSkill({
+        id: 'test-goog-only',
+        tickers: ['GOOG'],
+        triggers: [
+          {
+            type: 'INDICATOR_THRESHOLD',
+            description: 'RSI below 30',
+            params: { indicator: 'RSI', threshold: 30, direction: 'below' },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skillAAPL.id}.json`), JSON.stringify(skillAAPL));
+      await writeFile(join(dir, `${skillGOOG.id}.json`), JSON.stringify(skillGOOG));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot(
+        [
+          { symbol: 'AAPL', currentPrice: 150, marketValue: 5000 },
+          { symbol: 'GOOG', currentPrice: 100, marketValue: 5000 },
+        ],
+        10000,
+      );
+      const entities = [makeEntity('AAPL', { rsi: 25 }), makeEntity('GOOG', { rsi: 20 })];
+      const ctx = buildPortfolioContext(snapshot, [], entities);
+
+      const evaluator = new SkillEvaluator(store);
+      // Only evaluate AAPL — GOOG-only skill should be skipped
+      const results = evaluator.evaluateForTickers(ctx, ['AAPL']);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].skillId).toBe('test-aapl-only');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('generates correct triggerId format', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'skill-eval-'));
+    try {
+      const skill = makeSkill({
+        id: 'test-trigger-id',
+        triggers: [
+          {
+            type: 'INDICATOR_THRESHOLD',
+            description: 'RSI below 30',
+            params: { indicator: 'RSI', threshold: 30, direction: 'below' },
+          },
+        ],
+      });
+      await writeFile(join(dir, `${skill.id}.json`), JSON.stringify(skill));
+      const store = new SkillStore({ dir });
+      await store.initialize();
+
+      const snapshot = makeSnapshot([{ symbol: 'AAPL', currentPrice: 150, marketValue: 5000 }], 5000);
+      const entities = [makeEntity('AAPL', { rsi: 25 })];
+      const ctx = buildPortfolioContext(snapshot, [], entities);
+
+      const evaluator = new SkillEvaluator(store);
+      const results = evaluator.evaluateForTickers(ctx, ['AAPL']);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].triggerId).toBe('test-trigger-id-INDICATOR_THRESHOLD-AAPL');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+});

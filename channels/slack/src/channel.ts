@@ -1,6 +1,5 @@
 import { App, type SlackEventMiddlewareArgs } from '@slack/bolt';
 
-import type { ActionStore } from '../../../src/actions/action-store.js';
 import { isNotificationEnabled } from '../../../src/api/graphql/resolvers/channels.js';
 import { QUICK_ACTIONS } from '../../../src/channels/quick-actions.js';
 import type { NotificationBus } from '../../../src/core/notification-bus.js';
@@ -17,6 +16,7 @@ import type {
   OutgoingMessage,
 } from '../../../src/plugins/types.js';
 import type { SnapStore } from '../../../src/snap/snap-store.js';
+import type { SummaryStore } from '../../../src/summaries/summary-store.js';
 import { formatDisplayCardForSlack } from '../../../src/tools/channel-display-formatters.js';
 import type { ApprovalGate } from '../../../src/trust/approval/approval-gate.js';
 
@@ -29,7 +29,7 @@ export interface SlackChannelDeps {
   approvalGate?: ApprovalGate;
   snapStore?: SnapStore;
   insightStore?: InsightStore;
-  actionStore?: ActionStore;
+  summaryStore?: SummaryStore;
 }
 
 function formatSnap(snap: { intelSummary: string; actionItems: { text: string; signalIds: string[] }[] }): string {
@@ -38,7 +38,7 @@ function formatSnap(snap: { intelSummary: string; actionItems: { text: string; s
     lines.push('', snap.intelSummary, '');
   }
   if (snap.actionItems.length > 0) {
-    lines.push('*Actions:*');
+    lines.push('*Summaries:*');
     for (const item of snap.actionItems) {
       lines.push(`• ${item.text}`);
     }
@@ -46,10 +46,10 @@ function formatSnap(snap: { intelSummary: string; actionItems: { text: string; s
   return lines.join('\n');
 }
 
-function formatAction(action: { what: string; why: string; source: string }): string {
-  const ticker = action.source?.match(/micro-observation:\s*(\S+)/)?.[1];
+function formatSummary(summary: { what: string; why: string; source: string }): string {
+  const ticker = summary.source?.match(/micro-observation:\s*(\S+)/)?.[1];
   const header = ticker ? `:zap: *${ticker}*` : ':zap: *New Action*';
-  return [header, action.what].join('\n');
+  return [header, summary.what].join('\n');
 }
 
 function formatInsight(report: InsightReport): string {
@@ -62,11 +62,11 @@ function formatInsight(report: InsightReport): string {
     const ratings = report.positions.map((p) => `${p.symbol} ${p.rating}`).join(' \u{2022} ');
     lines.push(ratings);
   }
-  // Top actions (max 3)
-  const actions = report.portfolio?.actionItems ?? [];
-  if (actions.length > 0) {
+  // Top summaries (max 3)
+  const summaries = report.portfolio?.actionItems ?? [];
+  if (summaries.length > 0) {
     lines.push('');
-    for (const item of actions.slice(0, 3)) {
+    for (const item of summaries.slice(0, 3)) {
       const text = typeof item === 'string' ? item : item.text;
       lines.push(`\u{2022} ${text}`);
     }
@@ -251,15 +251,15 @@ export function buildSlackChannel(deps: SlackChannelDeps = {}): ChannelPlugin {
     );
 
     unsubscribers.push(
-      bus.on('action.created', async (event) => {
-        if (!defaultChannelId || !deps.actionStore) return;
-        if (!(await isNotificationEnabled('slack', 'action.created'))) return;
+      bus.on('summary.created', async (event) => {
+        if (!defaultChannelId || !deps.summaryStore) return;
+        if (!(await isNotificationEnabled('slack', 'summary.created'))) return;
         try {
-          const action = await deps.actionStore.getById(event.actionId);
-          if (!action) return;
-          await app.client.chat.postMessage({ channel: defaultChannelId, text: formatAction(action) });
+          const summary = await deps.summaryStore.getById(event.summaryId);
+          if (!summary) return;
+          await app.client.chat.postMessage({ channel: defaultChannelId, text: formatSummary(summary) });
         } catch (err) {
-          logger.error('Failed to push action', { error: err });
+          logger.error('Failed to push summary', { error: err });
         }
       }),
     );

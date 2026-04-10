@@ -1,7 +1,7 @@
-import type { Action } from '../../../src/actions/types.js';
 import { chunkMessage as chunkMessageBase, escapeHtml } from '../../../src/formatting/index.js';
 import type { InsightReport } from '../../../src/insights/types.js';
 import type { Snap } from '../../../src/snap/types.js';
+import type { Summary } from '../../../src/summaries/types.js';
 
 export { escapeHtml } from '../../../src/formatting/index.js';
 
@@ -19,7 +19,7 @@ export function formatSnap(snap: Snap): string {
   }
 
   if (snap.actionItems.length > 0) {
-    lines.push('<b>Actions:</b>');
+    lines.push('<b>Summaries:</b>');
     for (const item of snap.actionItems) {
       lines.push(`\u{2022} ${escapeHtml(item.text)}`);
     }
@@ -28,10 +28,10 @@ export function formatSnap(snap: Snap): string {
   return lines.join('\n');
 }
 
-export function formatAction(action: Action): string {
-  const ticker = action.source?.match(/micro-observation:\s*(\S+)/)?.[1];
+export function formatSummary(summary: Summary): string {
+  const ticker = summary.source?.match(/micro-observation:\s*(\S+)/)?.[1];
   const header = ticker ? `\u{26A1} <b>${escapeHtml(ticker)}</b>` : '\u{26A1} <b>New Action</b>';
-  return [header, escapeHtml(action.what)].join('\n');
+  return [header, escapeHtml(summary.what)].join('\n');
 }
 
 export function formatInsight(report: InsightReport): string {
@@ -47,11 +47,11 @@ export function formatInsight(report: InsightReport): string {
     lines.push(ratings);
   }
 
-  // Top actions as short bullets (max 3)
-  const actions = report.portfolio?.actionItems ?? [];
-  if (actions.length > 0) {
+  // Top summaries as short bullets (max 3)
+  const summaries = report.portfolio?.actionItems ?? [];
+  if (summaries.length > 0) {
     lines.push('');
-    for (const item of actions.slice(0, 3)) {
+    for (const item of summaries.slice(0, 3)) {
       const text = typeof item === 'string' ? item : item.text;
       lines.push(`\u{2022} ${escapeHtml(text)}`);
     }

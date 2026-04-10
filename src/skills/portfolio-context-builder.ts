@@ -173,6 +173,48 @@ export function computeDrawdown(currentPrice: number, fiftyTwoWeekHigh: number |
   return (currentPrice - fiftyTwoWeekHigh) / fiftyTwoWeekHigh;
 }
 
+/**
+ * Build a lightweight PortfolioContext for a single ticker from micro flow data.
+ * Reuses the same helpers as the full builder but avoids fetching all tickers.
+ * `periodReturns` is omitted (needs 1-year price history not available in micro flow).
+ */
+export function buildSingleTickerContext(
+  ticker: string,
+  entity: Entity,
+  quote: { price: number; changePercent: number },
+  snapshot: { marketValue: number; totalValue: number },
+  signals: Signal[],
+): PortfolioContext {
+  const weight = snapshot.totalValue > 0 ? snapshot.marketValue / snapshot.totalValue : 0;
+  const price = quote.price;
+  const priceChange = quote.changePercent / 100; // convert % to fraction
+
+  const indicatorsMap = mapIndicators(entity.technicals);
+  const metricsMap = mapMetrics(entity);
+
+  const high = entity.market?.fundamentals?.fiftyTwoWeekHigh;
+  const drawdown = computeDrawdown(price, high);
+
+  const earningsDays: Record<string, number> = {};
+  const earningsDate = entity.market?.fundamentals?.earningsDate;
+  if (earningsDate) {
+    const days = Math.ceil((new Date(earningsDate).getTime() - Date.now()) / MS_PER_DAY);
+    if (days >= 0) earningsDays[ticker] = days;
+  }
+
+  return {
+    weights: { [ticker]: weight },
+    prices: { [ticker]: price },
+    priceChanges: { [ticker]: priceChange },
+    indicators: Object.keys(indicatorsMap).length > 0 ? { [ticker]: indicatorsMap } : {},
+    earningsDays,
+    portfolioDrawdown: 0, // not meaningful for single ticker
+    positionDrawdowns: { [ticker]: drawdown },
+    metrics: Object.keys(metricsMap).length > 0 ? { [ticker]: metricsMap } : {},
+    signals: { [ticker]: signals },
+  };
+}
+
 /** Build PortfolioContext from snapshot + Jintel enrichment data. */
 export function buildPortfolioContext(
   snapshot: MinimalSnapshot,

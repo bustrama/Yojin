@@ -16,7 +16,7 @@ export default function MorningBriefing({
   date = 'Friday, January 17',
   updatedAt = 'Updated 8:00 AM',
   stats = [
-    { value: '3', label: 'ACTIONS REQUIRED' },
+    { value: '3', label: 'SUMMARIES' },
     { value: '2', label: 'STOCK ALERTS' },
     { value: '4', label: 'INSIGHTS' },
     { value: '58.2%', label: 'AVG MARGIN' },

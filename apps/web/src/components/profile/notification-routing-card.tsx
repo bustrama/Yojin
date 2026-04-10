@@ -18,12 +18,12 @@ import type { OnboardingStatusQueryResult } from '../../api/types';
 const NOTIFICATION_TYPES = [
   { key: 'snap.ready', label: 'Snap briefs', description: 'Periodic attention summaries' },
   { key: 'insight.ready', label: 'Daily insights', description: 'Full portfolio analysis reports' },
-  { key: 'action.created', label: 'Action alerts', description: 'Skill-triggered trade recommendations' },
+  { key: 'summary.created', label: 'Strategy actions', description: 'BUY/SELL recommendations from your strategies' },
   { key: 'approval.requested', label: 'Approval requests', description: 'Actions requiring your approval' },
 ];
 
 /** Types enabled by default when user has no explicit preferences (matches backend DEFAULT_ENABLED_TYPES). */
-const DEFAULT_ENABLED_TYPES = ['insight.ready', 'action.created', 'approval.requested'];
+const DEFAULT_ENABLED_TYPES = ['insight.ready', 'summary.created', 'approval.requested'];
 
 // ---------------------------------------------------------------------------
 // Component

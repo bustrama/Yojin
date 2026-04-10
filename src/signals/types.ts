@@ -45,7 +45,7 @@ export type LinkType = z.infer<typeof LinkTypeSchema>;
 export const SignalSentimentSchema = z.enum(['BULLISH', 'BEARISH', 'MIXED', 'NEUTRAL']);
 export type SignalSentiment = z.infer<typeof SignalSentimentSchema>;
 
-export const SignalOutputTypeSchema = z.enum(['INSIGHT', 'ALERT', 'ACTION']);
+export const SignalOutputTypeSchema = z.enum(['INSIGHT', 'ALERT', 'SUMMARY']);
 export type SignalOutputType = z.infer<typeof SignalOutputTypeSchema>;
 
 // ---------------------------------------------------------------------------

@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   chunkMessage,
   escapeHtml,
-  formatAction,
   formatInsight,
   formatSnap,
+  formatSummary,
 } from '../../channels/telegram/src/formatting.js';
-import type { Action } from '../../src/actions/types.js';
 import type { InsightReport } from '../../src/insights/types.js';
 import type { Snap } from '../../src/snap/types.js';
+import type { Summary } from '../../src/summaries/types.js';
 
 describe('escapeHtml', () => {
   it('escapes HTML special characters', () => {
@@ -74,13 +74,13 @@ describe('formatSnap', () => {
     expect(result).toContain('<b>Snap Brief</b>');
     expect(result).toContain('AAPL earnings beat expectations');
     expect(result).toContain('Markets are mixed');
-    expect(result).toContain('<b>Actions:</b>');
+    expect(result).toContain('<b>Summaries:</b>');
   });
 });
 
-describe('formatAction', () => {
+describe('formatSummary', () => {
   it('formats with HTML tags', () => {
-    const action: Action = {
+    const summary: Summary = {
       id: 'act-1',
       what: 'Review AAPL — bearish divergence detected',
       why: 'RSI divergence on daily chart',
@@ -90,14 +90,14 @@ describe('formatAction', () => {
       createdAt: '2026-03-30T08:00:00Z',
     };
 
-    const result = formatAction(action);
+    const result = formatSummary(summary);
     expect(result).toContain('<b>New Action</b>');
     expect(result).toContain('Review AAPL');
     expect(result).not.toContain('<i>Why:</i>');
   });
 
   it('uses ticker as header for micro-observation actions', () => {
-    const microAction: Action = {
+    const microSummary: Summary = {
       id: 'act-2',
       what: 'Rocket Lab completes Mynaric acquisition',
       why: 'Observation from RKLB research',
@@ -106,7 +106,7 @@ describe('formatAction', () => {
       expiresAt: '2026-03-31T08:00:00Z',
       createdAt: '2026-03-30T08:00:00Z',
     };
-    const result = formatAction(microAction);
+    const result = formatSummary(microSummary);
     expect(result).toContain('<b>RKLB</b>');
     expect(result).not.toContain('New Action');
   });

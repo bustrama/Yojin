@@ -7,13 +7,6 @@
 import { createSchema, createYoga } from 'graphql-yoga';
 import type { Hono } from 'hono';
 
-import {
-  actionResolver,
-  actionsResolver,
-  approveActionMutation,
-  dismissActionMutation,
-  rejectActionMutation,
-} from './resolvers/actions.js';
 import { activityLogQuery } from './resolvers/activity-log.js';
 import {
   aiConfigQuery,
@@ -141,6 +134,13 @@ import {
   resolveToggleStrategySource,
 } from './resolvers/strategy-sources.js';
 import {
+  approveSummaryMutation,
+  dismissSummaryMutation,
+  rejectSummaryMutation,
+  summariesResolver,
+  summaryResolver,
+} from './resolvers/summaries.js';
+import {
   addVaultSecretMutation,
   changeVaultPassphraseMutation,
   deleteVaultSecretMutation,
@@ -199,8 +199,8 @@ const schema = createSchema({
       notificationPreferences: notificationPreferencesQuery,
       snap: snapQuery,
       activityLog: activityLogQuery,
-      actions: actionsResolver,
-      action: actionResolver,
+      summaries: summariesResolver,
+      summary: summaryResolver,
       skills: resolveSkills,
       skill: resolveSkill,
       exportSkill: resolveExportSkill,
@@ -261,9 +261,9 @@ const schema = createSchema({
       batchDismissSignals: batchDismissSignalsResolver,
       addToWatchlist: addToWatchlistMutation,
       removeFromWatchlist: removeFromWatchlistMutation,
-      approveAction: approveActionMutation,
-      rejectAction: rejectActionMutation,
-      dismissAction: dismissActionMutation,
+      approveSummary: approveSummaryMutation,
+      rejectSummary: rejectSummaryMutation,
+      dismissSummary: dismissSummaryMutation,
       toggleSkill: resolveToggleSkill,
       createSkill: resolveCreateSkill,
       updateSkill: resolveUpdateSkill,

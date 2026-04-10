@@ -8,9 +8,9 @@
  * 5. Save MicroInsight
  */
 
-import type { JintelClient } from '@yojinhq/jintel-client';
+import type { Entity, JintelClient } from '@yojinhq/jintel-client';
 
-import { buildSingleBrief } from './data-gatherer.js';
+import { buildSingleBriefEnriched } from './data-gatherer.js';
 import type { SingleBriefOptions } from './data-gatherer.js';
 import { analyzeTicker } from './micro-analyzer.js';
 import type { MicroInsightStore } from './micro-insight-store.js';
@@ -20,6 +20,7 @@ import type { EventLog } from '../core/event-log.js';
 import { fetchJintelSignals } from '../jintel/signal-fetcher.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalIngestor } from '../signals/ingestor.js';
+import type { Signal } from '../signals/types.js';
 
 const logger = createSubsystemLogger('micro-runner');
 
@@ -36,6 +37,10 @@ export interface MicroRunResult {
   insight: MicroInsight | null;
   signalsIngested: number;
   durationMs: number;
+  /** Raw Jintel Entity for per-asset skill evaluation (null if Jintel unavailable). */
+  entity?: Entity | null;
+  /** Curated signals used in analysis — for per-asset skill evaluation. */
+  signals?: Signal[];
 }
 
 /**
@@ -60,36 +65,45 @@ export async function runMicroResearch(
     signalsIngested = result.ingested;
   }
 
-  // 2. Build DataBrief for this ticker
-  const brief = await buildSingleBrief(ticker, deps.briefOptions);
-  if (!brief) {
+  // 2. Build DataBrief for this ticker (enriched: includes raw Entity + signals for skill evaluation)
+  const enriched = await buildSingleBriefEnriched(ticker, deps.briefOptions);
+  if (!enriched) {
     logger.warn('Could not build brief — no snapshot', { symbol: ticker });
     return { insight: null, signalsIngested, durationMs: Date.now() - start };
   }
+  const { brief, entity, signals: curatedSignals } = enriched;
 
-  // 3. AI analysis
-  const insight = await analyzeTicker(brief, deps.providerRouter, { source });
+  // 3. AI analysis — wrap so entity/signals are still returned on LLM failure
+  let insight: MicroInsight | null = null;
+  try {
+    insight = await analyzeTicker(brief, deps.providerRouter, { source });
 
-  // 4. Save
-  await deps.microInsightStore.save(insight);
+    // 4. Save
+    await deps.microInsightStore.save(insight);
 
-  // 5. Event log
-  if (deps.eventLog) {
-    await deps.eventLog.append({
-      type: 'system',
-      data: {
-        message: `Micro research for ${ticker}: ${insight.rating} (${(insight.conviction * 100).toFixed(0)}% conviction)`,
-      },
+    // 5. Event log
+    if (deps.eventLog) {
+      await deps.eventLog.append({
+        type: 'system',
+        data: {
+          message: `Micro research for ${ticker}: ${insight.rating} (${(insight.conviction * 100).toFixed(0)}% conviction)`,
+        },
+      });
+    }
+
+    logger.info('Micro research complete', {
+      symbol: ticker,
+      rating: insight.rating,
+      signalsIngested,
+      durationMs: Date.now() - start,
+    });
+  } catch (err) {
+    logger.warn('Micro research LLM analysis failed — entity still available for skill evaluation', {
+      symbol: ticker,
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 
   const durationMs = Date.now() - start;
-  logger.info('Micro research complete', {
-    symbol: ticker,
-    rating: insight.rating,
-    signalsIngested,
-    durationMs,
-  });
-
-  return { insight, signalsIngested, durationMs };
+  return { insight, signalsIngested, durationMs, entity, signals: curatedSignals };
 }

@@ -108,8 +108,8 @@ describe('deriveCuratedOutputType', () => {
     expect(outputType).toBe('INSIGHT');
   });
 
-  it('preserves ACTION output types', () => {
-    const outputType = deriveCuratedOutputType(makeSignal({ outputType: 'ACTION' }), null);
-    expect(outputType).toBe('ACTION');
+  it('preserves SUMMARY output types', () => {
+    const outputType = deriveCuratedOutputType(makeSignal({ outputType: 'SUMMARY' }), null);
+    expect(outputType).toBe('SUMMARY');
   });
 });

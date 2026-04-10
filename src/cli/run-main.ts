@@ -288,7 +288,7 @@ async function startGateway(): Promise<void> {
     notificationBus,
     snapStore: services.snapStore,
     insightStore: services.insightStore,
-    actionStore: services.actionStore,
+    summaryStore: services.summaryStore,
   };
 
   const slackPlugin = createSlackPlugin(channelDeps);
@@ -305,7 +305,7 @@ async function startGateway(): Promise<void> {
     dataRoot,
     reflectionEngine: services.reflectionEngine,
     skillEvaluator: services.skillEvaluator,
-    actionStore: services.actionStore,
+    summaryStore: services.summaryStore,
     snapshotStore: services.snapshotStore,
     snapStore: services.snapStore,
     insightStore: services.insightStore,

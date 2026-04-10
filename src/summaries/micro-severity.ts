@@ -1,6 +1,6 @@
 /**
- * Micro action severity — the ranking signal used to decide whether a micro
- * observation should be promoted into an Action (and supersede older pending
+ * Micro summary severity — the ranking signal used to decide whether a micro
+ * observation should be promoted into a Summary (and supersede older pending
  * ones for the same ticker).
  *
  * Severity acts as priority: 1 = critical, 0 = noise. Source of truth is the
@@ -36,7 +36,7 @@ export interface SeverityInput {
  * Score a micro insight on 0–1. Prefers the LLM-emitted `severity` field;
  * falls back to `conviction × rating multiplier` when absent.
  */
-export function computeMicroActionSeverity(insight: SeverityInput): number {
+export function computeMicroSummarySeverity(insight: SeverityInput): number {
   if (typeof insight.severity === 'number') {
     return clamp01(insight.severity);
   }
@@ -48,7 +48,7 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
-/** Canonical `source` field value for an action emitted by the micro runner. */
-export function microActionSource(ticker: string): string {
+/** Canonical `source` field value for a summary emitted by the micro runner. */
+export function microSummarySource(ticker: string): string {
   return `micro-observation: ${ticker.toUpperCase()}`;
 }

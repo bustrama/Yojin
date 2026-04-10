@@ -233,7 +233,7 @@ export function deriveSignalSeverity(signal: Signal, assessment?: SignalAssessme
   const metadataSeverity = normalizeSeverity(signal.metadata?.severity);
   if (metadataSeverity) return metadataSeverity;
 
-  if (signal.outputType === 'ACTION') return 'HIGH';
+  if (signal.outputType === 'SUMMARY') return 'HIGH';
   if (signal.outputType === 'ALERT') return recencyUrgency >= 0.8 ? 'HIGH' : 'MEDIUM';
 
   if (signal.sentiment === 'BEARISH' && signal.confidence >= 0.75) return 'MEDIUM';
@@ -244,7 +244,7 @@ export function deriveSignalSeverity(signal: Signal, assessment?: SignalAssessme
 }
 
 export function deriveCuratedOutputType(signal: Signal, assessment?: SignalAssessment | null): SignalOutputType {
-  if (signal.outputType === 'ACTION') return 'ACTION';
+  if (signal.outputType === 'SUMMARY') return 'SUMMARY';
 
   const severity = deriveSignalSeverity(signal, assessment);
   if (severity === 'CRITICAL' || severity === 'HIGH') return 'ALERT';

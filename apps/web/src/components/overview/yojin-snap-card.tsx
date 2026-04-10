@@ -1,18 +1,17 @@
 /**
- * Actions card — severity-ranked TLDR of pending Actions from the ActionStore.
+ * Summaries card — severity-ranked TLDR of pending Summaries from the SummaryStore.
  *
- * Reads `actions(status: PENDING)` populated by the micro-runner's severity gate
+ * Reads `summaries(status: PENDING)` populated by the micro-runner's severity gate
  * (see src/insights/micro-runner.ts). Replaces the previous implementation that
  * pulled from `snap.actionItems` — that was a duplicate of the Snap card's data
- * and didn't reflect the real ActionStore. Filename kept as `yojin-snap-card.tsx`
- * to avoid a wide import rename; the card is titled "Actions" in the UI.
+ * and didn't reflect the real SummaryStore.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
-import { useActions } from '../../api';
-import { groupActionsByTicker, insightsHrefForTicker, severityBulletColor } from '../../lib/actions-by-ticker';
+import { useSummaries } from '../../api';
+import { groupSummariesByTicker, insightsHrefForTicker, severityBulletColor } from '../../lib/summaries-by-ticker';
 import { useFeatureStatus } from '../../lib/feature-status';
 import { cn, timeAgo } from '../../lib/utils';
 import { CardBlurGate } from '../common/card-blur-gate';
@@ -33,7 +32,7 @@ interface TickerGroup {
   key: string;
   ticker: string | null;
   topSeverity: number | null;
-  topActionId: string;
+  topSummaryId: string;
   latestCreatedAt: string;
   /** All `what` strings for this ticker, sorted by severity DESC. */
   whats: string[];
@@ -42,10 +41,10 @@ interface TickerGroup {
 export function YojinSnapCard() {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
   // Pause the query until both prerequisites are satisfied so a gated user
-  // doesn't spam `actions(status: PENDING)` every 30s behind the blur overlay.
+  // doesn't spam `summaries(status: PENDING)` every 30s behind the blur overlay.
   const unlocked = aiConfigured && jintelConfigured;
-  const [result, reexecute] = useActions({ status: 'PENDING', limit: 50, pause: !unlocked });
-  const actions = result.data?.actions;
+  const [result, reexecute] = useSummaries({ status: 'PENDING', limit: 50, pause: !unlocked });
+  const summaries = result.data?.summaries;
 
   // Poll to keep the card fresh without a manual refresh. Only runs once the
   // card is actually visible to the user — otherwise there is nothing to refresh.
@@ -55,13 +54,13 @@ export function YojinSnapCard() {
     return () => clearInterval(id);
   }, [reexecute, unlocked]);
 
-  // Group actions by ticker — one row per ticker with its top 1-2 whats joined.
+  // Group summaries by ticker — one row per ticker with its top 1-2 whats joined.
   // Row severity is the max severity seen for that ticker. Groups sort by that
-  // severity DESC, then latest createdAt DESC. Null-ticker actions fall into a
+  // severity DESC, then latest createdAt DESC. Null-ticker summaries fall into a
   // single trailing group rendered without a symbol label. Grouping + per-bucket
   // sort live in the shared helper; we only layer the cross-group sort here.
   const grouped: TickerGroup[] = useMemo(() => {
-    const byTicker = groupActionsByTicker(actions ?? []);
+    const byTicker = groupSummariesByTicker(summaries ?? []);
     const groups: TickerGroup[] = [];
     for (const [key, items] of byTicker) {
       const top = items[0];
@@ -70,7 +69,7 @@ export function YojinSnapCard() {
         key: key || '__untagged__',
         ticker: key || null,
         topSeverity: top.severity,
-        topActionId: top.id,
+        topSummaryId: top.id,
         latestCreatedAt: top.createdAt,
         whats: items.map((a) => a.what),
       });
@@ -81,9 +80,9 @@ export function YojinSnapCard() {
       if (sa !== sb) return sb - sa;
       return b.latestCreatedAt.localeCompare(a.latestCreatedAt);
     });
-  }, [actions]);
+  }, [summaries]);
 
-  const totalActions = actions?.length ?? 0;
+  const totalSummaries = summaries?.length ?? 0;
 
   // Click "+N more" to open the full per-ticker list in a modal.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -92,11 +91,11 @@ export function YojinSnapCard() {
     [selectedKey, grouped],
   );
 
-  // Glow-pulse when the top ticker's top action changes (new critical item landed).
+  // Glow-pulse when the top ticker's top summary changes (new critical item landed).
   const [justUpdated, setJustUpdated] = useState(false);
   const prevTopIdRef = useRef<string | null>(null);
   useEffect(() => {
-    const topId = grouped[0]?.topActionId ?? null;
+    const topId = grouped[0]?.topSummaryId ?? null;
     if (topId === null) return;
     const isUpdate = prevTopIdRef.current !== null && prevTopIdRef.current !== topId;
     prevTopIdRef.current = topId;
@@ -111,8 +110,8 @@ export function YojinSnapCard() {
 
   if (!jintelConfigured) {
     return (
-      <DashboardCard title="Actions" variant="feature" className="flex-1">
-        <CardBlurGate mockContent={<MockActions />}>
+      <DashboardCard title="Summaries" variant="feature" className="flex-1">
+        <CardBlurGate mockContent={<MockSummaries />}>
           <FeatureCardGate requires="jintel" />
         </CardBlurGate>
       </DashboardCard>
@@ -121,19 +120,19 @@ export function YojinSnapCard() {
 
   if (!aiConfigured) {
     return (
-      <DashboardCard title="Actions" variant="feature" className="flex-1">
-        <CardBlurGate mockContent={<MockActions />}>
+      <DashboardCard title="Summaries" variant="feature" className="flex-1">
+        <CardBlurGate mockContent={<MockSummaries />}>
           <FeatureCardGate requires="ai" />
         </CardBlurGate>
       </DashboardCard>
     );
   }
 
-  if (result.fetching && !actions) {
+  if (result.fetching && !summaries) {
     return (
-      <DashboardCard title="Actions" variant="feature" className="flex-1">
+      <DashboardCard title="Summaries" variant="feature" className="flex-1">
         <div className="flex flex-1 items-center justify-center px-5 pb-5">
-          <Spinner size="md" label="Loading actions..." />
+          <Spinner size="md" label="Loading summaries..." />
         </div>
       </DashboardCard>
     );
@@ -141,9 +140,9 @@ export function YojinSnapCard() {
 
   if (grouped.length === 0) {
     return (
-      <DashboardCard title="Actions" variant="feature" className="flex-1">
+      <DashboardCard title="Summaries" variant="feature" className="flex-1">
         <div className="flex flex-1 items-center justify-center px-5 pb-5">
-          <span className="text-sm text-text-muted">No actions yet</span>
+          <span className="text-sm text-text-muted">No summaries yet</span>
         </div>
       </DashboardCard>
     );
@@ -153,12 +152,12 @@ export function YojinSnapCard() {
 
   return (
     <DashboardCard
-      title="Actions"
+      title="Summaries"
       variant="feature"
       className={cn('flex-1', justUpdated && 'animate-new-item')}
       headerAction={
         <span className="text-xs text-text-muted">
-          {grouped.length} {grouped.length === 1 ? 'ticker' : 'tickers'} &middot; {totalActions} pending
+          {grouped.length} {grouped.length === 1 ? 'ticker' : 'tickers'} &middot; {totalSummaries} pending
           {latestCreatedAt && <> &middot; {timeAgo(latestCreatedAt)}</>}
         </span>
       }
@@ -202,7 +201,7 @@ export function YojinSnapCard() {
       <Modal
         open={selectedGroup !== null}
         onClose={() => setSelectedKey(null)}
-        title={selectedGroup?.ticker ? `${selectedGroup.ticker} actions` : 'Actions'}
+        title={selectedGroup?.ticker ? `${selectedGroup.ticker} summaries` : 'Summaries'}
         maxWidth="max-w-xl"
       >
         {selectedGroup && (
@@ -236,16 +235,16 @@ export function YojinSnapCard() {
   );
 }
 
-const MOCK_ACTIONS = [
+const MOCK_SUMMARIES = [
   { ticker: 'NVDA', text: 'Earnings beat — revenue +22% YoY, guidance raised on datacenter demand' },
   { ticker: 'AAPL', text: 'Supply chain warning flagged ahead of Jan 30 earnings' },
   { ticker: 'TSLA', text: 'Truist cuts price target to $180 amid macro headwinds' },
 ];
 
-function MockActions() {
+function MockSummaries() {
   return (
     <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-5 pb-5">
-      {MOCK_ACTIONS.map((item, i) => (
+      {MOCK_SUMMARIES.map((item, i) => (
         <li key={i} className="flex items-start gap-2">
           <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent-primary" />
           <div className="min-w-0 flex-1">

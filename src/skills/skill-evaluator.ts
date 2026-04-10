@@ -8,10 +8,13 @@
 
 import { SUPPORTED_LOOKBACK_MONTHS } from './portfolio-context-builder.js';
 import type { SkillStore } from './skill-store.js';
-import type { SkillEvaluation, SkillTrigger } from './types.js';
+import type { SkillEvaluation, SkillTrigger, TriggerType } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import { SignalTypeSchema } from '../signals/types.js';
 import type { Signal, SignalType } from '../signals/types.js';
+
+/** Triggers that require the full portfolio context and can only run during macro flow. */
+const MACRO_ONLY_TRIGGERS: ReadonlySet<TriggerType> = new Set(['CONCENTRATION_DRIFT', 'CUSTOM']);
 
 const logger = createSubsystemLogger('skill-evaluator');
 
@@ -69,6 +72,50 @@ export class SkillEvaluator {
               evaluatedAt: new Date().toISOString(),
             });
             logger.info(`Skill trigger fired: ${skill.name} [${trigger.type}] for ${ticker}`);
+          }
+        }
+      }
+    }
+
+    return evaluations;
+  }
+
+  /**
+   * Evaluate active skills for specific tickers only, skipping macro-only triggers.
+   * Used by the micro flow to evaluate per-asset skill triggers immediately after
+   * micro research completes (~5 min cadence instead of ~2 hour macro cadence).
+   */
+  evaluateForTickers(ctx: PortfolioContext, tickers: string[]): SkillEvaluation[] {
+    const tickerSet = new Set(tickers);
+    const activeSkills = this.skillStore.getActive();
+    const evaluations: SkillEvaluation[] = [];
+
+    for (const skill of activeSkills) {
+      // Only evaluate skills that apply to at least one of the specified tickers
+      const applicableTickers = skill.tickers.length > 0 ? skill.tickers.filter((t) => tickerSet.has(t)) : tickers; // empty skill.tickers = applies to all
+
+      if (applicableTickers.length === 0) continue;
+
+      for (const trigger of skill.triggers) {
+        // Skip triggers that need full portfolio context
+        if (MACRO_ONLY_TRIGGERS.has(trigger.type)) continue;
+        // Skip PRICE_MOVE with lookback_months (needs 1-year price history)
+        if (trigger.type === 'PRICE_MOVE' && trigger.params?.['lookback_months'] != null) continue;
+
+        for (const ticker of applicableTickers) {
+          const fired = this.checkTrigger(trigger, ticker, ctx);
+          if (fired) {
+            evaluations.push({
+              skillId: skill.id,
+              skillName: skill.name,
+              triggerId: `${skill.id}-${trigger.type}-${ticker}`,
+              triggerType: trigger.type,
+              triggerDescription: trigger.description,
+              context: { ticker, ...fired },
+              skillContent: skill.content,
+              evaluatedAt: new Date().toISOString(),
+            });
+            logger.info(`Micro skill trigger fired: ${skill.name} [${trigger.type}] for ${ticker}`);
           }
         }
       }

@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { cn } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
 import { SymbolLogo } from '../common/symbol-logo';
-import { useActions, usePortfolio } from '../../api';
+import { useSummaries, usePortfolio } from '../../api';
 import { CardEmptyState } from '../common/card-empty-state';
 import { CardBlurGate } from '../common/card-blur-gate';
 import { FeatureCardGate } from '../common/feature-gate';
@@ -17,7 +17,7 @@ import { useMarketStatus, getMarketElapsedMinutes } from '../../hooks/use-market
 import type { Position } from '../../api/types';
 import { formatPrice } from '../../lib/format';
 import { isStablecoin } from '../../lib/stablecoins';
-import { groupActionsByTicker, severityBulletColor } from '../../lib/actions-by-ticker';
+import { groupSummariesByTicker, severityBulletColor } from '../../lib/summaries-by-ticker';
 
 function formatChange(n: number): string {
   const abs = Math.abs(n);
@@ -146,17 +146,17 @@ export default function PositionsPreview() {
   const { openAssetDetail } = useAssetDetailModal();
   const { status: marketStatus } = useMarketStatus();
 
-  // Pending actions per ticker — powers the hover popover on each row.
+  // Pending summaries per ticker — powers the hover popover on each row.
   // urql dedupes this query against the one in `yojin-snap-card`, which owns
   // the 30s polling cycle. We just read from cache as it refreshes.
-  const [actionsResult] = useActions({
+  const [summariesResult] = useSummaries({
     status: 'PENDING',
     limit: 50,
     pause: !(aiConfigured && jintelConfigured),
   });
-  const actionsByTicker = useMemo(
-    () => groupActionsByTicker(actionsResult.data?.actions ?? []),
-    [actionsResult.data?.actions],
+  const summariesByTicker = useMemo(
+    () => groupSummariesByTicker(summariesResult.data?.summaries ?? []),
+    [summariesResult.data?.summaries],
   );
 
   // Hover popover anchor. `hoveredTicker` drives visibility; `hoverAnchor`
@@ -167,7 +167,7 @@ export default function PositionsPreview() {
 
   const handleTickerMouseEnter = useCallback(
     (symbol: string, el: HTMLElement) => {
-      if (!actionsByTicker.has(symbol)) return;
+      if (!summariesByTicker.has(symbol)) return;
       const rect = el.getBoundingClientRect();
       const POPOVER_WIDTH = 288; // matches w-72 below
       const MARGIN = 16;
@@ -179,7 +179,7 @@ export default function PositionsPreview() {
       setHoveredTicker(symbol);
       setHoverAnchor({ left, top: rect.top });
     },
-    [actionsByTicker],
+    [summariesByTicker],
   );
 
   const handleTickerMouseLeave = useCallback(() => {
@@ -199,7 +199,7 @@ export default function PositionsPreview() {
     return () => window.removeEventListener('scroll', close, true);
   }, [hoveredTicker]);
 
-  const hoveredActions = hoveredTicker ? actionsByTicker.get(hoveredTicker) : undefined;
+  const hoveredSummaries = hoveredTicker ? summariesByTicker.get(hoveredTicker) : undefined;
 
   // Detect new positions and trigger glow animation
   const [newPositionKeys, setNewPositionKeys] = useState<Set<string>>(new Set());
@@ -347,9 +347,9 @@ export default function PositionsPreview() {
               const ext = getExtendedHoursLabel(marketStatus, pos);
 
               const posKey = pos.symbol;
-              const actionsForSymbol = actionsByTicker.get(pos.symbol);
-              const hasActions = actionsForSymbol !== undefined && actionsForSymbol.length > 0;
-              const topActionSeverity = hasActions ? actionsForSymbol[0].severity : null;
+              const summariesForSymbol = summariesByTicker.get(pos.symbol);
+              const hasSummaries = summariesForSymbol !== undefined && summariesForSymbol.length > 0;
+              const topSummarySeverity = hasSummaries ? summariesForSymbol[0].severity : null;
               return (
                 <tr
                   key={posKey}
@@ -373,17 +373,17 @@ export default function PositionsPreview() {
                         onMouseLeave={handleTickerMouseLeave}
                       >
                         {pos.symbol}
-                        {hasActions && (
+                        {hasSummaries && (
                           <span
-                            aria-label={`${actionsForSymbol.length} pending ${actionsForSymbol.length === 1 ? 'action' : 'actions'}`}
+                            aria-label={`${summariesForSymbol.length} pending ${summariesForSymbol.length === 1 ? 'summary' : 'summaries'}`}
                             className={cn(
                               'ml-1 inline-block h-1.5 w-1.5 rounded-full align-middle',
-                              severityBulletColor(topActionSeverity),
+                              severityBulletColor(topSummarySeverity),
                             )}
                           />
                         )}
                         {/* Name tooltip only when there is no actions popover to surface instead. */}
-                        {!hasActions && pos.name && pos.name !== pos.symbol && (
+                        {!hasSummaries && pos.name && pos.name !== pos.symbol && (
                           <div className="pointer-events-none absolute left-0 bottom-full z-20 mb-0.5 hidden rounded-md bg-bg-tertiary px-2 py-1 shadow-md ring-1 ring-border group-hover/asset:block">
                             <span className="whitespace-nowrap text-2xs text-text-secondary">{pos.name}</span>
                           </div>
@@ -477,23 +477,23 @@ export default function PositionsPreview() {
         </table>
       </div>
       {hoveredTicker &&
-        hoveredActions &&
+        hoveredSummaries &&
         hoverAnchor &&
         createPortal(
           <div
             role="dialog"
-            aria-label={`Actions for ${hoveredTicker}`}
+            aria-label={`Summaries for ${hoveredTicker}`}
             style={{ position: 'fixed', left: hoverAnchor.left, top: hoverAnchor.top }}
             className="pointer-events-none z-50 w-72 rounded-md bg-bg-tertiary p-3 shadow-lg ring-1 ring-border"
           >
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <span className="text-xs font-semibold text-text-primary">{hoveredTicker}</span>
               <span className="text-2xs text-text-muted">
-                {hoveredActions.length} {hoveredActions.length === 1 ? 'action' : 'actions'}
+                {hoveredSummaries.length} {hoveredSummaries.length === 1 ? 'summary' : 'summaries'}
               </span>
             </div>
             <ul className="flex flex-col gap-2">
-              {hoveredActions.slice(0, 5).map((a) => (
+              {hoveredSummaries.slice(0, 5).map((a) => (
                 <li key={a.id} className="flex items-start gap-2">
                   <span
                     className={cn('mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full', severityBulletColor(a.severity))}
@@ -502,8 +502,8 @@ export default function PositionsPreview() {
                 </li>
               ))}
             </ul>
-            {hoveredActions.length > 5 && (
-              <div className="mt-2 text-2xs text-text-muted">+{hoveredActions.length - 5} more</div>
+            {hoveredSummaries.length > 5 && (
+              <div className="mt-2 text-2xs text-text-muted">+{hoveredSummaries.length - 5} more</div>
             )}
           </div>,
           document.body,

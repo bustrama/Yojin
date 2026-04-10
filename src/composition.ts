@@ -13,11 +13,9 @@ import { join } from 'node:path';
 import { JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
-import { ActionStore } from './actions/action-store.js';
 import { createDefaultProfiles } from './agents/defaults.js';
 import { AgentRegistry } from './agents/registry.js';
 import { pubsub } from './api/graphql/pubsub.js';
-import { setActionStore } from './api/graphql/resolvers/actions.js';
 import { setAiConfigVault } from './api/graphql/resolvers/ai-config.js';
 import { setChannelDataRoot, setChannelOAuthDir, setChannelVault } from './api/graphql/resolvers/channels.js';
 import { setConnectionManager } from './api/graphql/resolvers/connections.js';
@@ -56,6 +54,7 @@ import { setSignalArchive } from './api/graphql/resolvers/signals.js';
 import { setSkillStore } from './api/graphql/resolvers/skills.js';
 import { setSnapStore } from './api/graphql/resolvers/snap.js';
 import { setSkillStoreForSources, setStrategySourceStore } from './api/graphql/resolvers/strategy-sources.js';
+import { setSummaryStore } from './api/graphql/resolvers/summaries.js';
 import { setVault, setVaultSecretChangedCallback } from './api/graphql/resolvers/vault.js';
 import {
   setWatchlistEnrichment,
@@ -109,6 +108,7 @@ import { createSkillTools } from './skills/skill-tools.js';
 import { StrategySourceStore } from './skills/strategy-source-store.js';
 import { syncStrategies } from './skills/strategy-source-sync.js';
 import { SnapStore } from './snap/snap-store.js';
+import { SummaryStore } from './summaries/summary-store.js';
 import { createApiHealthTools } from './tools/api-health.js';
 import { createBrainTools } from './tools/brain-tools.js';
 import { createDataSourceQueryTools } from './tools/data-source-query.js';
@@ -167,7 +167,7 @@ export interface YojinServices {
   assessmentStore: AssessmentStore;
   /** Mutable ref — workflows set this before agent stages to track pipeline duration. */
   assessmentWorkflowStartMs: { value: number };
-  actionStore: ActionStore;
+  summaryStore: SummaryStore;
   skillStore: SkillStore;
   skillEvaluator: SkillEvaluator;
   watchlistStore: WatchlistStore;
@@ -657,9 +657,9 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     toolRegistry.register(tool);
   }
 
-  // Action store
-  const actionStore = new ActionStore({ dir: `${dataRoot}/actions` });
-  setActionStore(actionStore);
+  // Summary store
+  const summaryStore = new SummaryStore({ dir: `${dataRoot}/summaries` });
+  setSummaryStore(summaryStore);
 
   // Skill store + evaluator — seed strategies from Markdown on first run
   const skillsDir = `${dataRoot}/skills`;
@@ -753,7 +753,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     signalIngestor,
     assessmentStore,
     assessmentWorkflowStartMs,
-    actionStore,
+    summaryStore,
     skillStore,
     skillEvaluator,
     watchlistStore,
