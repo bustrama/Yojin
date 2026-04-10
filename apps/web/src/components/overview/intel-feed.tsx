@@ -211,6 +211,8 @@ function IntelFeedCard({
         <button
           type="button"
           aria-expanded={selectMode ? undefined : expanded}
+          aria-pressed={selectMode ? selected : undefined}
+          aria-label={selectMode ? `${selected ? 'Deselect' : 'Select'} ${item.title}` : undefined}
           onClick={selectMode ? onToggleSelect : onToggle}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
         >
@@ -240,7 +242,7 @@ function IntelFeedCard({
           ) : (
             <div className="flex flex-shrink-0 flex-col items-end gap-0.5">
               <span className="inline-block rounded bg-bg-secondary px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em] text-text-muted">
-                {item.signalType}
+                {item.signalType.replace(/_/g, ' ')}
               </span>
               <span className="text-2xs text-text-muted">{item.publishedTime}</span>
             </div>
@@ -704,6 +706,8 @@ function IntelFeedContent({
     setPrevViewKey(viewKey);
     setDisplayedCount(PAGE_SIZE);
     setUnseenImportantIds(new Set());
+    setSelectMode(false);
+    setSelectedIds(new Set());
   }
 
   // Jump the scroll container back to the top on view change. Without this,
@@ -966,16 +970,17 @@ function IntelFeedContent({
                 onSelectToggle={() => {
                   setSelectMode((prev) => !prev);
                   setSelectedIds(new Set());
+                  setExpandedId(null);
                 }}
                 onDismissSelected={() => {
                   const ids = [...selectedIds];
-                  setSelectMode(false);
-                  setSelectedIds(new Set());
                   void batchDismissSignals({ signalIds: ids }).then((result) => {
-                    if (result.error) {
-                      console.error('Batch dismiss failed', result.error.message);
+                    if (result.error || result.data?.batchDismissSignals !== true) {
+                      console.error('Batch dismiss failed', result.error?.message ?? 'Mutation returned false');
                       return;
                     }
+                    setSelectMode(false);
+                    setSelectedIds(new Set());
                     reexecute({ requestPolicy: 'network-only' });
                   });
                 }}
@@ -1143,7 +1148,7 @@ function MockIntelFeed() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <span className="inline-flex items-center gap-1 rounded bg-bg-secondary px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-[0.08em] text-text-primary">
-                    <div className="h-3 w-3 flex-shrink-0 rounded-full bg-bg-tertiary" />
+                    <span className="h-3 w-3 flex-shrink-0 rounded-full bg-bg-tertiary" />
                     {item.ticker}
                   </span>
                   <p className="mt-0.5 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
