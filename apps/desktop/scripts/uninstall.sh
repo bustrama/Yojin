@@ -16,11 +16,11 @@ if [ -f "$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_PLIST" ]; then
 fi
 
 # 2. Quit running app
-pkill -f "YojinTray" 2>/dev/null || true
+pkill -x "YojinTray" 2>/dev/null || true
 
 # 3. Remove app bundle
 if [ -d "$INSTALL_DIR/$APP_NAME" ]; then
-    rm -rf "$INSTALL_DIR/$APP_NAME"
+    rm -rf "${INSTALL_DIR:?}/${APP_NAME:?}"
     echo "Removed $INSTALL_DIR/$APP_NAME"
 fi
 

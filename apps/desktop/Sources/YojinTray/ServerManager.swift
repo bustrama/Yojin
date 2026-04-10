@@ -7,10 +7,14 @@ final class ServerManager {
     private(set) var status: Status = .stopped
     private var process: Process?
     private var healthTimer: Timer?
-    private var port: Int = 3000
+    let port: Int
     private let onStatusChange: (Status) -> Void
 
-    init(onStatusChange: @escaping (Status) -> Void) {
+    init(
+        port: Int = Int(ProcessInfo.processInfo.environment["YOJIN_PORT"] ?? "") ?? 3000,
+        onStatusChange: @escaping (Status) -> Void
+    ) {
+        self.port = port
         self.onStatusChange = onStatusChange
     }
 
@@ -29,9 +33,11 @@ final class ServerManager {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        proc.arguments = ["-l", "-c", "\(binaryPath) start"]
-        proc.standardOutput = logFileHandle()
-        proc.standardError = logFileHandle()
+        proc.arguments = ["-l", "-c", "\"\(binaryPath)\" start --port \(port)"]
+        let logHandle = logFileHandle()
+        logHandle.seekToEndOfFile()
+        proc.standardOutput = logHandle
+        proc.standardError = logHandle
         proc.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async { self?.handleTermination() }
         }
@@ -46,11 +52,38 @@ final class ServerManager {
         }
     }
 
-    func stop() {
-        guard let proc = process, proc.isRunning else { return }
+    func stop(completion: (() -> Void)? = nil) {
+        guard let proc = process, proc.isRunning else {
+            completion?()
+            return
+        }
         NSLog("[YojinTray] Stopping server (SIGTERM)")
         stopHealthPolling()
+
+        // Wait for the process to exit, then call completion
+        if let completion {
+            let originalHandler = proc.terminationHandler
+            proc.terminationHandler = { [weak self] p in
+                DispatchQueue.main.async {
+                    self?.handleTermination()
+                    completion()
+                }
+                originalHandler?(p)
+            }
+        }
+
         proc.terminate() // sends SIGTERM — Yojin handles graceful shutdown
+
+        // Force kill after 5 seconds if still running
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            guard let self, let proc = self.process, proc.isRunning else { return }
+            NSLog("[YojinTray] Server did not exit in 5s, sending SIGKILL")
+            proc.interrupt()
+            DispatchQueue.main.async {
+                self.handleTermination()
+                completion?()
+            }
+        }
     }
 
     var isRunning: Bool { status == .running }
@@ -100,7 +133,7 @@ final class ServerManager {
     }
 
     private func checkHealth() {
-        guard let url = URL(string: "http://127.0.0.1:\(port)/health") else { return }
+        guard let url = URL(string: "http://127.0.0.1:\(port)/api/health") else { return }
 
         let task = URLSession.shared.dataTask(with: url) { [weak self] _, response, error in
             DispatchQueue.main.async {

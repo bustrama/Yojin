@@ -17,7 +17,7 @@ fi
 
 # 2. Copy app to /Applications
 echo "Installing $APP_NAME to $INSTALL_DIR..."
-rm -rf "$INSTALL_DIR/$APP_NAME"
+rm -rf "${INSTALL_DIR:?}/${APP_NAME:?}"
 cp -R "$BUILD_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME"
 
 # 3. Create LaunchAgent for auto-start on login

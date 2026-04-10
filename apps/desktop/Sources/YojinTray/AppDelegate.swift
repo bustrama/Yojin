@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        serverManager.stop()
+        serverManager.stop(completion: nil)
     }
 
     // MARK: - Menu
@@ -66,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Actions
 
     @objc private func openDashboard() {
-        let url = URL(string: "http://localhost:3000")!
+        let url = URL(string: "http://localhost:\(serverManager.port)")!
         NSWorkspace.shared.open(url)
     }
 
@@ -79,9 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quit() {
-        serverManager.stop()
-        // Give the server a moment to shut down gracefully
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        serverManager.stop {
             NSApplication.shared.terminate(nil)
         }
     }

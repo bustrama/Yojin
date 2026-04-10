@@ -59,7 +59,7 @@ Once installed, the Yojin hand icon appears in your menu bar with:
 - **Start / Stop** — toggle the server
 - Auto-starts on login via LaunchAgent
 
-To uninstall: `./apps/desktop/scripts/uninstall.sh`
+To uninstall (from `apps/desktop`): `./scripts/uninstall.sh`
 
 ### Docker (recommended for long-running)
 
