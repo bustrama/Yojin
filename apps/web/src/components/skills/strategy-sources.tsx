@@ -29,6 +29,7 @@ function SourceRow({
 }) {
   const isDefault = source.isDefault;
   const displayName = source.label ?? `${source.owner}/${source.repo}`;
+  const repoPath = source.path ? `${source.owner}/${source.repo}/${source.path}` : `${source.owner}/${source.repo}`;
 
   return (
     <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-bg-secondary px-4 py-3">
@@ -42,8 +43,7 @@ function SourceRow({
           )}
         </div>
         <p className="mt-0.5 truncate text-xs text-text-muted">
-          {source.owner}/{source.repo}/{source.path} &middot;{' '}
-          {source.lastSyncedAt ? timeAgo(source.lastSyncedAt) : 'Never'}
+          {repoPath} &middot; {source.lastSyncedAt ? timeAgo(source.lastSyncedAt) : 'Never'}
         </p>
       </div>
 
@@ -118,7 +118,10 @@ export function StrategySources() {
 
   async function handleSyncAll() {
     const res = await syncSources({});
-    if (res.error) return;
+    if (res.error) {
+      showToast(`Sync failed: ${extractGqlError(res.error)}`, 'warning');
+      return;
+    }
     const data = res.data?.syncStrategies;
     if (!data) return;
 
