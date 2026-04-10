@@ -268,7 +268,7 @@ function SectionHeader({ label }: { label: string }) {
 function LastUpdateLabel({ ingestedAt }: { ingestedAt: string }) {
   const [, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, []);
   return <>Last Update: {timeAgo(ingestedAt)}</>;
@@ -892,6 +892,11 @@ function IntelFeedContent({
   const hasError = !!error;
   const isEmpty = !fetching && !error && filteredItems.length === 0;
 
+  const latestItem = useMemo(
+    () => (items.length > 0 ? items.reduce((a, b) => (a.ingestedAt > b.ingestedAt ? a : b)) : null),
+    [items],
+  );
+
   return (
     <>
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -902,18 +907,14 @@ function IntelFeedContent({
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-tertiary px-1.5 text-[10px] font-bold text-text-secondary">
               {totalCount}
             </span>
-            {items.length > 0 &&
-              (() => {
-                const latest = items.reduce((a, b) => (a.ingestedAt > b.ingestedAt ? a : b));
-                return (
-                  <Link
-                    to="/settings#intelligence-schedule"
-                    className="ml-auto text-[10px] font-medium uppercase tracking-wider text-text-muted transition-colors hover:text-text-secondary"
-                  >
-                    <LastUpdateLabel ingestedAt={latest.ingestedAt} />
-                  </Link>
-                );
-              })()}
+            {latestItem && (
+              <Link
+                to="/settings#intelligence-schedule"
+                className="ml-auto text-[10px] font-medium uppercase tracking-wider text-text-muted transition-colors hover:text-text-secondary"
+              >
+                <LastUpdateLabel ingestedAt={latestItem.ingestedAt} />
+              </Link>
+            )}
           </div>
 
           <div className="flex gap-5 border-b border-border px-4">
