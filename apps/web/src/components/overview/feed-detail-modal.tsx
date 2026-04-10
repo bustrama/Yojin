@@ -149,7 +149,7 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
         )}
       </div>
 
-      {/* Action details */}
+      {/* Summary details */}
       {data.actionMeta && (
         <>
           <SectionRule label="Trigger Details" />

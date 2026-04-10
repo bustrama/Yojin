@@ -2,21 +2,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery } from 'urql';
 import {
-  ACTIONS_QUERY,
   BATCH_DISMISS_SIGNALS_MUTATION,
-  DISMISS_ACTION_MUTATION,
   DISMISS_SIGNAL_MUTATION,
+  DISMISS_SUMMARY_MUTATION,
   INTEL_FEED_QUERY,
   SCHEDULER_STATUS_QUERY,
+  SUMMARIES_QUERY,
   TRIGGER_MICRO_ANALYSIS_MUTATION,
 } from '../../api/documents';
 import type {
-  ActionsQueryResult,
-  ActionsQueryVariables,
   FeedTarget,
   IntelFeedQueryResult,
   IntelFeedQueryVariables,
   SchedulerStatusQueryResult,
+  SummariesQueryResult,
+  SummariesQueryVariables,
 } from '../../api/types';
 import { cn, timeAgo } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
@@ -80,11 +80,11 @@ const signalTypeIcon: Record<string, IconName> = {
 };
 
 /** Promote higher-severity items into the alerts lane.
- * Only CRITICAL signals and explicit ACTION outputs qualify as alerts —
+ * Only CRITICAL signals and explicit SUMMARY outputs qualify as alerts —
  * HIGH signals remain visible as prominent insights but don't clutter the alerts tab. */
 function classifySignal(signal: { outputType?: string | null; severity: IntelFeedItem['severity'] }): ItemType {
   if (signal.severity === 'CRITICAL') return 'alert';
-  if (signal.outputType === 'ACTION') return 'alert';
+  if (signal.outputType === 'SUMMARY') return 'alert';
   return 'insight';
 }
 
@@ -421,7 +421,7 @@ function IntelFeedContent({
   const initialIdsRef = useRef<Set<string> | null>(null);
   const newIdTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [, dismissSignal] = useMutation(DISMISS_SIGNAL_MUTATION);
-  const [, dismissAction] = useMutation(DISMISS_ACTION_MUTATION);
+  const [, dismissSummary] = useMutation(DISMISS_SUMMARY_MUTATION);
   const [, batchDismissSignals] = useMutation(BATCH_DISMISS_SIGNALS_MUTATION);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -460,16 +460,16 @@ function IntelFeedContent({
     requestPolicy: 'cache-and-network',
   });
 
-  const actionQueryVars = useMemo<ActionsQueryVariables>(
+  const summaryQueryVars = useMemo<SummariesQueryVariables>(
     () => ({ status: 'PENDING', limit: FETCH_LIMIT, dismissed: false }),
     [],
   );
-  const [{ data: actionsData, error: actionsError }, reexecuteActions] = useQuery<
-    ActionsQueryResult,
-    ActionsQueryVariables
+  const [{ data: summariesData, error: summariesError }, reexecuteSummaries] = useQuery<
+    SummariesQueryResult,
+    SummariesQueryVariables
   >({
-    query: ACTIONS_QUERY,
-    variables: actionQueryVars,
+    query: SUMMARIES_QUERY,
+    variables: summaryQueryVars,
     requestPolicy: 'cache-and-network',
   });
 
@@ -534,10 +534,10 @@ function IntelFeedContent({
   useEffect(() => {
     const id = setInterval(() => {
       reexecute({ requestPolicy: 'network-only' });
-      reexecuteActions({ requestPolicy: 'network-only' });
+      reexecuteSummaries({ requestPolicy: 'network-only' });
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [reexecute, reexecuteActions]);
+  }, [reexecute, reexecuteSummaries]);
 
   // Map API data into IntelFeedItem[]
   const items: IntelFeedItem[] = useMemo(() => {
@@ -588,42 +588,42 @@ function IntelFeedContent({
       };
     });
 
-    const actionItems: IntelFeedItem[] = (actionsData?.actions ?? []).map((action) => {
-      const skillName = action.source.startsWith('strategy:')
-        ? action.source.slice('strategy:'.length).trim()
-        : action.source.startsWith('skill:')
-          ? action.source.slice('skill:'.length).trim()
+    const summaryItems: IntelFeedItem[] = (summariesData?.summaries ?? []).map((summary) => {
+      const skillName = summary.source.startsWith('strategy:')
+        ? summary.source.slice('strategy:'.length).trim()
+        : summary.source.startsWith('skill:')
+          ? summary.source.slice('skill:'.length).trim()
           : null;
       return {
-        id: `action:${action.id}`,
+        id: `summary:${summary.id}`,
         type: 'action' as const,
-        severity: action.severityLabel as IntelFeedItem['severity'],
-        signalType: 'ACTION',
-        ticker: skillName ?? 'ACTION',
+        severity: summary.severityLabel as IntelFeedItem['severity'],
+        signalType: 'SUMMARY',
+        ticker: skillName ?? 'SUMMARY',
         tickers: [],
         sentiment: null,
-        title: action.what,
-        time: timeAgo(action.createdAt),
-        publishedAt: action.createdAt,
-        ingestedAt: action.createdAt,
-        publishedTime: timeAgo(action.createdAt),
+        title: summary.what,
+        time: timeAgo(summary.createdAt),
+        publishedAt: summary.createdAt,
+        ingestedAt: summary.createdAt,
+        publishedTime: timeAgo(summary.createdAt),
         icon: 'clock' as IconName,
-        description: action.why,
-        source: action.source,
+        description: summary.why,
+        source: summary.source,
         link: null,
         isAction: true,
         skillName: skillName ?? undefined,
-        triggerInfo: action.riskContext ?? undefined,
-        expiresAt: action.expiresAt,
+        triggerInfo: summary.riskContext ?? undefined,
+        expiresAt: summary.expiresAt,
       };
     });
 
-    // Merge actions into signal feed sorted by recency. Actions are interleaved
+    // Merge summaries into signal feed sorted by recency. Summaries are interleaved
     // with signals rather than concatenated to maintain a coherent timeline.
-    const merged = [...actionItems, ...signalItems];
+    const merged = [...summaryItems, ...signalItems];
     merged.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
     return merged;
-  }, [data, actionsData]);
+  }, [data, summariesData]);
 
   useEffect(() => {
     latestItemsRef.current = items;
@@ -865,7 +865,7 @@ function IntelFeedContent({
   }
 
   const isLoading = fetching && !data;
-  const hasError = !!(error || actionsError);
+  const hasError = !!(error || summariesError);
   const isEmpty = !fetching && !hasError && filteredItems.length === 0;
 
   const latestItem = useMemo(
@@ -1013,7 +1013,7 @@ function IntelFeedContent({
               </svg>
               <div>
                 <p className="text-sm text-text-muted">Failed to load intel</p>
-                <p className="mt-1 text-xs text-text-muted">{(error ?? actionsError)?.message}</p>
+                <p className="mt-1 text-xs text-text-muted">{(error ?? summariesError)?.message}</p>
               </div>
               <button
                 onClick={() => reexecute({ requestPolicy: 'network-only' })}
@@ -1073,15 +1073,15 @@ function IntelFeedContent({
                 }}
                 onDismissSelected={() => {
                   const ids = [...selectedIds];
-                  const actionIds = ids
-                    .filter((id) => id.startsWith('action:'))
-                    .map((id) => id.replace(/^action:/, ''));
-                  const signalIds = ids.filter((id) => !id.startsWith('action:'));
-                  if (actionIds.length > 0) {
-                    void Promise.all(actionIds.map((id) => dismissAction({ id }))).then((results) => {
+                  const summaryIds = ids
+                    .filter((id) => id.startsWith('summary:'))
+                    .map((id) => id.replace(/^summary:/, ''));
+                  const signalIds = ids.filter((id) => !id.startsWith('summary:'));
+                  if (summaryIds.length > 0) {
+                    void Promise.all(summaryIds.map((id) => dismissSummary({ id }))).then((results) => {
                       const failed = results.filter((r) => r.error);
-                      if (failed.length > 0) console.error(`${failed.length} action dismiss(es) failed`);
-                      reexecuteActions({ requestPolicy: 'network-only' });
+                      if (failed.length > 0) console.error(`${failed.length} summary dismiss(es) failed`);
+                      reexecuteSummaries({ requestPolicy: 'network-only' });
                     });
                   }
                   if (signalIds.length > 0) {
@@ -1118,13 +1118,13 @@ function IntelFeedContent({
                     onDismiss={() => {
                       if (expandedId === item.id) setExpandedId(null);
                       if (item.isAction) {
-                        const actionId = item.id.replace(/^action:/, '');
-                        void dismissAction({ id: actionId }).then((result) => {
+                        const summaryId = item.id.replace(/^summary:/, '');
+                        void dismissSummary({ id: summaryId }).then((result) => {
                           if (result.error) {
-                            console.error('Dismiss action failed', result.error.message);
+                            console.error('Dismiss summary failed', result.error.message);
                             return;
                           }
-                          reexecuteActions({ requestPolicy: 'network-only' });
+                          reexecuteSummaries({ requestPolicy: 'network-only' });
                         });
                       } else {
                         void dismissSignal({ signalId: item.id }).then((result) => {
