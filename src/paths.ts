@@ -6,7 +6,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, rename } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +43,7 @@ export const DATA_SUBDIRS = [
   'watchlist',
   'summaries',
   'actions',
-  'skills',
+  'strategies',
   'snap',
   'profiles', // Per-ticker persistent knowledge profiles
   'data', // General-purpose data storage for data source outputs and imports
@@ -117,6 +117,16 @@ export function resolvePackageVersion(): string {
  * Called once on startup — creates subdirectories if missing.
  */
 export async function ensureDataDirs(dataRoot: string): Promise<void> {
+  // One-time migration: ~/.yojin/skills/ → ~/.yojin/strategies/
+  // Runs before mkdir so the rename sees an empty destination. If the user
+  // has both (shouldn't happen), the migration is skipped and the old dir
+  // is left in place for manual reconciliation.
+  const legacyStrategiesDir = join(dataRoot, 'skills');
+  const strategiesDir = join(dataRoot, 'strategies');
+  if (existsSync(legacyStrategiesDir) && !existsSync(strategiesDir)) {
+    await rename(legacyStrategiesDir, strategiesDir);
+  }
+
   for (const sub of DATA_SUBDIRS) {
     await mkdir(join(dataRoot, sub), { recursive: true });
   }

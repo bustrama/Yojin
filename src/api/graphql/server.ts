@@ -116,22 +116,22 @@ import { riskReportQuery } from './resolvers/risk.js';
 import {
   schedulerStatusQuery,
   triggerMicroAnalysisMutation,
-  triggerSkillEvaluationMutation,
+  triggerStrategyEvaluationMutation,
 } from './resolvers/scheduler.js';
 import { assessmentStatusResolver, signalAssessmentsResolver } from './resolvers/signal-assessments.js';
 import { signalGroupFieldResolvers, signalGroupResolver, signalGroupsResolver } from './resolvers/signal-groups.js';
 import { signalsByIdsResolver } from './resolvers/signals.js';
-import {
-  resolveCreateSkill,
-  resolveDeleteSkill,
-  resolveExportSkill,
-  resolveImportSkill,
-  resolveSkill,
-  resolveSkills,
-  resolveToggleSkill,
-  resolveUpdateSkill,
-} from './resolvers/skills.js';
 import { snapQuery } from './resolvers/snap.js';
+import {
+  resolveCreateStrategy,
+  resolveDeleteStrategy,
+  resolveExportStrategy,
+  resolveImportStrategy,
+  resolveStrategies,
+  resolveStrategy,
+  resolveToggleStrategy,
+  resolveUpdateStrategy,
+} from './resolvers/strategies.js';
 import {
   resolveAddStrategySource,
   resolveRemoveStrategySource,
@@ -204,9 +204,9 @@ const schema = createSchema({
       summary: summaryResolver,
       actions: actionsResolver,
       action: actionResolver,
-      skills: resolveSkills,
-      skill: resolveSkill,
-      exportSkill: resolveExportSkill,
+      strategies: resolveStrategies,
+      strategy: resolveStrategy,
+      exportStrategy: resolveExportStrategy,
       strategySources: resolveStrategySources,
       tickerProfile: tickerProfileQuery,
       tickerProfiles: tickerProfilesQuery,
@@ -267,11 +267,11 @@ const schema = createSchema({
       approveAction: approveActionMutation,
       rejectAction: rejectActionMutation,
       dismissAction: dismissActionMutation,
-      toggleSkill: resolveToggleSkill,
-      createSkill: resolveCreateSkill,
-      updateSkill: resolveUpdateSkill,
-      deleteSkill: resolveDeleteSkill,
-      importSkill: resolveImportSkill,
+      toggleStrategy: resolveToggleStrategy,
+      createStrategy: resolveCreateStrategy,
+      updateStrategy: resolveUpdateStrategy,
+      deleteStrategy: resolveDeleteStrategy,
+      importStrategy: resolveImportStrategy,
       addStrategySource: resolveAddStrategySource,
       removeStrategySource: resolveRemoveStrategySource,
       toggleStrategySource: resolveToggleStrategySource,
@@ -282,7 +282,7 @@ const schema = createSchema({
       saveAiCredential: saveAiCredentialMutation,
       removeAiCredential: removeAiCredentialMutation,
       triggerMicroAnalysis: triggerMicroAnalysisMutation,
-      triggerSkillEvaluation: triggerSkillEvaluationMutation,
+      triggerStrategyEvaluation: triggerStrategyEvaluationMutation,
     },
     Subscription: {
       onAlert: onAlertSubscription,

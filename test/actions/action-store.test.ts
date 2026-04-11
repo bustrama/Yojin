@@ -1,6 +1,6 @@
 /**
  * ActionStore tests — the opinionated BUY/SELL lifecycle store fed by
- * Skills/Strategies.
+ * Strategies/Strategies.
  *
  * Focus areas:
  * - PENDING -> APPROVED/REJECTED/EXPIRED transitions
@@ -21,7 +21,7 @@ import type { Action } from '../../src/actions/types.js';
 
 interface MakeActionOverrides {
   id?: string;
-  skillId?: string;
+  strategyId?: string;
   triggerId?: string;
   ticker?: string;
   verdict?: Action['verdict'];
@@ -34,8 +34,8 @@ function makeAction(overrides: MakeActionOverrides = {}): Action {
   const ticker = overrides.ticker ?? 'AAPL';
   return {
     id: overrides.id ?? `a-${Math.random().toString(36).slice(2, 10)}`,
-    skillId: overrides.skillId ?? 'rsi-oversold',
-    skillName: 'RSI Oversold',
+    strategyId: overrides.strategyId ?? 'rsi-oversold',
+    strategyName: 'RSI Oversold',
     triggerId: overrides.triggerId ?? `rsi-oversold-PRICE_MOVE-${ticker}`,
     triggerType: 'PRICE_MOVE',
     verdict: overrides.verdict ?? 'BUY',
@@ -73,8 +73,8 @@ describe('ActionStore.create', () => {
     expect(found?.id).toBe(action.id);
   });
 
-  it('rejects an invalid action (missing skillId)', async () => {
-    const bad = { ...makeAction(), skillId: '' } as Action;
+  it('rejects an invalid action (missing strategyId)', async () => {
+    const bad = { ...makeAction(), strategyId: '' } as Action;
     const res = await store.create(bad);
     expect(res.success).toBe(false);
   });

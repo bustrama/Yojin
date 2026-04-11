@@ -1,6 +1,6 @@
 /**
  * Action resolvers — query and mutate Actions (BUY/SELL/REVIEW outcomes
- * produced by Skill/Strategy triggers). Actions have an approval lifecycle:
+ * produced by Strategy/Strategy triggers). Actions have an approval lifecycle:
  * PENDING -> APPROVED | REJECTED | EXPIRED.
  *
  * Module-level state: setActionStore is called once during server startup.
@@ -32,8 +32,8 @@ export function setActionStore(s: ActionStore): void {
 
 interface ActionGql {
   id: string;
-  skillId: string;
-  skillName: string;
+  strategyId: string;
+  strategyName: string;
   triggerId: string;
   triggerType: string;
   verdict: ActionVerdict;
@@ -54,8 +54,8 @@ interface ActionGql {
 function toGql(action: Action): ActionGql {
   return {
     id: action.id,
-    skillId: action.skillId,
-    skillName: action.skillName,
+    strategyId: action.strategyId,
+    strategyName: action.strategyName,
     triggerId: action.triggerId,
     triggerType: action.triggerType,
     verdict: action.verdict,

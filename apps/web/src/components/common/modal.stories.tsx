@@ -40,7 +40,7 @@ export const Default: Story = {
 
 export const Wide: Story = {
   render: () => (
-    <ModalDemo title="Browse Skills" maxWidth="max-w-2xl">
+    <ModalDemo title="Browse Strategies" maxWidth="max-w-2xl">
       <div className="grid grid-cols-2 gap-4">
         {['Price Alert', 'Volume Spike', 'Rebalance Reminder', 'VaR Breach'].map((name) => (
           <div
@@ -48,7 +48,7 @@ export const Wide: Story = {
             className="rounded-xl border border-border bg-bg-card p-4 hover:border-border-light transition-colors"
           >
             <div className="text-sm font-medium text-text-primary">{name}</div>
-            <div className="text-xs text-text-muted mt-1">Skill description goes here</div>
+            <div className="text-xs text-text-muted mt-1">Strategy description goes here</div>
           </div>
         ))}
       </div>

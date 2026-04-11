@@ -14,7 +14,7 @@ import type { SchedulerStatus } from '../../../scheduler.js';
 
 let getSchedulerStatus: (() => SchedulerStatus) | undefined;
 let triggerMicroAnalysisFn: (() => void) | undefined;
-let triggerSkillEvaluationFn: (() => Promise<void>) | undefined;
+let triggerStrategyEvaluationFn: (() => Promise<void>) | undefined;
 
 export function setSchedulerStatusProvider(fn: () => SchedulerStatus): void {
   getSchedulerStatus = fn;
@@ -24,8 +24,8 @@ export function setTriggerMicroAnalysis(fn: () => void): void {
   triggerMicroAnalysisFn = fn;
 }
 
-export function setTriggerSkillEvaluation(fn: () => Promise<void>): void {
-  triggerSkillEvaluationFn = fn;
+export function setTriggerStrategyEvaluation(fn: () => Promise<void>): void {
+  triggerStrategyEvaluationFn = fn;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,8 +45,8 @@ export function triggerMicroAnalysisMutation(): boolean {
   return true;
 }
 
-export async function triggerSkillEvaluationMutation(): Promise<boolean> {
-  if (!triggerSkillEvaluationFn) return false;
-  await triggerSkillEvaluationFn();
+export async function triggerStrategyEvaluationMutation(): Promise<boolean> {
+  if (!triggerStrategyEvaluationFn) return false;
+  await triggerStrategyEvaluationFn();
   return true;
 }

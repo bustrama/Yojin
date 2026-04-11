@@ -50,10 +50,10 @@ export class ActionStore {
   /**
    * Migrate legacy Action-shaped records out of data/summaries/ into data/actions/.
    *
-   * Historically, Actions (skill-triggered records) were stored in the same
+   * Historically, Actions (strategy-triggered records) were stored in the same
    * JSONL files as Summaries. We now split them — this migration walks every
-   * file under data/summaries/ and moves records that have a `skillId` field
-   * into a parallel file under data/actions/. Records without `skillId` are
+   * file under data/summaries/ and moves records that have a `strategyId` field
+   * into a parallel file under data/actions/. Records without `strategyId` are
    * left in place for the new SummaryStore.
    *
    * Safe to call multiple times — skips if already done.
@@ -92,7 +92,7 @@ export class ActionStore {
         for (const line of lines) {
           try {
             const obj = JSON.parse(line) as Record<string, unknown>;
-            if (typeof obj.skillId === 'string' && obj.skillId.length > 0) {
+            if (typeof obj.strategyId === 'string' && obj.strategyId.length > 0) {
               sawAction = true;
               actionLines.push(line);
             } else {
@@ -142,7 +142,7 @@ export class ActionStore {
     await this.appendAction(parsed.data);
     logger.info('Action created', {
       id: parsed.data.id,
-      skillId: parsed.data.skillId,
+      strategyId: parsed.data.strategyId,
       verdict: parsed.data.verdict,
     });
     return { success: true, data: parsed.data };

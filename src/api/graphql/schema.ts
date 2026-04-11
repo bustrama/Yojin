@@ -580,7 +580,7 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
-  # Actions — BUY/SELL/REVIEW outcomes from Skill/Strategy triggers
+  # Actions — BUY/SELL/REVIEW outcomes from Strategy/Strategy triggers
   # ---------------------------------------------------------------------------
 
   enum ActionVerdict {
@@ -600,8 +600,8 @@ export const typeDefs = /* GraphQL */ `
 
   type Action {
     id: ID!
-    skillId: ID!
-    skillName: String!
+    strategyId: ID!
+    strategyName: String!
     triggerId: ID!
     triggerType: String!
     verdict: ActionVerdict!
@@ -1102,10 +1102,10 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
-  # Skills
+  # Strategies
   # ---------------------------------------------------------------------------
 
-  enum SkillCategory {
+  enum StrategyCategory {
     RISK
     PORTFOLIO
     MARKET
@@ -1125,17 +1125,17 @@ export const typeDefs = /* GraphQL */ `
     MACRO_DATA
   }
 
-  type SkillTrigger {
+  type StrategyTrigger {
     type: String!
     description: String!
     params: String
   }
 
-  type Skill {
+  type Strategy {
     id: ID!
     name: String!
     description: String!
-    category: SkillCategory!
+    category: StrategyCategory!
     style: String!
     requires: [DataCapability!]!
     active: Boolean!
@@ -1143,37 +1143,37 @@ export const typeDefs = /* GraphQL */ `
     createdBy: String!
     createdAt: String!
     content: String!
-    triggers: [SkillTrigger!]!
+    triggers: [StrategyTrigger!]!
     maxPositionSize: Float
     tickers: [String!]!
   }
 
-  input SkillTriggerInput {
+  input StrategyTriggerInput {
     type: String!
     description: String!
     params: String
   }
 
-  input CreateSkillInput {
+  input CreateStrategyInput {
     name: String!
     description: String!
-    category: SkillCategory!
+    category: StrategyCategory!
     style: String!
     requires: [DataCapability!]
     content: String!
-    triggers: [SkillTriggerInput!]!
+    triggers: [StrategyTriggerInput!]!
     tickers: [String!]
     maxPositionSize: Float
   }
 
-  input UpdateSkillInput {
+  input UpdateStrategyInput {
     name: String
     description: String
-    category: SkillCategory
+    category: StrategyCategory
     style: String
     requires: [DataCapability!]
     content: String
-    triggers: [SkillTriggerInput!]
+    triggers: [StrategyTriggerInput!]
     tickers: [String!]
     maxPositionSize: Float
   }
@@ -1281,9 +1281,9 @@ export const typeDefs = /* GraphQL */ `
     summary(id: ID!): Summary
     actions(status: ActionStatus, since: String, limit: Int, dismissed: Boolean): [Action!]!
     action(id: ID!): Action
-    skills(category: SkillCategory, active: Boolean, style: String, query: String): [Skill!]!
-    skill(id: ID!): Skill
-    exportSkill(id: ID!): String!
+    strategies(category: StrategyCategory, active: Boolean, style: String, query: String): [Strategy!]!
+    strategy(id: ID!): Strategy
+    exportStrategy(id: ID!): String!
     strategySources: [StrategySource!]!
     tickerProfile(ticker: String!): TickerProfile
     tickerProfiles(tickers: [String!]!): [TickerProfile!]!
@@ -1360,11 +1360,11 @@ export const typeDefs = /* GraphQL */ `
     approveAction(id: ID!): Action!
     rejectAction(id: ID!): Action!
     dismissAction(id: ID!): Action!
-    toggleSkill(id: ID!, active: Boolean!): Skill!
-    createSkill(input: CreateSkillInput!): Skill!
-    updateSkill(id: ID!, input: UpdateSkillInput!): Skill!
-    deleteSkill(id: ID!): Boolean!
-    importSkill(markdown: String!): Skill!
+    toggleStrategy(id: ID!, active: Boolean!): Strategy!
+    createStrategy(input: CreateStrategyInput!): Strategy!
+    updateStrategy(id: ID!, input: UpdateStrategyInput!): Strategy!
+    deleteStrategy(id: ID!): Boolean!
+    importStrategy(markdown: String!): Strategy!
     addStrategySource(url: String!): StrategySource!
     removeStrategySource(id: ID!): Boolean!
     toggleStrategySource(id: ID!, enabled: Boolean!): StrategySource!
@@ -1375,7 +1375,7 @@ export const typeDefs = /* GraphQL */ `
     saveAiCredential(provider: String!, apiKey: String!): SaveAiCredentialResult!
     removeAiCredential(provider: String!): SaveAiCredentialResult!
     triggerMicroAnalysis: Boolean!
-    triggerSkillEvaluation: Boolean!
+    triggerStrategyEvaluation: Boolean!
   }
 
   # ---------------------------------------------------------------------------

@@ -37,7 +37,7 @@ describe('buildContext', () => {
     // + 2 data source query tools (query_data_source, list_data_sources)
     // + 2 memory tools (store_signal_memory, recall_signal_memories)
     // + 4 display tools (display_portfolio_overview, display_positions_list, display_allocation, display_morning_briefing)
-    // + 5 skill tools (list_skills, get_skill, activate_skill, deactivate_skill, get_skill_evaluations)
+    // + 5 strategy tools (list_strategies, get_strategy, activate_strategy, deactivate_strategy, get_strategy_evaluations)
     // + 2 new Jintel tools (get_financials, get_executives)
     // = 66
     expect(schemas.length).toBe(66);

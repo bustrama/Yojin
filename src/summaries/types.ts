@@ -4,8 +4,8 @@
  * contain BUY/SELL recommendations and have no approval lifecycle. They are
  * the Intel Feed content layer.
  *
- * Summaries NEVER come from Skills/Strategies — skill-triggered records are
- * Actions and live in src/actions/. If a producer mentions skillId, it's
+ * Summaries NEVER come from Strategies/Strategies — strategy-triggered records are
+ * Actions and live in src/actions/. If a producer mentions strategyId, it's
  * writing to the wrong store.
  *
  * Storage: append-only JSONL in data/summaries/ (date-partitioned).

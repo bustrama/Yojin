@@ -151,24 +151,16 @@ describe('SummaryStore.create — Strategy-layer boundary', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('rejects a record carrying skillId', async () => {
-    const tainted = { ...makeSummary(), skillId: 'skill-123' } as unknown as Summary;
-    const res = await store.create(tainted);
-    expect(res.success).toBe(false);
-    if (res.success) return;
-    expect(res.error).toContain('skillId');
-    expect(res.error).toContain('ActionStore');
-
-    const all = await store.query({});
-    expect(all).toHaveLength(0);
-  });
-
   it('rejects a record carrying strategyId', async () => {
-    const tainted = { ...makeSummary(), strategyId: 'strat-abc' } as unknown as Summary;
+    const tainted = { ...makeSummary(), strategyId: 'strategy-123' } as unknown as Summary;
     const res = await store.create(tainted);
     expect(res.success).toBe(false);
     if (res.success) return;
     expect(res.error).toContain('strategyId');
+    expect(res.error).toContain('ActionStore');
+
+    const all = await store.query({});
+    expect(all).toHaveLength(0);
   });
 
   it('rejects a record carrying triggerId', async () => {

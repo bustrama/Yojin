@@ -39,12 +39,12 @@ export {
   useDeleteVaultSecret,
 } from './use-vault.js';
 export {
-  useSkills,
-  useSkill,
-  useExportSkill,
-  useToggleSkill,
-  useCreateSkill,
-  useUpdateSkill,
-  useDeleteSkill,
-  useImportSkill,
-} from './use-skills.js';
+  useStrategies,
+  useStrategy,
+  useExportStrategy,
+  useToggleStrategy,
+  useCreateStrategy,
+  useUpdateStrategy,
+  useDeleteStrategy,
+  useImportStrategy,
+} from './use-strategies.js';

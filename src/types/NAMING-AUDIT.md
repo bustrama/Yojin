@@ -24,7 +24,7 @@ The split is not random. It follows domain boundaries, but the boundary is leaky
 | `src/profiles/types.ts` | `ticker` | TickerProfileEntrySchema | Yes (JSONL) | Per-ticker knowledge |
 | `src/profiles/profile-store.ts` | `ticker` | Method params | No | `getForTicker(ticker)` |
 | `src/memory/types.ts` | `ticker` | PriceProvider param | No | Function signature |
-| `src/skills/types.ts` | `ticker` | Condition params | No | `{ ticker: 'AAPL', threshold }` |
+| `src/strategies/types.ts` | `ticker` | Condition params | No | `{ ticker: 'AAPL', threshold }` |
 | `src/jintel/tools.ts` | `ticker` | Tool param schemas | No | All Jintel agent tools |
 | `src/jintel/signal-fetcher.ts` | `ticker` | Internal functions | No | Bridges Jintel to signals |
 | `src/jintel/price-provider.ts` | `ticker` | Function param | No | Wraps Jintel quotes API |

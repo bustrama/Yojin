@@ -198,7 +198,7 @@ The story's **AC below covers Slice 1**. The remaining slices are listed in **Fo
 - **Blocked by:** none
 - **Unblocks:**
   - Slack and WhatsApp template renderers (Slices 2 & 3)
-  - Any future interactive flow the agent wants to emit (onboarding, skill creation, etc.)
+  - Any future interactive flow the agent wants to emit (onboarding, strategy creation, etc.)
 
 ## Follow-ups (separate stories)
 

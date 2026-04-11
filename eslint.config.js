@@ -86,11 +86,11 @@ export default tseslint.config(
       'no-console': 'off',
     },
   },
-  // Skills (Strategies) module must never import SummaryStore — skill
-  // evaluation produces Actions only. Neutral intel observations belong
-  // to the insight pipelines that feed SummaryStore, not to skill code.
+  // Strategies module must never import SummaryStore — strategy evaluation
+  // produces Actions only. Neutral intel observations belong to the insight
+  // pipelines that feed SummaryStore, not to strategy code.
   {
-    files: ['src/skills/**/*.ts'],
+    files: ['src/strategies/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -99,14 +99,14 @@ export default tseslint.config(
             {
               group: ['**/summaries/*', '**/summaries/**', '../summaries/*', '../../summaries/*'],
               message:
-                'src/skills/ must not import from src/summaries/. Skills/Strategies produce Actions only — neutral intel observations belong to the insight pipelines that feed SummaryStore.',
+                'src/strategies/ must not import from src/summaries/. Strategies produce Actions only — neutral intel observations belong to the insight pipelines that feed SummaryStore.',
             },
           ],
         },
       ],
     },
   },
-  // Summaries module must never import Skills or Actions — summaries are
+  // Summaries module must never import Strategies or Actions — summaries are
   // neutral intel with zero coupling to the opinion (Strategy) layer or
   // the Action lifecycle.
   {
@@ -118,17 +118,17 @@ export default tseslint.config(
           patterns: [
             {
               group: [
-                '**/skills/*',
-                '**/skills/**',
+                '**/strategies/*',
+                '**/strategies/**',
                 '**/actions/*',
                 '**/actions/**',
-                '../skills/*',
+                '../strategies/*',
                 '../actions/*',
-                '../../skills/*',
+                '../../strategies/*',
                 '../../actions/*',
               ],
               message:
-                'src/summaries/ must not import from src/skills/ or src/actions/. Summaries are neutral intel — they have no producer dependency on Strategies or on the Action lifecycle.',
+                'src/summaries/ must not import from src/strategies/ or src/actions/. Summaries are neutral intel — they have no producer dependency on Strategies or on the Action lifecycle.',
             },
           ],
         },

@@ -1425,12 +1425,12 @@ export const ACTIVITY_LOG_QUERY = gql`
 `;
 
 // ---------------------------------------------------------------------------
-// Queries — Skills
+// Queries — Strategies
 // ---------------------------------------------------------------------------
 
-export const SKILLS_QUERY = gql`
-  query Skills($category: SkillCategory, $style: String, $active: Boolean, $query: String) {
-    skills(category: $category, style: $style, active: $active, query: $query) {
+export const STRATEGIES_QUERY = gql`
+  query Strategies($category: StrategyCategory, $style: String, $active: Boolean, $query: String) {
+    strategies(category: $category, style: $style, active: $active, query: $query) {
       id
       name
       description
@@ -1453,9 +1453,9 @@ export const SKILLS_QUERY = gql`
   }
 `;
 
-export const SKILL_QUERY = gql`
-  query Skill($id: ID!) {
-    skill(id: $id) {
+export const STRATEGY_QUERY = gql`
+  query Strategy($id: ID!) {
+    strategy(id: $id) {
       id
       name
       description
@@ -1478,52 +1478,52 @@ export const SKILL_QUERY = gql`
   }
 `;
 
-export const EXPORT_SKILL_QUERY = gql`
-  query ExportSkill($id: ID!) {
-    exportSkill(id: $id)
+export const EXPORT_STRATEGY_QUERY = gql`
+  query ExportStrategy($id: ID!) {
+    exportStrategy(id: $id)
   }
 `;
 
 // ---------------------------------------------------------------------------
-// Mutations — Skills
+// Mutations — Strategies
 // ---------------------------------------------------------------------------
 
-export const TOGGLE_SKILL_MUTATION = gql`
-  mutation ToggleSkill($id: ID!, $active: Boolean!) {
-    toggleSkill(id: $id, active: $active) {
+export const TOGGLE_STRATEGY_MUTATION = gql`
+  mutation ToggleStrategy($id: ID!, $active: Boolean!) {
+    toggleStrategy(id: $id, active: $active) {
       id
       active
     }
   }
 `;
 
-export const CREATE_SKILL_MUTATION = gql`
-  mutation CreateSkill($input: CreateSkillInput!) {
-    createSkill(input: $input) {
+export const CREATE_STRATEGY_MUTATION = gql`
+  mutation CreateStrategy($input: CreateStrategyInput!) {
+    createStrategy(input: $input) {
       id
       name
     }
   }
 `;
 
-export const UPDATE_SKILL_MUTATION = gql`
-  mutation UpdateSkill($id: ID!, $input: UpdateSkillInput!) {
-    updateSkill(id: $id, input: $input) {
+export const UPDATE_STRATEGY_MUTATION = gql`
+  mutation UpdateStrategy($id: ID!, $input: UpdateStrategyInput!) {
+    updateStrategy(id: $id, input: $input) {
       id
       name
     }
   }
 `;
 
-export const DELETE_SKILL_MUTATION = gql`
-  mutation DeleteSkill($id: ID!) {
-    deleteSkill(id: $id)
+export const DELETE_STRATEGY_MUTATION = gql`
+  mutation DeleteStrategy($id: ID!) {
+    deleteStrategy(id: $id)
   }
 `;
 
-export const IMPORT_SKILL_MUTATION = gql`
-  mutation ImportSkill($markdown: String!) {
-    importSkill(markdown: $markdown) {
+export const IMPORT_STRATEGY_MUTATION = gql`
+  mutation ImportStrategy($markdown: String!) {
+    importStrategy(markdown: $markdown) {
       id
       name
       description
@@ -1575,13 +1575,13 @@ export const SUMMARY_QUERY = gql`
   ${SUMMARY_FIELDS}
 `;
 
-// Actions are BUY/SELL/REVIEW outcomes produced by Skill/Strategy triggers.
+// Actions are BUY/SELL/REVIEW outcomes produced by Strategy/Strategy triggers.
 // PENDING → APPROVED | REJECTED | EXPIRED lifecycle, with user approval.
 export const ACTION_FIELDS = gql`
   fragment ActionFields on Action {
     id
-    skillId
-    skillName
+    strategyId
+    strategyName
     triggerId
     triggerType
     verdict

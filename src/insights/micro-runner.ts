@@ -37,9 +37,9 @@ export interface MicroRunResult {
   insight: MicroInsight | null;
   signalsIngested: number;
   durationMs: number;
-  /** Raw Jintel Entity for per-asset skill evaluation (null if Jintel unavailable). */
+  /** Raw Jintel Entity for per-asset strategy evaluation (null if Jintel unavailable). */
   entity?: Entity | null;
-  /** Curated signals used in analysis — for per-asset skill evaluation. */
+  /** Curated signals used in analysis — for per-asset strategy evaluation. */
   signals?: Signal[];
 }
 
@@ -65,7 +65,7 @@ export async function runMicroResearch(
     signalsIngested = result.ingested;
   }
 
-  // 2. Build DataBrief for this ticker (enriched: includes raw Entity + signals for skill evaluation)
+  // 2. Build DataBrief for this ticker (enriched: includes raw Entity + signals for strategy evaluation)
   const enriched = await buildSingleBriefEnriched(ticker, deps.briefOptions);
   if (!enriched) {
     logger.warn('Could not build brief — no snapshot', { symbol: ticker });
@@ -98,7 +98,7 @@ export async function runMicroResearch(
       durationMs: Date.now() - start,
     });
   } catch (err) {
-    logger.warn('Micro research LLM analysis failed — entity still available for skill evaluation', {
+    logger.warn('Micro research LLM analysis failed — entity still available for strategy evaluation', {
       symbol: ticker,
       error: err instanceof Error ? err.message : String(err),
     });

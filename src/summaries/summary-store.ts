@@ -32,10 +32,10 @@ const DEFAULT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
  * neutral intel; any record carrying these fields is being written to the
  * wrong store (it belongs in `ActionStore`). Enforced at runtime as a
  * last-line-of-defence: the ESLint `no-restricted-imports` boundary rule in
- * `eslint.config.js` prevents `src/summaries/` from importing `src/skills/`
+ * `eslint.config.js` prevents `src/summaries/` from importing `src/strategies/`
  * or `src/actions/` in the first place.
  */
-const FORBIDDEN_STRATEGY_FIELDS = ['skillId', 'strategyId', 'triggerId'] as const;
+const FORBIDDEN_STRATEGY_FIELDS = ['strategyId', 'triggerId'] as const;
 
 export interface SummaryStoreOptions {
   dir: string; // e.g. 'data/summaries'
@@ -77,7 +77,7 @@ export class SummaryStore {
       if (record[field] !== undefined) {
         const error =
           `Refusing to write Summary with '${field}' field — Summaries are neutral intel ` +
-          `and must not carry Strategy-layer identifiers. Skill/Strategy-triggered records ` +
+          `and must not carry Strategy-layer identifiers. Strategy-triggered records ` +
           `belong in ActionStore, not SummaryStore.`;
         logger.error('SummaryStore.create rejected Strategy-layer field', { field, id: record.id });
         return { success: false, error };

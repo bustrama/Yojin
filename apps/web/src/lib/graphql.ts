@@ -63,8 +63,8 @@ const cache = cacheExchange({
     PairingEvent: () => null,
     SessionSummary: (data) => data.id as string,
     SessionDetail: (data) => data.id as string,
-    Skill: (data) => data.id as string,
-    SkillTrigger: () => null, // embedded — nested under Skill
+    Strategy: (data) => data.id as string,
+    StrategyTrigger: () => null, // embedded — nested under Strategy
     StrategySource: (data) => data.id as string,
     StrategySyncResult: () => null, // embedded — mutation result
     SymbolSearchResult: () => null, // embedded — search result, no stable identity
@@ -162,24 +162,24 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'signals');
         cache.invalidate('Query', 'curatedSignals');
       },
-      createSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      createStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      updateSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      updateStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      deleteSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      deleteStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      importSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      importStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      toggleSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      toggleStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
       addStrategySource(_result, _args, cache) {
         cache.invalidate('Query', 'strategySources');
-        cache.invalidate('Query', 'skills');
+        cache.invalidate('Query', 'strategies');
       },
       removeStrategySource(_result, _args, cache) {
         cache.invalidate('Query', 'strategySources');
@@ -189,11 +189,11 @@ const cache = cacheExchange({
       },
       syncStrategies(_result, _args, cache) {
         cache.invalidate('Query', 'strategySources');
-        cache.invalidate('Query', 'skills');
+        cache.invalidate('Query', 'strategies');
       },
       syncStrategySource(_result, _args, cache) {
         cache.invalidate('Query', 'strategySources');
-        cache.invalidate('Query', 'skills');
+        cache.invalidate('Query', 'strategies');
       },
       clearAppData(_result, _args, cache) {
         cache.invalidate('Query', 'portfolio');

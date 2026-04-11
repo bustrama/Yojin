@@ -21,7 +21,7 @@ import AppShell from './components/layout/app-shell';
 import Chat from './pages/chat';
 import Profile from './pages/profile';
 import Settings from './pages/settings';
-import Skills from './pages/skills';
+import Strategies from './pages/strategies';
 import Dashboard from './pages/dashboard';
 import Insights from './pages/insights';
 import Positions from './pages/positions';
@@ -219,7 +219,7 @@ export default function App() {
                       <Route path="positions" element={<Navigate to="/portfolio" replace />} />
                       <Route path="positions/:symbol" element={<RedirectPositionSymbol />} />
                       <Route path="portfolio/:symbol" element={<Navigate to="/portfolio" replace />} />
-                      <Route path="skills" element={<Skills />} />
+                      <Route path="strategies" element={<Strategies />} />
                       <Route path="alerts" element={<Navigate to="/" replace />} />
                     </Route>
                   </Routes>

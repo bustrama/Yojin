@@ -28,12 +28,12 @@ export function createStrategistProfile(): AgentProfile {
       'save_insight_report',
       // Assessment tools
       'save_signal_assessment',
-      // Skill tools
-      'list_skills',
-      'get_skill',
-      'activate_skill',
-      'deactivate_skill',
-      'get_skill_evaluations',
+      // Strategy tools
+      'list_strategies',
+      'get_strategy',
+      'activate_strategy',
+      'deactivate_strategy',
+      'get_strategy_evaluations',
       // Utility
       'get_current_time',
       'calculate',

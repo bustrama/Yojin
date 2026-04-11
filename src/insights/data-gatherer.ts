@@ -791,7 +791,7 @@ export async function buildSingleBrief(symbol: string, options: SingleBriefOptio
 
 /**
  * Build a DataBrief AND return the raw Jintel Entity + signals used to build it.
- * The Entity is needed for per-asset skill evaluation in the micro flow.
+ * The Entity is needed for per-asset strategy evaluation in the micro flow.
  */
 export async function buildSingleBriefEnriched(
   symbol: string,

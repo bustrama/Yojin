@@ -34,7 +34,7 @@ import { onAppDataCleared } from '../api/graphql/resolvers/profile.js';
 import {
   setSchedulerStatusProvider,
   setTriggerMicroAnalysis,
-  setTriggerSkillEvaluation,
+  setTriggerStrategyEvaluation,
 } from '../api/graphql/resolvers/scheduler.js';
 import { setWatchlistChangedCallback } from '../api/graphql/resolvers/watchlist.js';
 import { buildContext } from '../composition.js';
@@ -302,7 +302,7 @@ async function startGateway(): Promise<void> {
     orchestrator,
     dataRoot,
     reflectionEngine: services.reflectionEngine,
-    skillEvaluator: services.skillEvaluator,
+    strategyEvaluator: services.strategyEvaluator,
     summaryStore: services.summaryStore,
     actionStore: services.actionStore,
     snapshotStore: services.snapshotStore,
@@ -357,7 +357,7 @@ async function startGateway(): Promise<void> {
       scheduler.triggerMicroFlow(throttled.map((a) => a.symbol));
     }
   });
-  setTriggerSkillEvaluation(() => scheduler.evaluateSkills());
+  setTriggerStrategyEvaluation(() => scheduler.evaluateStrategies());
 
   const gateway = new Gateway(services.config, agentRuntime, {
     snapshotStore: services.snapshotStore,

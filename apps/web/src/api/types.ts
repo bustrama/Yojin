@@ -1143,7 +1143,7 @@ export interface SummaryQueryVariables {
 }
 
 // ---------------------------------------------------------------------------
-// Actions — BUY/SELL/REVIEW outcomes produced by Skill/Strategy triggers.
+// Actions — BUY/SELL/REVIEW outcomes produced by Strategy/Strategy triggers.
 // Opinionated layer with a PENDING → APPROVED | REJECTED | EXPIRED lifecycle.
 // ---------------------------------------------------------------------------
 
@@ -1152,8 +1152,8 @@ export type ActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
 
 export interface Action {
   id: string;
-  skillId: string;
-  skillName: string;
+  strategyId: string;
+  strategyName: string;
   triggerId: string;
   triggerType: string;
   verdict: ActionVerdict;
@@ -1332,22 +1332,22 @@ export interface DetectCodexTokenResult {
 }
 
 // ---------------------------------------------------------------------------
-// Skills
+// Strategies
 // ---------------------------------------------------------------------------
 
-export type SkillCategory = 'RISK' | 'PORTFOLIO' | 'MARKET' | 'RESEARCH';
+export type StrategyCategory = 'RISK' | 'PORTFOLIO' | 'MARKET' | 'RESEARCH';
 
-export interface SkillTrigger {
+export interface StrategyTrigger {
   type: string;
   description: string;
   params?: string | null;
 }
 
-export interface Skill {
+export interface Strategy {
   id: string;
   name: string;
   description: string;
-  category: SkillCategory;
+  category: StrategyCategory;
   style: string;
   requires: string[];
   active: boolean;
@@ -1355,51 +1355,51 @@ export interface Skill {
   createdBy: string;
   createdAt: string;
   content: string;
-  triggers: SkillTrigger[];
+  triggers: StrategyTrigger[];
   maxPositionSize?: number | null;
   tickers: string[];
 }
 
-export interface SkillsQueryResult {
-  skills: Skill[];
+export interface StrategiesQueryResult {
+  strategies: Strategy[];
 }
 
-export interface SkillsQueryVariables {
-  category?: SkillCategory;
+export interface StrategiesQueryVariables {
+  category?: StrategyCategory;
   style?: string;
   active?: boolean;
   query?: string;
 }
 
-export interface SkillQueryResult {
-  skill: Skill | null;
+export interface StrategyQueryResult {
+  strategy: Strategy | null;
 }
 
-export interface ExportSkillQueryResult {
-  exportSkill: string;
+export interface ExportStrategyQueryResult {
+  exportStrategy: string;
 }
 
-export interface ToggleSkillMutationResult {
-  toggleSkill: { id: string; active: boolean };
+export interface ToggleStrategyMutationResult {
+  toggleStrategy: { id: string; active: boolean };
 }
 
-export interface CreateSkillMutationResult {
-  createSkill: { id: string; name: string };
+export interface CreateStrategyMutationResult {
+  createStrategy: { id: string; name: string };
 }
 
-export interface UpdateSkillMutationResult {
-  updateSkill: { id: string; name: string };
+export interface UpdateStrategyMutationResult {
+  updateStrategy: { id: string; name: string };
 }
 
-export interface DeleteSkillMutationResult {
-  deleteSkill: boolean;
+export interface DeleteStrategyMutationResult {
+  deleteStrategy: boolean;
 }
 
-export interface ImportSkillMutationResult {
-  importSkill: Skill;
+export interface ImportStrategyMutationResult {
+  importStrategy: Strategy;
 }
 
-export interface ImportSkillVariables {
+export interface ImportStrategyVariables {
   markdown: string;
 }
 

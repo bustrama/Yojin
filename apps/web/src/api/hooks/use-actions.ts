@@ -21,7 +21,7 @@ import type {
 } from '../types.js';
 
 /**
- * Fetch BUY/SELL/REVIEW Actions produced by Skill/Strategy triggers.
+ * Fetch BUY/SELL/REVIEW Actions produced by Strategy/Strategy triggers.
  *
  * Actions carry a PENDING → APPROVED | REJECTED | EXPIRED lifecycle. Defaults
  * to PENDING + not-dismissed — the items currently vying for the user's

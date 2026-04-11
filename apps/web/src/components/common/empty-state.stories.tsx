@@ -40,11 +40,11 @@ export const WithAction: Story = {
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
       </svg>
     ),
-    title: 'No skills active',
-    description: 'Browse the skill library to automate your investment workflow.',
+    title: 'No strategies active',
+    description: 'Browse the strategy library to automate your investment workflow.',
     action: (
       <button className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-secondary transition-colors">
-        Browse Skills
+        Browse Strategies
       </button>
     ),
   },

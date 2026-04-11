@@ -1,6 +1,6 @@
 # Yojin — Personal AI Finance Agent
 
-Personal Bloomberg for retail investors. Multi-agent AI system that ingests portfolio data from investment platforms, enriches positions via Jintel API, and delivers personalized portfolio intelligence through signal curation, insight reports, and trading skill evaluation.
+Personal Bloomberg for retail investors. Multi-agent AI system that ingests portfolio data from investment platforms, enriches positions via Jintel API, and delivers personalized portfolio intelligence through signal curation, insight reports, and trading strategy evaluation.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ Multi-agent, file-driven architecture. Four specialized agents (Research Analyst
 - **`src/signals/`** — First-class signal data model (NEWS, FUNDAMENTAL, SENTIMENT, TECHNICAL, MACRO, FILINGS, SOCIALS, TRADING_LOGIC_TRIGGER), archive and group-archive with time-windowed retrieval
 - **`src/insights/`** — Structured InsightReport (per-position + portfolio-level synthesis) produced by ProcessInsights workflow, append-only JSONL
 - **`src/actions/`** — Action data model (PENDING → APPROVED | REJECTED | EXPIRED), date-partitioned JSONL
-- **`src/skills/`** — Markdown-defined trading strategies with trigger conditions (PRICE_MOVE, INDICATOR_THRESHOLD, DRAWDOWN, etc.), SkillEvaluator
+- **`src/strategies/`** — Markdown-defined trading strategies with trigger conditions (PRICE_MOVE, INDICATOR_THRESHOLD, DRAWDOWN, etc.), StrategyEvaluator
 - **`src/snap/`** — Snap briefs: short periodic summaries of what deserves attention now
 - **`src/memory/`** — Per-role signal memory (analyst, strategist, risk-manager) with ReflectionEngine grading past decisions against outcomes
 - **`src/profiles/`** — TickerProfileStore: per-asset persistent knowledge (patterns, lessons, correlations, sentiment), BM25-indexed
@@ -30,7 +30,7 @@ Multi-agent, file-driven architecture. Four specialized agents (Research Analyst
 - **`src/identity/`** — Auto-generated per-installation Ed25519 device keypair (no login, device IS the identity)
 - **`src/acp/`** — Agent Control Protocol bridge: Claude Code and other frontends orchestrate Yojin workflows via stdio
 - **`src/hooks/`** — Lifecycle event system: message ingress/egress, provider before/after completion, channel connect/disconnect
-- **`src/api/graphql/`** — GraphQL API (graphql-yoga on Hono): resolvers for portfolio, signals, insights, connections, watchlist, actions, skills, snap, data-sources, vault, chat, onboarding
+- **`src/api/graphql/`** — GraphQL API (graphql-yoga on Hono): resolvers for portfolio, signals, insights, connections, watchlist, actions, strategies, snap, data-sources, vault, chat, onboarding
 - **`src/plugins/`** — Plugin system: ProviderPlugin + ChannelPlugin interfaces, registry
 - **`src/plugin-sdk/`** — Plugin SDK for external plugin development
 - **`src/tools/`** — Agent tools: api-health, brain-tools, portfolio-tools, portfolio-reasoning, data-source-query, display-tools, error-analysis, security-audit
@@ -64,7 +64,7 @@ Multi-agent, file-driven architecture. Four specialized agents (Research Analyst
 ├── actions/                 # Action archive (JSONL, date-partitioned)
 ├── memory/                  # Per-role signal memory (JSONL)
 ├── profiles/                # Per-ticker knowledge profiles
-├── skills/                  # Trading strategy definitions (Markdown)
+├── strategies/                  # Trading strategy definitions (Markdown)
 ├── snap/                    # Snap briefs
 ├── watchlist/               # Watchlist entries
 ├── identity/                # Ed25519 device keypair (mode 0o600)
@@ -84,7 +84,7 @@ data/default/                # Factory defaults (git-tracked, bundled with packa
 ├── connections.default.json
 ├── data-sources.default.json
 ├── agents/                  # Per-agent default configs
-└── skills/                  # Default trading strategy definitions
+└── strategies/                  # Default trading strategy definitions
 ```
 
 ## Commands
@@ -159,4 +159,4 @@ pnpm ci:all           # Full CI check across all packages
 
 ## Frontend Design
 
-Always use the `/frontend-design` skill when building or modifying frontend UI components, pages, or views. This ensures high design quality and avoids generic AI aesthetics.
+Always use the `/frontend-design` strategy when building or modifying frontend UI components, pages, or views. This ensures high design quality and avoids generic AI aesthetics.

@@ -81,8 +81,8 @@ describe('formatSnap', () => {
 describe('formatAction', () => {
   const baseAction: Action = {
     id: 'act-1',
-    skillId: 'momentum',
-    skillName: 'Momentum Breakout',
+    strategyId: 'momentum',
+    strategyName: 'Momentum Breakout',
     triggerId: 'momentum-PRICE_MOVE-AAPL',
     triggerType: 'PRICE_MOVE',
     verdict: 'BUY',

@@ -1,0 +1,90 @@
+/**
+ * Strategy types — Markdown-defined trading strategies that guide the Strategist.
+ *
+ * A Strategy is a set of conditions + reasoning + actions encoded in Markdown.
+ * When conditions are met, the Strategist proposes an ACTION in the Intel Feed.
+ */
+
+import { z } from 'zod';
+
+import { DataCapabilitySchema } from './capabilities.js';
+import type { DataCapability } from './capabilities.js';
+import { DateTimeField, IdField } from '../types/base.js';
+
+// ---------------------------------------------------------------------------
+// Strategy category — aligned with strategic decision domains
+// ---------------------------------------------------------------------------
+
+export const StrategyCategorySchema = z.enum(['RISK', 'PORTFOLIO', 'MARKET', 'RESEARCH']);
+export type StrategyCategory = z.infer<typeof StrategyCategorySchema>;
+
+// ---------------------------------------------------------------------------
+// Strategy trigger condition
+// ---------------------------------------------------------------------------
+
+export const TriggerTypeSchema = z.enum([
+  'PRICE_MOVE', // Absolute or % price change
+  'INDICATOR_THRESHOLD', // Technical indicator (RSI, MACD, ...) crosses a value
+  'CONCENTRATION_DRIFT', // Position weight exceeds limit
+  'DRAWDOWN', // Portfolio or position drawdown
+  'EARNINGS_PROXIMITY', // Days until earnings report
+  'METRIC_THRESHOLD', // Numeric metric (SUE, sentiment momentum, P/B, ...) crosses a value
+  'SIGNAL_PRESENT', // A recent Signal of given types/sentiment exists for the ticker
+  'CUSTOM', // User-defined expression
+]);
+export type TriggerType = z.infer<typeof TriggerTypeSchema>;
+
+export const StrategyTriggerSchema = z.object({
+  type: TriggerTypeSchema,
+  description: z.string().min(1),
+  /** Structured condition params (e.g. { ticker: 'AAPL', threshold: -0.10 }) */
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+export type StrategyTrigger = z.infer<typeof StrategyTriggerSchema>;
+
+// ---------------------------------------------------------------------------
+// Strategy — the core entity
+// ---------------------------------------------------------------------------
+
+export const StrategySchema = z.object({
+  id: IdField,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  category: StrategyCategorySchema,
+  active: z.boolean().default(false),
+  source: z.enum(['built-in', 'custom', 'community']),
+  style: z.string().min(1).default('general'),
+  requires: z.array(DataCapabilitySchema).default([]),
+  createdBy: z.string().min(1),
+  createdAt: DateTimeField,
+  /** The Markdown strategy content — what the Strategist reads. */
+  content: z.string().min(1),
+  triggers: z.array(StrategyTriggerSchema).min(1),
+  /** Max position size as fraction of portfolio (0-1). Guard enforced. */
+  maxPositionSize: z.number().min(0).max(1).optional(),
+  /** Tickers this strategy applies to. Empty = all portfolio tickers. */
+  tickers: z.array(IdField).default([]),
+});
+export type Strategy = z.infer<typeof StrategySchema>;
+
+// ---------------------------------------------------------------------------
+// Strategy evaluation result — when a trigger fires
+// ---------------------------------------------------------------------------
+
+export const StrategyEvaluationSchema = z.object({
+  strategyId: IdField,
+  strategyName: z.string().min(1),
+  triggerId: IdField,
+  triggerType: TriggerTypeSchema,
+  /** Human-readable description of the trigger condition. */
+  triggerDescription: z.string().min(1),
+  /** Context data that caused the trigger to fire. */
+  context: z.record(z.string(), z.unknown()),
+  /** The Markdown content to inject into the Strategist prompt. */
+  strategyContent: z.string().min(1),
+  evaluatedAt: DateTimeField,
+});
+export type StrategyEvaluation = z.infer<typeof StrategyEvaluationSchema>;
+
+export { DataCapabilitySchema };
+export type { DataCapability };

@@ -8,7 +8,7 @@
  * 2. **Macro flow**: portfolio-wide multi-agent analysis every 2 hours.
  *    Also triggers when all micro flows complete for all assets today.
  *    Pipeline: signal assessment (RA + Strategist) → ProcessInsights →
- *    skill evaluation → snap → reflection.
+ *    strategy evaluation → snap → reflection.
  *
  * State is persisted to data/cron/state.json so restarts don't re-run
  * a job that already fired within its cooldown window.
@@ -44,12 +44,12 @@ import type { TickerProfileStore } from './profiles/profile-store.js';
 import type { SignalArchive } from './signals/archive.js';
 import type { SignalIngestor } from './signals/ingestor.js';
 import type { Signal } from './signals/types.js';
-import { buildPortfolioContext, buildSingleTickerContext } from './skills/portfolio-context-builder.js';
-import type { PortfolioContext, SkillEvaluator } from './skills/skill-evaluator.js';
-import type { SkillEvaluation } from './skills/types.js';
 import { snapFromInsight } from './snap/snap-from-insight.js';
 import { snapFromMicro } from './snap/snap-from-micro.js';
 import type { SnapStore } from './snap/snap-store.js';
+import { buildPortfolioContext, buildSingleTickerContext } from './strategies/portfolio-context-builder.js';
+import type { PortfolioContext, StrategyEvaluator } from './strategies/strategy-evaluator.js';
+import type { StrategyEvaluation } from './strategies/types.js';
 import type { SummaryStore } from './summaries/summary-store.js';
 import { computeSummaryContentHash } from './summaries/types.js';
 import type { WatchlistStore } from './watchlist/watchlist-store.js';
@@ -110,13 +110,13 @@ export interface SchedulerOptions {
   checkIntervalMs?: number;
   /** Reflection engine — runs after insights to grade past predictions. */
   reflectionEngine?: ReflectionEngine;
-  /** Skill evaluator — evaluates active skills after curation. */
-  skillEvaluator?: SkillEvaluator;
+  /** Strategy evaluator — evaluates active strategies after curation. */
+  strategyEvaluator?: StrategyEvaluator;
   /** Summary store — persists neutral intel observations from macro + micro flows. */
   summaryStore?: SummaryStore;
-  /** Action store — persists BUY/SELL/REVIEW actions produced by Skill/Strategy triggers. */
+  /** Action store — persists BUY/SELL/REVIEW actions produced by Strategy/Strategy triggers. */
   actionStore?: ActionStore;
-  /** Portfolio snapshot store — used to build PortfolioContext for skill evaluation. */
+  /** Portfolio snapshot store — used to build PortfolioContext for strategy evaluation. */
   snapshotStore?: PortfolioSnapshotStore;
   /** Snap store — snap brief is regenerated after each curation cycle. */
   snapStore?: SnapStore;
@@ -160,7 +160,7 @@ const MACRO_INTERVAL_MS = 2 * 60 * 60 * 1000;
  */
 const MICRO_TRIGGER_MACRO_COOLDOWN_MS = MACRO_INTERVAL_MS;
 
-/** Default expiry window for summaries created from skill triggers. */
+/** Default expiry window for summaries created from strategy triggers. */
 const ACTION_EXPIRY_HOURS = 24;
 
 /**
@@ -223,7 +223,7 @@ export class Scheduler {
   private readonly dataRoot: string;
   private readonly checkIntervalMs: number;
   private readonly reflectionEngine?: ReflectionEngine;
-  private readonly skillEvaluator?: SkillEvaluator;
+  private readonly strategyEvaluator?: StrategyEvaluator;
   private readonly summaryStore?: SummaryStore;
   private readonly actionStore?: ActionStore;
   private readonly snapshotStore?: PortfolioSnapshotStore;
@@ -269,7 +269,7 @@ export class Scheduler {
     this.dataRoot = options.dataRoot;
     this.checkIntervalMs = options.checkIntervalMs ?? 60_000;
     this.reflectionEngine = options.reflectionEngine;
-    this.skillEvaluator = options.skillEvaluator;
+    this.strategyEvaluator = options.strategyEvaluator;
     this.summaryStore = options.summaryStore;
     this.actionStore = options.actionStore;
     this.snapshotStore = options.snapshotStore;
@@ -661,25 +661,25 @@ export class Scheduler {
         await this.persistMicroSummaries(microInsights);
       }
 
-      // Evaluate per-asset skill triggers for tickers that completed micro research
-      const microSkillInputs = [];
+      // Evaluate per-asset strategy triggers for tickers that completed micro research
+      const microStrategyInputs = [];
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
         const asset = assetsReadyForLlm[i];
         if (result?.status === 'fulfilled' && result.value.entity && asset) {
-          microSkillInputs.push({
+          microStrategyInputs.push({
             symbol: asset.symbol,
             entity: result.value.entity,
             signals: result.value.signals ?? [],
           });
         }
       }
-      if (microSkillInputs.length > 0) {
-        logger.debug('Evaluating micro skill triggers', {
-          symbols: microSkillInputs.map((i) => i.symbol),
+      if (microStrategyInputs.length > 0) {
+        logger.debug('Evaluating micro strategy triggers', {
+          symbols: microStrategyInputs.map((i) => i.symbol),
         });
-        void this.evaluateMicroSkills(microSkillInputs).catch((err) => {
-          logger.error('evaluateMicroSkills failed', { error: err instanceof Error ? err.message : String(err) });
+        void this.evaluateMicroStrategies(microStrategyInputs).catch((err) => {
+          logger.error('evaluateMicroStrategies failed', { error: err instanceof Error ? err.message : String(err) });
         });
       }
 
@@ -711,7 +711,7 @@ export class Scheduler {
   }
 
   // ---------------------------------------------------------------------------
-  // Macro flow — portfolio-wide analysis (assessment + insights + skills + snap)
+  // Macro flow — portfolio-wide analysis (assessment + insights + strategies + snap)
   // ---------------------------------------------------------------------------
 
   /**
@@ -775,7 +775,7 @@ export class Scheduler {
    *   1. Fetch CLI/RSS/MCP data sources
    *   2. Signal assessment (RA + Strategist via full-curation workflow)
    *   3. ProcessInsights (full multi-agent analysis)
-   *   4. Skill evaluation → Summaries
+   *   4. Strategy evaluation → Summaries
    *   5. Snap brief regeneration
    *   6. Reflection sweep
    */
@@ -835,8 +835,8 @@ export class Scheduler {
       // 2. ProcessInsights (full multi-agent analysis)
       await this.runInsightsWorkflow('Macro flow — portfolio-wide analysis');
 
-      // 3. Skill evaluation → create Summaries
-      await this.evaluateSkills();
+      // 3. Strategy evaluation → create Summaries
+      await this.evaluateStrategies();
 
       // 4. Snap brief regeneration.
       //    Two-step dance gives the macro path the same "update in place"
@@ -990,7 +990,7 @@ export class Scheduler {
   }
 
   /**
-   * After curation, evaluate active skills against current portfolio state
+   * After curation, evaluate active strategies against current portfolio state
    * and create Summaries for any triggers that fire.
    */
   /**
@@ -1013,19 +1013,19 @@ export class Scheduler {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const signalsP: Promise<Signal[]> = this.signalArchive
       ? this.signalArchive.query({ tickers, since }).catch((err: unknown) => {
-          logger.warn('Failed to query signals for skill evaluation', { error: err });
+          logger.warn('Failed to query signals for strategy evaluation', { error: err });
           return [];
         })
       : Promise.resolve([]);
 
     const [quotesResult, entities, priceHistoryResult, signals] = await Promise.all([
       jintelClient.quotes(tickers).catch((err: unknown) => {
-        logger.warn('Failed to fetch quotes for skill evaluation', { error: err });
+        logger.warn('Failed to fetch quotes for strategy evaluation', { error: err });
         return { success: false as const, error: String(err) };
       }),
-      this.batchEnrichForSkills(jintelClient, tickers),
+      this.batchEnrichForStrategies(jintelClient, tickers),
       jintelClient.priceHistory(tickers, '1y', '1d').catch((err: unknown) => {
-        logger.warn('Failed to fetch price history for skill evaluation', { error: err });
+        logger.warn('Failed to fetch price history for strategy evaluation', { error: err });
         return { success: false as const, error: String(err) };
       }),
       signalsP,
@@ -1042,7 +1042,7 @@ export class Scheduler {
       }
     }
 
-    logger.info('Built enriched PortfolioContext for skill evaluation', {
+    logger.info('Built enriched PortfolioContext for strategy evaluation', {
       tickers: tickers.length,
       quotesAvailable: quotes.length,
       entitiesAvailable: entities.length,
@@ -1054,7 +1054,7 @@ export class Scheduler {
   }
 
   /** Batch-enrich tickers in chunks of 20, requesting market + technicals + sentiment. */
-  private async batchEnrichForSkills(client: JintelClient, tickers: string[]): Promise<Entity[]> {
+  private async batchEnrichForStrategies(client: JintelClient, tickers: string[]): Promise<Entity[]> {
     const CHUNK_SIZE = 20;
     const results: Entity[] = [];
 
@@ -1075,8 +1075,8 @@ export class Scheduler {
     return results;
   }
 
-  async evaluateSkills(): Promise<void> {
-    if (!this.skillEvaluator || !this.actionStore) return;
+  async evaluateStrategies(): Promise<void> {
+    if (!this.strategyEvaluator || !this.actionStore) return;
 
     // Resolve snapshot store — prefer the top-level option, fall back to curation pipeline's store
     const store = this.snapshotStore;
@@ -1084,22 +1084,22 @@ export class Scheduler {
 
     const snapshot = await store.getLatest();
     if (!snapshot || snapshot.positions.length === 0) {
-      logger.info('No portfolio snapshot — skipping skill evaluation');
+      logger.info('No portfolio snapshot — skipping strategy evaluation');
       return;
     }
 
     const context = await this.buildEnrichedContext(snapshot);
-    const evaluations = this.skillEvaluator.evaluate(context);
+    const evaluations = this.strategyEvaluator.evaluate(context);
 
     if (evaluations.length === 0) {
-      logger.info('No skill triggers fired');
+      logger.info('No strategy triggers fired');
       return;
     }
 
     // No pre-dedup — ActionStore.create() supersedes any existing PENDING record
     // for the same triggerId, so the macro flow refines (not duplicates) the
     // micro flow's Actions with fresh context and LLM reasoning.
-    await this.processSkillEvaluations(evaluations);
+    await this.processStrategyEvaluations(evaluations);
   }
 
   /**
@@ -1204,19 +1204,19 @@ export class Scheduler {
   }
 
   /**
-   * Evaluate per-asset skill triggers for tickers that just completed micro research.
+   * Evaluate per-asset strategy triggers for tickers that just completed micro research.
    * Runs fire-and-forget after micro batch results come back — does not block the micro flow.
    */
-  private async evaluateMicroSkills(
+  private async evaluateMicroStrategies(
     results: Array<{ symbol: string; entity: Entity; signals: Signal[] }>,
   ): Promise<void> {
-    if (!this.skillEvaluator || !this.actionStore || !this.snapshotStore) return;
+    if (!this.strategyEvaluator || !this.actionStore || !this.snapshotStore) return;
 
     const snapshot = await this.snapshotStore.getLatest();
     if (!snapshot || snapshot.positions.length === 0) return;
 
     const totalValue = snapshot.totalValue || 0;
-    const allEvaluations: SkillEvaluation[] = [];
+    const allEvaluations: StrategyEvaluation[] = [];
 
     for (const { symbol, entity, signals } of results) {
       const ticker = symbol.toUpperCase();
@@ -1237,34 +1237,36 @@ export class Scheduler {
 
       // No pre-dedup — ActionStore.create() supersedes existing PENDING records
       // for the same triggerId so refined evaluations replace stale ones.
-      allEvaluations.push(...this.skillEvaluator.evaluateForTickers(ctx, [ticker]));
+      allEvaluations.push(...this.strategyEvaluator.evaluateForTickers(ctx, [ticker]));
     }
 
     if (allEvaluations.length === 0) return;
 
-    logger.info(`Micro flow: ${allEvaluations.length} skill trigger(s) fired`, {
-      triggers: allEvaluations.map((e) => `${e.skillName}:${e.context.ticker}`),
+    logger.info(`Micro flow: ${allEvaluations.length} strategy trigger(s) fired`, {
+      triggers: allEvaluations.map((e) => `${e.strategyName}:${e.context.ticker}`),
     });
 
-    await this.processSkillEvaluations(allEvaluations);
+    await this.processStrategyEvaluations(allEvaluations);
   }
 
   /**
-   * Shared logic: for each fired skill evaluation, generate LLM reasoning
+   * Shared logic: for each fired strategy evaluation, generate LLM reasoning
    * and create a PENDING Action. Used by both macro and micro flows.
    *
-   * Actions are produced exclusively from Skill/Strategy triggers — they are
+   * Actions are produced exclusively from Strategy/Strategy triggers — they are
    * the opinionated BUY/SELL/REVIEW output layer. Neutral intel observations
    * (from insight pipelines) are persisted as Summaries in a separate store.
    */
-  private async processSkillEvaluations(evaluations: SkillEvaluation[]): Promise<void> {
+  private async processStrategyEvaluations(evaluations: StrategyEvaluation[]): Promise<void> {
     if (!this.actionStore || evaluations.length === 0) return;
 
     if (this.eventLog) {
-      const names = evaluations.map((e) => e.skillName).join(', ');
+      const names = evaluations.map((e) => e.strategyName).join(', ');
       await this.eventLog.append({
         type: 'action',
-        data: { message: `${evaluations.length} skill trigger${evaluations.length !== 1 ? 's' : ''} fired: ${names}` },
+        data: {
+          message: `${evaluations.length} strategy trigger${evaluations.length !== 1 ? 's' : ''} fired: ${names}`,
+        },
       });
     }
 
@@ -1290,7 +1292,7 @@ export class Scheduler {
       let headline = '';
       let reasoning = '';
       if (this.providerRouter) {
-        logger.info('Requesting LLM reasoning for skill trigger', { skillId: evaluation.skillId, ticker });
+        logger.info('Requesting LLM reasoning for strategy trigger', { strategyId: evaluation.strategyId, ticker });
         try {
           const llmResult = await this.providerRouter.completeWithTools({
             model: 'sonnet',
@@ -1308,13 +1310,13 @@ Be direct and concise. No hedging or disclaimers.`,
             messages: [
               {
                 role: 'user',
-                content: `Strategy: ${evaluation.skillName}
+                content: `Strategy: ${evaluation.strategyName}
 Trigger: ${evaluation.triggerDescription}
 Ticker: ${ticker ?? 'portfolio-wide'}
 Trigger data: ${contextParts.join(', ')}
 
 Strategy rules:
-${evaluation.skillContent}
+${evaluation.strategyContent}
 
 Provide your ACTION headline and analysis.`,
               },
@@ -1335,16 +1337,16 @@ Provide your ACTION headline and analysis.`,
             } else {
               reasoning = fullText;
             }
-            logger.info('LLM reasoning generated for skill trigger', {
-              skillId: evaluation.skillId,
+            logger.info('LLM reasoning generated for strategy trigger', {
+              strategyId: evaluation.strategyId,
               ticker,
               headline: headline || '(no headline parsed)',
               length: fullText.length,
             });
           }
         } catch (err) {
-          logger.warn('LLM reasoning failed for skill trigger, using static content', {
-            skillId: evaluation.skillId,
+          logger.warn('LLM reasoning failed for strategy trigger, using static content', {
+            strategyId: evaluation.strategyId,
             error: err instanceof Error ? err.message : String(err),
           });
         }
@@ -1362,8 +1364,8 @@ Provide your ACTION headline and analysis.`,
 
       const result = await this.actionStore.create({
         id: randomUUID(),
-        skillId: evaluation.skillId,
-        skillName: evaluation.skillName,
+        strategyId: evaluation.strategyId,
+        strategyName: evaluation.strategyName,
         triggerId: evaluation.triggerId,
         triggerType: evaluation.triggerType,
         verdict,
@@ -1377,9 +1379,9 @@ Provide your ACTION headline and analysis.`,
       });
 
       if (result.success) {
-        logger.info('Action created from skill trigger', {
+        logger.info('Action created from strategy trigger', {
           actionId: result.data.id,
-          skillId: evaluation.skillId,
+          strategyId: evaluation.strategyId,
           verdict: result.data.verdict,
           triggerType: evaluation.triggerType,
         });
@@ -1390,9 +1392,9 @@ Provide your ACTION headline and analysis.`,
           ticker: evaluation.context.ticker as string | undefined,
         });
       } else {
-        logger.warn('Failed to create action from skill trigger', {
+        logger.warn('Failed to create action from strategy trigger', {
           error: result.error,
-          skillId: evaluation.skillId,
+          strategyId: evaluation.strategyId,
         });
       }
     }

@@ -1,12 +1,12 @@
 /**
- * Action data model — BUY/SELL/REVIEW outcomes produced by Skills/Strategies.
+ * Action data model — BUY/SELL/REVIEW outcomes produced by Strategies/Strategies.
  *
  * An Action is opinionated: a Strategy trigger fires, an LLM assesses it, and
  * the result is a concrete recommendation (verdict + headline + reasoning) that
  * flows through PENDING -> APPROVED | REJECTED | EXPIRED.
  *
- * Actions are ALWAYS produced by a Skill/Strategy — never by neutral intel
- * pipelines. If a record has no skillId, it is not an Action.
+ * Actions are ALWAYS produced by a Strategy/Strategy — never by neutral intel
+ * pipelines. If a record has no strategyId, it is not an Action.
  *
  * Storage: append-only JSONL in data/actions/ (date-partitioned).
  * GraphQL: Action, ActionVerdict, ActionStatus types in schema.ts.
@@ -33,11 +33,11 @@ export type ActionStatus = z.infer<typeof ActionStatusSchema>;
 
 export const ActionSchema = z.object({
   id: IdField,
-  /** Originating skill — required. Actions without a skill are not Actions. */
-  skillId: IdField,
-  /** Human-readable skill name, e.g. "Momentum Breakout". */
-  skillName: z.string().min(1),
-  /** Dedup/supersede key: "${skillId}-${triggerType}-${ticker}". */
+  /** Originating strategy — required. Actions without a strategy are not Actions. */
+  strategyId: IdField,
+  /** Human-readable strategy name, e.g. "Momentum Breakout". */
+  strategyName: z.string().min(1),
+  /** Dedup/supersede key: "${strategyId}-${triggerType}-${ticker}". */
   triggerId: IdField,
   triggerType: z.string().min(1),
   /** Concrete verdict parsed from LLM headline (BUY/SELL/TRIM/HOLD/REVIEW). */
