@@ -146,11 +146,10 @@ export default function PositionsPreview() {
   const { openAssetDetail } = useAssetDetailModal();
   const { status: marketStatus } = useMarketStatus();
 
-  // Pending summaries per ticker — powers the hover popover on each row.
+  // Summaries per ticker — powers the hover popover on each row.
   // urql dedupes this query against the one in `yojin-snap-card`, which owns
   // the 30s polling cycle. We just read from cache as it refreshes.
   const [summariesResult] = useSummaries({
-    status: 'PENDING',
     limit: 50,
     pause: !(aiConfigured && jintelConfigured),
   });

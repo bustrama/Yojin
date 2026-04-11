@@ -42,6 +42,7 @@ export const DATA_SUBDIRS = [
   'logs',
   'watchlist',
   'summaries',
+  'actions',
   'skills',
   'snap',
   'profiles', // Per-ticker persistent knowledge profiles

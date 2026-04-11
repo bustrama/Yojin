@@ -14,7 +14,7 @@
  * a job that already fired within its cooldown window.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -22,6 +22,8 @@ import { join } from 'node:path';
 import type { Entity, JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
+import type { ActionStore } from './actions/action-store.js';
+import { parseVerdictFromHeadline } from './actions/types.js';
 import type { Orchestrator } from './agents/orchestrator.js';
 import { emitProgress } from './agents/orchestrator.js';
 import type { ProviderRouter } from './ai-providers/router.js';
@@ -30,7 +32,8 @@ import type { NotificationBus } from './core/notification-bus.js';
 import type { InsightStore } from './insights/insight-store.js';
 import type { MicroInsightStore } from './insights/micro-insight-store.js';
 import { runMicroResearch } from './insights/micro-runner.js';
-import type { MicroInsightSource } from './insights/micro-types.js';
+import type { MicroInsight, MicroInsightSource } from './insights/micro-types.js';
+import type { InsightReport } from './insights/types.js';
 import { fetchJintelSignals, fetchMacroIndicators } from './jintel/signal-fetcher.js';
 import { createSubsystemLogger } from './logging/logger.js';
 import type { SignalMemoryStore } from './memory/memory-store.js';
@@ -48,6 +51,7 @@ import { snapFromInsight } from './snap/snap-from-insight.js';
 import { snapFromMicro } from './snap/snap-from-micro.js';
 import type { SnapStore } from './snap/snap-store.js';
 import type { SummaryStore } from './summaries/summary-store.js';
+import { computeSummaryContentHash } from './summaries/types.js';
 import type { WatchlistStore } from './watchlist/watchlist-store.js';
 
 const logger = createSubsystemLogger('scheduler');
@@ -108,8 +112,10 @@ export interface SchedulerOptions {
   reflectionEngine?: ReflectionEngine;
   /** Skill evaluator — evaluates active skills after curation. */
   skillEvaluator?: SkillEvaluator;
-  /** Summary store — persists summaries created from fired skill triggers. */
+  /** Summary store — persists neutral intel observations from macro + micro flows. */
   summaryStore?: SummaryStore;
+  /** Action store — persists BUY/SELL/REVIEW actions produced by Skill/Strategy triggers. */
+  actionStore?: ActionStore;
   /** Portfolio snapshot store — used to build PortfolioContext for skill evaluation. */
   snapshotStore?: PortfolioSnapshotStore;
   /** Snap store — snap brief is regenerated after each curation cycle. */
@@ -155,7 +161,20 @@ const MACRO_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const MICRO_TRIGGER_MACRO_COOLDOWN_MS = MACRO_INTERVAL_MS;
 
 /** Default expiry window for summaries created from skill triggers. */
-const SUMMARY_EXPIRY_HOURS = 24;
+const ACTION_EXPIRY_HOURS = 24;
+
+/**
+ * Extract the first sentence from a multi-sentence thesis, capped at a
+ * reasonable display length. Used when flattening a position thesis into a
+ * one-line Summary observation.
+ */
+function firstSentence(text: string, maxLen = 240): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/^[^.!?]*[.!?]/);
+  const candidate = match ? match[0].trim() : trimmed;
+  return candidate.length <= maxLen ? candidate : candidate.slice(0, maxLen - 1) + '…';
+}
 
 /** Default micro research interval (5 minutes). */
 const DEFAULT_MICRO_INTERVAL_MS = 5 * 60 * 1000;
@@ -168,13 +187,6 @@ const MICRO_TICK_INTERVAL_MS = 30_000;
 
 /** Minimum interval between snap.ready notifications to channels (1 hour). */
 const SNAP_NOTIFY_COOLDOWN_MS = 60 * 60 * 1000;
-
-/** Hash snap content for dedup — only notify channels when content actually changes. */
-function snapContentHash(snap: { intelSummary?: string; actionItems: { text: string }[] }): string {
-  return createHash('sha256')
-    .update(JSON.stringify({ intelSummary: snap.intelSummary ?? '', actionItems: snap.actionItems.map((a) => a.text) }))
-    .digest('hex');
-}
 
 /** Max concurrent micro research runs per tick. */
 const MAX_MICRO_CONCURRENCY = 3;
@@ -213,6 +225,7 @@ export class Scheduler {
   private readonly reflectionEngine?: ReflectionEngine;
   private readonly skillEvaluator?: SkillEvaluator;
   private readonly summaryStore?: SummaryStore;
+  private readonly actionStore?: ActionStore;
   private readonly snapshotStore?: PortfolioSnapshotStore;
   private readonly snapStore?: SnapStore;
   private readonly insightStore?: InsightStore;
@@ -258,6 +271,7 @@ export class Scheduler {
     this.reflectionEngine = options.reflectionEngine;
     this.skillEvaluator = options.skillEvaluator;
     this.summaryStore = options.summaryStore;
+    this.actionStore = options.actionStore;
     this.snapshotStore = options.snapshotStore;
     this.snapStore = options.snapStore;
     this.insightStore = options.insightStore;
@@ -615,6 +629,7 @@ export class Scheduler {
       }
 
       // Update registry timestamps and mark completed today
+      const microInsights: MicroInsight[] = [];
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
         const asset = assetsReadyForLlm[i];
@@ -628,6 +643,8 @@ export class Scheduler {
             state.completedToday = true;
           }
 
+          microInsights.push(result.value.insight);
+
           logger.info('Micro research complete', {
             symbol,
             rating: result.value.insight.rating,
@@ -636,6 +653,12 @@ export class Scheduler {
         } else if (result.status === 'rejected') {
           logger.error('Micro research failed', { symbol, error: String(result.reason) });
         }
+      }
+
+      // Persist per-asset Summaries (neutral intel) from micro insights so
+      // the Intel Feed has a standalone record independent of the snap.
+      if (microInsights.length > 0) {
+        await this.persistMicroSummaries(microInsights);
       }
 
       // Evaluate per-asset skill triggers for tickers that completed micro research
@@ -922,7 +945,6 @@ export class Scheduler {
       const snap = await snapFromMicro(microInsights, this.providerRouter, exposure, previousSnap);
       if (!snap) return;
 
-      snap.contentHash = snapContentHash(snap);
       await this.snapStore.save(snap);
       logger.info('Snap brief generated from micro insights', { snapId: snap.id, assets: microInsights.size });
       this.maybePublishSnap(snap);
@@ -950,7 +972,6 @@ export class Scheduler {
 
       const microInsights = this.microInsightStore ? await this.microInsightStore.getAllLatest() : undefined;
       const snap = snapFromInsight(report, microInsights ? { microInsights } : undefined);
-      snap.contentHash = snapContentHash(snap);
       await this.snapStore.save(snap);
       logger.info('Snap brief regenerated', { snapId: snap.id });
       if (!options?.skipPublish) {
@@ -1055,7 +1076,7 @@ export class Scheduler {
   }
 
   async evaluateSkills(): Promise<void> {
-    if (!this.skillEvaluator || !this.summaryStore) return;
+    if (!this.skillEvaluator || !this.actionStore) return;
 
     // Resolve snapshot store — prefer the top-level option, fall back to curation pipeline's store
     const store = this.snapshotStore;
@@ -1068,33 +1089,118 @@ export class Scheduler {
     }
 
     const context = await this.buildEnrichedContext(snapshot);
-    let evaluations = this.skillEvaluator.evaluate(context);
+    const evaluations = this.skillEvaluator.evaluate(context);
 
     if (evaluations.length === 0) {
       logger.info('No skill triggers fired');
       return;
     }
 
-    // Dedup: filter out triggers that already have a PENDING summary from micro flow
-    const beforeDedup = evaluations.length;
-    const dedupResults = await Promise.all(
-      evaluations.map(async (ev) => ({
-        evaluation: ev,
-        pending: (await this.summaryStore?.hasPendingTrigger(ev.triggerId)) ?? false,
-      })),
-    );
-    evaluations = dedupResults.filter((r) => !r.pending).map((r) => r.evaluation);
-
-    if (beforeDedup !== evaluations.length) {
-      logger.info(`Deduped ${beforeDedup - evaluations.length} trigger(s) already fired by micro flow`);
-    }
-
-    if (evaluations.length === 0) {
-      logger.info('All skill triggers already fired by micro flow — nothing new');
-      return;
-    }
-
+    // No pre-dedup — ActionStore.create() supersedes any existing PENDING record
+    // for the same triggerId, so the macro flow refines (not duplicates) the
+    // micro flow's Actions with fresh context and LLM reasoning.
     await this.processSkillEvaluations(evaluations);
+  }
+
+  /**
+   * Persist neutral intel observations from an InsightReport as Summaries.
+   * Covers per-position theses and portfolio-level items. Dedup by
+   * contentHash ensures observations already emitted by the micro flow are
+   * not duplicated in the feed.
+   */
+  private async persistMacroSummaries(report: InsightReport): Promise<void> {
+    if (!this.summaryStore) return;
+
+    const createdAt = report.createdAt;
+
+    // Per-position thesis as one Summary each
+    for (const position of report.positions) {
+      const ticker = position.symbol.toUpperCase();
+      const thesis = firstSentence(position.thesis);
+      if (!thesis) continue;
+
+      const contentHash = computeSummaryContentHash(ticker, 'MACRO', thesis);
+      const sourceSignalIds = [...new Set(position.keySignals.map((s) => s.signalId).concat(position.allSignalIds))];
+      const result = await this.summaryStore.create({
+        id: randomUUID(),
+        ticker,
+        what: thesis,
+        flow: 'MACRO',
+        severity: position.conviction,
+        sourceSignalIds,
+        contentHash,
+        createdAt,
+      });
+      if (!result.success) {
+        logger.warn('Failed to persist macro position summary', { ticker, error: result.error });
+      }
+    }
+
+    // Portfolio-level items (risks, opportunities, action items) use ticker='PORTFOLIO'
+    const portfolioItems: Array<{ text: string; signalIds: string[] }> = [
+      ...report.portfolio.topRisks,
+      ...report.portfolio.topOpportunities,
+      ...report.portfolio.actionItems,
+    ];
+    for (const item of portfolioItems) {
+      const what = item.text.trim();
+      if (!what) continue;
+
+      const contentHash = computeSummaryContentHash('PORTFOLIO', 'MACRO', what);
+      const result = await this.summaryStore.create({
+        id: randomUUID(),
+        ticker: 'PORTFOLIO',
+        what,
+        flow: 'MACRO',
+        sourceSignalIds: item.signalIds ?? [],
+        contentHash,
+        createdAt,
+      });
+      if (!result.success) {
+        logger.warn('Failed to persist macro portfolio summary', { error: result.error });
+      }
+    }
+  }
+
+  /**
+   * Persist neutral intel observations from each MicroInsight as Summaries.
+   * Each `assetAction` string becomes one Summary row with flow='MICRO'.
+   * Dedup by contentHash is handled inside SummaryStore, so identical
+   * observations arriving again within 24h are silently skipped.
+   */
+  private async persistMicroSummaries(insights: MicroInsight[]): Promise<void> {
+    if (!this.summaryStore) return;
+
+    for (const insight of insights) {
+      const ticker = insight.symbol.toUpperCase();
+      const createdAt = insight.generatedAt;
+      const severity = insight.severity;
+      const sourceSignalIds = insight.topSignalIds ?? [];
+
+      for (const what of insight.assetActions) {
+        const trimmed = what.trim();
+        if (!trimmed) continue;
+
+        const contentHash = computeSummaryContentHash(ticker, 'MICRO', trimmed);
+        const result = await this.summaryStore.create({
+          id: randomUUID(),
+          ticker,
+          what: trimmed,
+          flow: 'MICRO',
+          severity,
+          sourceSignalIds,
+          contentHash,
+          createdAt,
+        });
+
+        if (!result.success) {
+          logger.warn('Failed to persist micro summary', {
+            ticker,
+            error: result.error,
+          });
+        }
+      }
+    }
   }
 
   /**
@@ -1104,7 +1210,7 @@ export class Scheduler {
   private async evaluateMicroSkills(
     results: Array<{ symbol: string; entity: Entity; signals: Signal[] }>,
   ): Promise<void> {
-    if (!this.skillEvaluator || !this.summaryStore || !this.snapshotStore) return;
+    if (!this.skillEvaluator || !this.actionStore || !this.snapshotStore) return;
 
     const snapshot = await this.snapshotStore.getLatest();
     if (!snapshot || snapshot.positions.length === 0) return;
@@ -1129,17 +1235,9 @@ export class Scheduler {
         signals,
       );
 
-      const evaluations = this.skillEvaluator.evaluateForTickers(ctx, [ticker]);
-
-      // Dedup against existing pending summaries
-      for (const ev of evaluations) {
-        const alreadyPending = await this.summaryStore.hasPendingTrigger(ev.triggerId);
-        if (!alreadyPending) {
-          allEvaluations.push(ev);
-        } else {
-          logger.debug('Micro skill trigger skipped — already pending', { triggerId: ev.triggerId });
-        }
-      }
+      // No pre-dedup — ActionStore.create() supersedes existing PENDING records
+      // for the same triggerId so refined evaluations replace stale ones.
+      allEvaluations.push(...this.skillEvaluator.evaluateForTickers(ctx, [ticker]));
     }
 
     if (allEvaluations.length === 0) return;
@@ -1153,20 +1251,24 @@ export class Scheduler {
 
   /**
    * Shared logic: for each fired skill evaluation, generate LLM reasoning
-   * and create a PENDING summary (Action). Used by both macro and micro flows.
+   * and create a PENDING Action. Used by both macro and micro flows.
+   *
+   * Actions are produced exclusively from Skill/Strategy triggers — they are
+   * the opinionated BUY/SELL/REVIEW output layer. Neutral intel observations
+   * (from insight pipelines) are persisted as Summaries in a separate store.
    */
   private async processSkillEvaluations(evaluations: SkillEvaluation[]): Promise<void> {
-    if (!this.summaryStore || evaluations.length === 0) return;
+    if (!this.actionStore || evaluations.length === 0) return;
 
     if (this.eventLog) {
       const names = evaluations.map((e) => e.skillName).join(', ');
       await this.eventLog.append({
-        type: 'summary',
+        type: 'action',
         data: { message: `${evaluations.length} skill trigger${evaluations.length !== 1 ? 's' : ''} fired: ${names}` },
       });
     }
 
-    const expiresAt = new Date(Date.now() + SUMMARY_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + ACTION_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
     const now = new Date().toISOString();
 
     for (const evaluation of evaluations) {
@@ -1256,14 +1358,18 @@ Provide your ACTION headline and analysis.`,
         reasoning = evaluation.triggerDescription;
       }
 
-      const result = await this.summaryStore.create({
+      const verdict = parseVerdictFromHeadline(headline);
+
+      const result = await this.actionStore.create({
         id: randomUUID(),
         skillId: evaluation.skillId,
+        skillName: evaluation.skillName,
         triggerId: evaluation.triggerId,
+        triggerType: evaluation.triggerType,
+        verdict,
         what: headline,
         why: reasoning,
         tickers: ticker ? [ticker] : [],
-        source: `strategy: ${evaluation.skillName}`,
         riskContext: contextParts.join('\n'),
         status: 'PENDING',
         expiresAt,
@@ -1271,18 +1377,20 @@ Provide your ACTION headline and analysis.`,
       });
 
       if (result.success) {
-        logger.info('Summary created from skill trigger', {
-          summaryId: result.data.id,
+        logger.info('Action created from skill trigger', {
+          actionId: result.data.id,
           skillId: evaluation.skillId,
+          verdict: result.data.verdict,
           triggerType: evaluation.triggerType,
         });
         this.notificationBus?.publish({
-          type: 'summary.created',
-          summaryId: result.data.id,
+          type: 'action.created',
+          actionId: result.data.id,
+          verdict: result.data.verdict,
           ticker: evaluation.context.ticker as string | undefined,
         });
       } else {
-        logger.warn('Failed to create summary from skill trigger', {
+        logger.warn('Failed to create action from skill trigger', {
           error: result.error,
           skillId: evaluation.skillId,
         });
@@ -1321,6 +1429,10 @@ Provide your ACTION headline and analysis.`,
       const latestInsight = await this.insightStore?.getLatest();
       if (latestInsight) {
         this.notificationBus?.publish({ type: 'insight.ready', insightId: latestInsight.id });
+
+        // Persist per-position and portfolio-level Summaries from the macro
+        // report so the Intel Feed has neutral observations from both flows.
+        await this.persistMacroSummaries(latestInsight);
       }
 
       if (this.eventLog) {

@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   chunkMessage,
+  formatAction,
   formatInsight,
   formatSnap,
-  formatSummary,
   toWhatsApp,
 } from '../../../channels/whatsapp/src/formatting.js';
+import type { Action } from '../../../src/actions/types.js';
 import type { InsightReport } from '../../../src/insights/types.js';
 import type { Snap } from '../../../src/snap/types.js';
-import type { Summary } from '../../../src/summaries/types.js';
 
 describe('toWhatsApp', () => {
   it('converts HTML <b> to WhatsApp bold', () => {
@@ -184,42 +184,52 @@ describe('formatSnap', () => {
   });
 });
 
-describe('formatSummary', () => {
-  const summary: Summary = {
+describe('formatAction', () => {
+  const action: Action = {
     id: 'act-1',
-    what: 'Review AAPL — bearish divergence detected',
-    why: 'RSI divergence on daily chart',
-    source: 'skill: momentum',
+    skillId: 'momentum',
+    skillName: 'Momentum Breakout',
+    triggerId: 'momentum-PRICE_MOVE-AAPL',
+    triggerType: 'PRICE_MOVE',
+    verdict: 'BUY',
+    what: 'BUY AAPL — golden cross + expanding volume',
+    why: 'RSI reclaimed 50 and the 50D crossed above the 200D',
+    tickers: ['AAPL'],
     status: 'PENDING',
     expiresAt: '2026-03-31T08:00:00Z',
     createdAt: '2026-03-30T08:00:00Z',
   };
 
-  it('includes the New Action header with WhatsApp bold', () => {
-    const result = formatSummary(summary);
-    expect(result).toContain('*New Action*');
+  it('renders verdict + ticker header with WhatsApp bold', () => {
+    const result = formatAction(action);
+    expect(result).toContain('*BUY AAPL*');
   });
 
-  it('uses ticker as header for micro-observation actions', () => {
-    const microSummary = { ...summary, source: 'micro-observation: AAPL' };
-    const result = formatSummary(microSummary);
-    expect(result).toContain('*AAPL*');
-    expect(result).not.toContain('New Action');
+  it('includes the headline (what) field', () => {
+    const result = formatAction(action);
+    expect(result).toContain('golden cross');
   });
 
-  it('includes the what field', () => {
-    const result = formatSummary(summary);
-    expect(result).toContain('Review AAPL');
+  it('includes the reasoning (why) when distinct from the headline', () => {
+    const result = formatAction(action);
+    expect(result).toContain('RSI reclaimed 50');
   });
 
-  it('does not include why or source fields', () => {
-    const result = formatSummary(summary);
-    expect(result).not.toContain('_Why:_');
-    expect(result).not.toContain('_Source:_');
+  it('omits reasoning when it duplicates the headline', () => {
+    const dup: Action = { ...action, why: action.what };
+    const result = formatAction(dup);
+    const occurrences = result.split('golden cross').length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('falls back to verdict-only header when no ticker is provided', () => {
+    const noTicker: Action = { ...action, tickers: [], verdict: 'REVIEW' };
+    const result = formatAction(noTicker);
+    expect(result).toContain('*REVIEW*');
   });
 
   it('does not use HTML tags', () => {
-    const result = formatSummary(summary);
+    const result = formatAction(action);
     expect(result).not.toMatch(/<[a-z]+>/i);
   });
 });

@@ -4,10 +4,8 @@ import { useMutation, useQuery } from 'urql';
 import {
   BATCH_DISMISS_SIGNALS_MUTATION,
   DISMISS_SIGNAL_MUTATION,
-  DISMISS_SUMMARY_MUTATION,
   INTEL_FEED_QUERY,
   SCHEDULER_STATUS_QUERY,
-  SUMMARIES_QUERY,
   TRIGGER_MICRO_ANALYSIS_MUTATION,
 } from '../../api/documents';
 import type {
@@ -15,8 +13,6 @@ import type {
   IntelFeedQueryResult,
   IntelFeedQueryVariables,
   SchedulerStatusQueryResult,
-  SummariesQueryResult,
-  SummariesQueryVariables,
 } from '../../api/types';
 import { cn, timeAgo } from '../../lib/utils';
 import { useFeatureStatus } from '../../lib/feature-status';
@@ -28,8 +24,8 @@ import type { FeedDetailData } from './feed-detail-modal';
 import Spinner from '../common/spinner';
 import { SymbolLogo } from '../common/symbol-logo';
 
-type ItemType = 'alert' | 'insight' | 'action';
-type FilterTab = 'all' | 'alerts' | 'insights' | 'actions';
+type ItemType = 'alert' | 'insight';
+type FilterTab = 'all' | 'alerts' | 'insights';
 type IconName = 'rebalance' | 'dollar' | 'box' | 'warehouse' | 'clock' | 'trending' | 'bubble' | 'trending-up' | 'zap';
 
 export interface FeedPendingUpdate {
@@ -61,10 +57,6 @@ interface IntelFeedItem {
   source: string | null;
   link: string | null;
   data?: DataRow[];
-  isAction?: boolean;
-  skillName?: string;
-  triggerInfo?: string;
-  expiresAt?: string;
 }
 
 /** Map signal type to an icon name. */
@@ -92,14 +84,12 @@ function classifySignal(signal: { outputType?: string | null; severity: IntelFee
 const categoryLabel: Record<ItemType, string> = {
   alert: 'ALERT',
   insight: 'INSIGHT',
-  action: 'ACTION',
 };
 
 const filterTabs: { key: FilterTab; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'alerts', label: 'Alerts' },
   { key: 'insights', label: 'Insights' },
-  { key: 'actions', label: 'Actions' },
 ];
 
 /* ── Icons ──────────────────────────────────────────────────────────── */
@@ -220,7 +210,7 @@ function IntelFeedCard({
         <span
           className={cn(
             'absolute -top-2 -right-2 z-10 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-white shadow-sm motion-safe:animate-badge-in',
-            item.type === 'alert' ? 'bg-warning' : item.type === 'action' ? 'bg-market' : 'bg-success',
+            item.type === 'alert' ? 'bg-warning' : 'bg-success',
           )}
         >
           NEW
@@ -286,23 +276,13 @@ function IntelFeedCard({
             )}
 
             {/* Meta row */}
-            {item.isAction ? (
-              <div className="mt-2 flex items-center gap-x-2 rounded-lg border border-border-light bg-bg-primary/50 px-2.5 py-1.5 text-2xs text-text-muted">
-                {item.skillName && <span>{item.skillName}</span>}
-                {item.expiresAt && <span className="text-border">|</span>}
-                {item.expiresAt && <span>expires {timeAgo(item.expiresAt)}</span>}
-                {(item.skillName || item.expiresAt) && <span className="text-border">|</span>}
-                <span>{item.severity}</span>
-              </div>
-            ) : (
-              <div className="mt-2 flex items-center gap-x-2 rounded-lg border border-border-light bg-bg-primary/50 px-2.5 py-1.5 text-2xs text-text-muted">
-                {item.source && <span>{item.source}</span>}
-                {item.source && <span className="text-border">|</span>}
-                <span>{timeAgo(item.ingestedAt)}</span>
-                <span className="text-border">|</span>
-                <span>{item.signalType.replace(/_/g, ' ')}</span>
-              </div>
-            )}
+            <div className="mt-2 flex items-center gap-x-2 rounded-lg border border-border-light bg-bg-primary/50 px-2.5 py-1.5 text-2xs text-text-muted">
+              {item.source && <span>{item.source}</span>}
+              {item.source && <span className="text-border">|</span>}
+              <span>{timeAgo(item.ingestedAt)}</span>
+              <span className="text-border">|</span>
+              <span>{item.signalType.replace(/_/g, ' ')}</span>
+            </div>
 
             {/* CTA buttons */}
             <div className="mt-3 flex items-center gap-2">
@@ -422,7 +402,6 @@ function IntelFeedContent({
   const initialIdsRef = useRef<Set<string> | null>(null);
   const newIdTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [, dismissSignal] = useMutation(DISMISS_SIGNAL_MUTATION);
-  const [, dismissSummary] = useMutation(DISMISS_SUMMARY_MUTATION);
   const [, batchDismissSignals] = useMutation(BATCH_DISMISS_SIGNALS_MUTATION);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -458,19 +437,6 @@ function IntelFeedContent({
   const [{ data, fetching, error }, reexecute] = useQuery<IntelFeedQueryResult, IntelFeedQueryVariables>({
     query: INTEL_FEED_QUERY,
     variables: { limit: FETCH_LIMIT, feedTarget },
-    requestPolicy: 'cache-and-network',
-  });
-
-  const summaryQueryVars = useMemo<SummariesQueryVariables>(
-    () => ({ status: 'PENDING', limit: FETCH_LIMIT, dismissed: false }),
-    [],
-  );
-  const [{ data: summariesData, error: summariesError }, reexecuteSummaries] = useQuery<
-    SummariesQueryResult,
-    SummariesQueryVariables
-  >({
-    query: SUMMARIES_QUERY,
-    variables: summaryQueryVars,
     requestPolicy: 'cache-and-network',
   });
 
@@ -535,10 +501,9 @@ function IntelFeedContent({
   useEffect(() => {
     const id = setInterval(() => {
       reexecute({ requestPolicy: 'network-only' });
-      reexecuteSummaries({ requestPolicy: 'network-only' });
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [reexecute, reexecuteSummaries]);
+  }, [reexecute]);
 
   // Map API data into IntelFeedItem[]
   const items: IntelFeedItem[] = useMemo(() => {
@@ -589,42 +554,9 @@ function IntelFeedContent({
       };
     });
 
-    const summaryItems: IntelFeedItem[] = (summariesData?.summaries ?? []).map((summary) => {
-      const skillName = summary.source.startsWith('strategy:')
-        ? summary.source.slice('strategy:'.length).trim()
-        : summary.source.startsWith('skill:')
-          ? summary.source.slice('skill:'.length).trim()
-          : null;
-      return {
-        id: `summary:${summary.id}`,
-        type: 'action' as const,
-        severity: summary.severityLabel as IntelFeedItem['severity'],
-        signalType: 'ACTION',
-        ticker: summary.tickers[0] ?? skillName ?? 'Action',
-        tickers: summary.tickers,
-        sentiment: null,
-        title: summary.what,
-        time: timeAgo(summary.createdAt),
-        publishedAt: summary.createdAt,
-        ingestedAt: summary.createdAt,
-        publishedTime: timeAgo(summary.createdAt),
-        icon: 'zap' as IconName,
-        description: summary.why,
-        source: summary.source,
-        link: null,
-        isAction: true,
-        skillName: skillName ?? undefined,
-        triggerInfo: summary.riskContext ?? undefined,
-        expiresAt: summary.expiresAt,
-      };
-    });
-
-    // Merge summaries into signal feed sorted by recency. Summaries are interleaved
-    // with signals rather than concatenated to maintain a coherent timeline.
-    const merged = [...summaryItems, ...signalItems];
-    merged.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-    return merged;
-  }, [data, summariesData]);
+    signalItems.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    return signalItems;
+  }, [data]);
 
   useEffect(() => {
     latestItemsRef.current = items;
@@ -761,7 +693,6 @@ function IntelFeedContent({
     if (activeFilter === 'all') return items;
     if (activeFilter === 'alerts') return items.filter((item) => item.type === 'alert');
     if (activeFilter === 'insights') return items.filter((item) => item.type === 'insight');
-    if (activeFilter === 'actions') return items.filter((item) => item.type === 'action');
     return items;
   }, [items, activeFilter]);
   const totalCount = filteredItems.length;
@@ -835,14 +766,14 @@ function IntelFeedContent({
   }, [hasMore]);
 
   function openModal(item: IntelFeedItem) {
-    const displaySource = item.isAction ? (item.skillName ?? 'Action') : (item.source ?? item.signalType);
+    const displaySource = item.source ?? item.signalType;
     setModalData({
       title: item.title,
       source: displaySource,
       time: item.publishedTime,
       link: item.link,
-      tag: item.isAction ? 'ACTION' : categoryLabel[item.type],
-      tagVariant: item.type === 'alert' ? 'warning' : item.isAction ? 'info' : 'success',
+      tag: categoryLabel[item.type],
+      tagVariant: item.type === 'alert' ? 'warning' : 'success',
       sentiment:
         item.sentiment === 'bullish' || item.sentiment === 'bearish' || item.sentiment === 'neutral'
           ? item.sentiment
@@ -851,22 +782,14 @@ function IntelFeedContent({
         const row = item.data?.find((r) => r.label === 'Confidence');
         return row ? Math.round(parseFloat(row.value)) : undefined;
       })(),
-      keyPoints: item.isAction ? [] : item.description ? [item.description] : [],
-      analysis: item.isAction ? item.description || '' : item.description || item.title,
+      keyPoints: item.description ? [item.description] : [],
+      analysis: item.description || item.title,
       relatedTickers: item.tickers,
-      actionMeta: item.isAction
-        ? {
-            strategyName: item.skillName ?? null,
-            severity: item.severity,
-            riskContext: item.triggerInfo ?? null,
-            expiresAt: item.expiresAt ?? '',
-          }
-        : undefined,
     });
   }
 
   const isLoading = fetching && !data;
-  const hasError = !!(error || summariesError);
+  const hasError = !!error;
   const isEmpty = !fetching && !hasError && filteredItems.length === 0;
 
   const latestItem = useMemo(
@@ -925,32 +848,29 @@ function IntelFeedContent({
               (HIGH/CRITICAL items classify as alerts, so clicking the CTA
               there would scroll to a list that can't contain the announced
               items). Click to jump back and mark as seen. */}
-          {unseenImportantIds.size > 0 &&
-            isScrolledDown &&
-            activeFilter !== 'insights' &&
-            activeFilter !== 'actions' && (
-              <div className="pointer-events-none sticky top-2 z-20 flex justify-center">
-                <button
-                  type="button"
-                  onClick={scrollToTopAndDismiss}
-                  className="pointer-events-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-primary px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-lg transition-transform hover:scale-105 motion-safe:animate-[fadeSlideIn_0.25s_ease-out]"
-                  aria-label={`Jump to ${unseenImportantIds.size} new important signal${unseenImportantIds.size !== 1 ? 's' : ''}`}
+          {unseenImportantIds.size > 0 && isScrolledDown && activeFilter !== 'insights' && (
+            <div className="pointer-events-none sticky top-2 z-20 flex justify-center">
+              <button
+                type="button"
+                onClick={scrollToTopAndDismiss}
+                className="pointer-events-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-primary px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-lg transition-transform hover:scale-105 motion-safe:animate-[fadeSlideIn_0.25s_ease-out]"
+                aria-label={`Jump to ${unseenImportantIds.size} new important signal${unseenImportantIds.size !== 1 ? 's' : ''}`}
+              >
+                <svg
+                  className="h-3 w-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <svg
-                    className="h-3 w-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="18 15 12 9 6 15" />
-                  </svg>
-                  {unseenImportantIds.size} new important signal{unseenImportantIds.size !== 1 ? 's' : ''}
-                </button>
-              </div>
-            )}
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+                {unseenImportantIds.size} new important signal{unseenImportantIds.size !== 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
           {/* Scan progress / verification banner */}
           {scanState && (
             <div
@@ -1014,7 +934,7 @@ function IntelFeedContent({
               </svg>
               <div>
                 <p className="text-sm text-text-muted">Failed to load intel</p>
-                <p className="mt-1 text-xs text-text-muted">{(error ?? summariesError)?.message}</p>
+                <p className="mt-1 text-xs text-text-muted">{error?.message}</p>
               </div>
               <button
                 onClick={() => reexecute({ requestPolicy: 'network-only' })}
@@ -1040,31 +960,17 @@ function IntelFeedContent({
               </svg>
               <div>
                 <p className="text-sm font-medium text-text-secondary">
-                  {activeFilter === 'actions'
-                    ? 'No pending actions'
-                    : activeFilter === 'all'
-                      ? 'No intel yet'
-                      : `No ${activeFilter} yet`}
+                  {activeFilter === 'all' ? 'No intel yet' : `No ${activeFilter} yet`}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-text-muted">
-                  {activeFilter === 'actions'
-                    ? 'Actions will appear here when your strategies detect trading opportunities.'
-                    : 'Intel signals will appear here once your data sources are configured and the curation pipeline runs.'}
+                  Intel signals will appear here once your data sources are configured and the curation pipeline runs.
                 </p>
               </div>
             </div>
           ) : (
             <div>
               <SectionHeader
-                label={
-                  activeFilter === 'all'
-                    ? 'All'
-                    : activeFilter === 'alerts'
-                      ? 'Alerts'
-                      : activeFilter === 'actions'
-                        ? 'Actions'
-                        : 'Insights'
-                }
+                label={activeFilter === 'all' ? 'All' : activeFilter === 'alerts' ? 'Alerts' : 'Insights'}
                 selectMode={selectMode}
                 selectedCount={selectedIds.size}
                 onSelectToggle={() => {
@@ -1073,18 +979,7 @@ function IntelFeedContent({
                   setExpandedId(null);
                 }}
                 onDismissSelected={() => {
-                  const ids = [...selectedIds];
-                  const summaryIds = ids
-                    .filter((id) => id.startsWith('summary:'))
-                    .map((id) => id.replace(/^summary:/, ''));
-                  const signalIds = ids.filter((id) => !id.startsWith('summary:'));
-                  if (summaryIds.length > 0) {
-                    void Promise.all(summaryIds.map((id) => dismissSummary({ id }))).then((results) => {
-                      const failed = results.filter((r) => r.error);
-                      if (failed.length > 0) console.error(`${failed.length} summary dismiss(es) failed`);
-                      reexecuteSummaries({ requestPolicy: 'network-only' });
-                    });
-                  }
+                  const signalIds = [...selectedIds];
                   if (signalIds.length > 0) {
                     void batchDismissSignals({ signalIds }).then((result) => {
                       if (result.error || result.data?.batchDismissSignals !== true) {
@@ -1118,24 +1013,13 @@ function IntelFeedContent({
                     onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
                     onDismiss={() => {
                       if (expandedId === item.id) setExpandedId(null);
-                      if (item.isAction) {
-                        const summaryId = item.id.replace(/^summary:/, '');
-                        void dismissSummary({ id: summaryId }).then((result) => {
-                          if (result.error) {
-                            console.error('Dismiss summary failed', result.error.message);
-                            return;
-                          }
-                          reexecuteSummaries({ requestPolicy: 'network-only' });
-                        });
-                      } else {
-                        void dismissSignal({ signalId: item.id }).then((result) => {
-                          if (result.error) {
-                            console.error('Dismiss failed', result.error.message);
-                            return;
-                          }
-                          reexecute({ requestPolicy: 'network-only' });
-                        });
-                      }
+                      void dismissSignal({ signalId: item.id }).then((result) => {
+                        if (result.error) {
+                          console.error('Dismiss failed', result.error.message);
+                          return;
+                        }
+                        reexecute({ requestPolicy: 'network-only' });
+                      });
                     }}
                     onViewDetails={() => openModal(item)}
                     onAskYojin={() =>

@@ -1,7 +1,7 @@
+import type { Action } from '../../../src/actions/types.js';
 import { chunkMessage as chunkMessageBase } from '../../../src/formatting/index.js';
 import type { InsightReport } from '../../../src/insights/types.js';
 import type { Snap } from '../../../src/snap/types.js';
-import type { Summary } from '../../../src/summaries/types.js';
 
 /** Convert Markdown/HTML to WhatsApp markup (*bold*, _italic_, ~strike~, ```mono```). */
 export function toWhatsApp(text: string): string {
@@ -54,10 +54,15 @@ export function formatSnap(snap: Snap): string {
   return lines.join('\n');
 }
 
-export function formatSummary(summary: Summary): string {
-  const ticker = summary.source?.match(/micro-observation:\s*(\S+)/)?.[1];
-  const header = ticker ? `\u{26A1} *${ticker}*` : '\u{26A1} *New Action*';
-  return [header, summary.what].join('\n');
+/** Format an Action for WhatsApp: verdict badge + headline + reasoning. */
+export function formatAction(action: Action): string {
+  const ticker = action.tickers[0];
+  const header = ticker ? `\u{26A1} *${action.verdict} ${ticker}*` : `\u{26A1} *${action.verdict}*`;
+  const lines = [header, action.what];
+  if (action.why && action.why !== action.what) {
+    lines.push('', action.why);
+  }
+  return lines.join('\n');
 }
 
 export function formatInsight(report: InsightReport): string {

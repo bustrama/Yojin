@@ -1,10 +1,10 @@
 /**
- * Summaries card — severity-ranked TLDR of pending Summaries from the SummaryStore.
+ * Summaries card — severity-ranked TLDR of neutral intel from the SummaryStore.
  *
- * Reads `summaries(status: PENDING)` populated by the micro-runner's severity gate
- * (see src/insights/micro-runner.ts). Replaces the previous implementation that
- * pulled from `snap.actionItems` — that was a duplicate of the Snap card's data
- * and didn't reflect the real SummaryStore.
+ * Reads `summaries` populated by both the macro insight workflow and the
+ * micro-runner's severity gate (see src/insights/micro-runner.ts). Summaries
+ * are read-only observations — no approval lifecycle. The opinionated BUY/SELL
+ * surface lives in the separate `Action` type.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -41,9 +41,9 @@ interface TickerGroup {
 export function YojinSnapCard() {
   const { aiConfigured, jintelConfigured } = useFeatureStatus();
   // Pause the query until both prerequisites are satisfied so a gated user
-  // doesn't spam `summaries(status: PENDING)` every 30s behind the blur overlay.
+  // doesn't spam `summaries` every 30s behind the blur overlay.
   const unlocked = aiConfigured && jintelConfigured;
-  const [result, reexecute] = useSummaries({ status: 'PENDING', limit: 50, pause: !unlocked });
+  const [result, reexecute] = useSummaries({ limit: 50, pause: !unlocked });
   const summaries = result.data?.summaries;
 
   // Poll to keep the card fresh without a manual refresh. Only runs once the
@@ -157,7 +157,7 @@ export function YojinSnapCard() {
       className={cn('flex-1', justUpdated && 'animate-new-item')}
       headerAction={
         <span className="text-xs text-text-muted">
-          {grouped.length} {grouped.length === 1 ? 'ticker' : 'tickers'} &middot; {totalSummaries} pending
+          {grouped.length} {grouped.length === 1 ? 'ticker' : 'tickers'} &middot; {totalSummaries} total
           {latestCreatedAt && <> &middot; {timeAgo(latestCreatedAt)}</>}
         </span>
       }

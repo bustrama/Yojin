@@ -33,10 +33,11 @@ export function buildApprovalKeyboard(requestId: string): InlineKeyboard {
     .text('\u{1F4CB} Details', `details:${requestId}`);
 }
 
-export function buildSummaryKeyboard(summaryId: string): InlineKeyboard {
+/** Builds an approve/reject keyboard for a PENDING Action. */
+export function buildActionKeyboard(actionId: string): InlineKeyboard {
   return new InlineKeyboard()
-    .text('\u{2705} Approve', `summary-approve:${summaryId}`)
-    .text('\u{274C} Reject', `summary-reject:${summaryId}`);
+    .text('\u{2705} Approve', `action-approve:${actionId}`)
+    .text('\u{274C} Reject', `action-reject:${actionId}`);
 }
 
 /** Builds a 2×2 inline keyboard with the predefined quick-action buttons for the Telegram /start message. */
@@ -53,7 +54,7 @@ export interface BotDeps {
   token: string;
   onTextMessage: (chatId: number, userId: number, userName: string, text: string) => Promise<void>;
   onApprovalCallback?: (requestId: string, approved: boolean) => void;
-  onSummaryCallback?: (summaryId: string, approved: boolean) => Promise<void>;
+  onActionCallback?: (actionId: string, approved: boolean) => Promise<void>;
   onApprovalDetails?: (requestId: string) => Promise<string>;
 }
 
@@ -102,15 +103,15 @@ export function createBot(deps: BotDeps): Bot {
         break;
       }
 
-      case 'summary-approve':
-        await deps.onSummaryCallback?.(data.id, true);
-        await ctx.editMessageText('\u{2705} Summary approved');
+      case 'action-approve':
+        await deps.onActionCallback?.(data.id, true);
+        await ctx.editMessageText('\u{2705} Action approved');
         await ctx.answerCallbackQuery({ text: 'Approved' });
         break;
 
-      case 'summary-reject':
-        await deps.onSummaryCallback?.(data.id, false);
-        await ctx.editMessageText('\u{274C} Summary rejected');
+      case 'action-reject':
+        await deps.onActionCallback?.(data.id, false);
+        await ctx.editMessageText('\u{274C} Action rejected');
         await ctx.answerCallbackQuery({ text: 'Rejected' });
         break;
 

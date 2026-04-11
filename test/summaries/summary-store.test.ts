@@ -1,6 +1,10 @@
 /**
- * SummaryStore tests — focused on the supersede path used by the micro
- * priority gate.
+ * SummaryStore tests — the neutral-intel store used by macro + micro flows.
+ *
+ * Summaries are read-only: no approve/reject/dismiss lifecycle, no supersede.
+ * The only non-trivial behaviour is content-hash dedup within a rolling window,
+ * which is what lets both pipelines write the same observation without
+ * double-firing the Intel Feed.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -10,24 +14,34 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { SummaryStore } from '../../src/summaries/summary-store.js';
-import type { Summary } from '../../src/summaries/types.js';
+import { type Summary, type SummaryFlow, computeSummaryContentHash } from '../../src/summaries/types.js';
 
-function makeSummary(overrides: Partial<Summary> = {}): Summary {
-  const now = new Date().toISOString();
+interface MakeSummaryOverrides {
+  id?: string;
+  ticker?: string;
+  what?: string;
+  flow?: SummaryFlow;
+  severity?: number;
+  createdAt?: string;
+}
+
+function makeSummary(overrides: MakeSummaryOverrides = {}): Summary {
+  const ticker = overrides.ticker ?? 'AAPL';
+  const flow = overrides.flow ?? 'MICRO';
+  const what = overrides.what ?? 'Truist cuts AAPL PT to $323';
   return {
-    id: `s-${Math.random().toString(36).slice(2, 10)}`,
-    what: 'Review AAPL',
-    why: 'unit test',
-    source: 'micro-observation: AAPL',
-    severity: 0.5,
-    status: 'PENDING',
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    createdAt: now,
-    ...overrides,
+    id: overrides.id ?? `s-${Math.random().toString(36).slice(2, 10)}`,
+    ticker,
+    what,
+    flow,
+    severity: overrides.severity ?? 0.5,
+    sourceSignalIds: [],
+    contentHash: computeSummaryContentHash(ticker, flow, what),
+    createdAt: overrides.createdAt ?? new Date().toISOString(),
   };
 }
 
-describe('SummaryStore.supersede', () => {
+describe('SummaryStore.create — content-hash dedup', () => {
   let dir: string;
   let store: SummaryStore;
 
@@ -40,53 +54,96 @@ describe('SummaryStore.supersede', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('marks a pending summary as EXPIRED with resolvedBy=superseded', async () => {
+  it('persists a fresh summary and returns it', async () => {
     const summary = makeSummary();
-    await store.create(summary);
-
-    const result = await store.supersede(summary.id);
+    const result = await store.create(summary);
     expect(result.success).toBe(true);
     if (!result.success) return;
-    expect(result.data.status).toBe('EXPIRED');
-    expect(result.data.resolvedBy).toBe('superseded');
-    expect(result.data.resolvedAt).toBeDefined();
+    expect(result.data.id).toBe(summary.id);
+
+    const all = await store.query({});
+    expect(all).toHaveLength(1);
+    expect(all[0].what).toBe(summary.what);
   });
 
-  it('refuses to supersede an already-resolved summary', async () => {
-    const summary = makeSummary();
-    await store.create(summary);
-    await store.approve(summary.id);
+  it('dedupes a second summary with the same contentHash inside the window', async () => {
+    const first = makeSummary({ id: 's-1' });
+    const second = makeSummary({ id: 's-2', what: first.what });
 
-    const result = await store.supersede(summary.id);
-    expect(result.success).toBe(false);
+    await store.create(first);
+    const dup = await store.create(second);
+
+    expect(dup.success).toBe(true);
+    if (!dup.success) return;
+    // The winner is the original record, not the new one.
+    expect(dup.data.id).toBe('s-1');
+
+    const all = await store.query({});
+    expect(all).toHaveLength(1);
+    expect(all[0].id).toBe('s-1');
   });
 
-  it('superseded summaries no longer appear in getPending', async () => {
-    const a = makeSummary({ id: 's-1', severity: 0.3 });
-    const b = makeSummary({ id: 's-2', severity: 0.9 });
-    await store.create(a);
-    await store.create(b);
+  it('normalises whitespace/case when computing contentHash', async () => {
+    const first = makeSummary({ id: 's-1', what: 'Truist cuts AAPL PT to $323' });
+    const second = makeSummary({
+      id: 's-2',
+      what: '  TRUIST   cuts AAPL PT to $323  ',
+    });
 
-    await store.supersede('s-1');
+    await store.create(first);
+    const dup = await store.create(second);
 
-    const pending = await store.getPending();
-    expect(pending.map((p) => p.id)).toEqual(['s-2']);
+    expect(dup.success).toBe(true);
+    if (!dup.success) return;
+    expect(dup.data.id).toBe('s-1');
   });
 
-  it('persists the severity score on create/query roundtrip', async () => {
-    await store.create(makeSummary({ id: 's-sev', severity: 0.72 }));
-    const pending = await store.getPending();
-    expect(pending).toHaveLength(1);
-    expect(pending[0].severity).toBe(0.72);
+  it('different flows hash differently — macro and micro can coexist', async () => {
+    const micro = makeSummary({ id: 's-micro', flow: 'MICRO' });
+    const macro = makeSummary({ id: 's-macro', flow: 'MACRO' });
+
+    await store.create(micro);
+    const res = await store.create(macro);
+
+    expect(res.success).toBe(true);
+    const all = await store.query({});
+    expect(all).toHaveLength(2);
+    expect(new Set(all.map((s) => s.flow))).toEqual(new Set(['MICRO', 'MACRO']));
+  });
+
+  it('allows the same observation once the dedup window has elapsed', async () => {
+    const shortWindowStore = new SummaryStore({ dir, dedupWindowMs: 100 });
+    const first = makeSummary({
+      id: 's-old',
+      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    });
+    await shortWindowStore.create(first);
+
+    // New summary with the same content but created after the window closes.
+    const second = makeSummary({ id: 's-new' });
+    const res = await shortWindowStore.create(second);
+
+    expect(res.success).toBe(true);
+    if (!res.success) return;
+    expect(res.data.id).toBe('s-new');
+
+    const all = await shortWindowStore.query({});
+    expect(all.map((s) => s.id).sort()).toEqual(['s-new', 's-old']);
+  });
+
+  it('rejects a malformed payload (invalid schema)', async () => {
+    const bad = { ...makeSummary(), what: '' } as Summary;
+    const res = await store.create(bad);
+    expect(res.success).toBe(false);
   });
 });
 
-describe('SummaryStore.dismiss', () => {
+describe('SummaryStore.query', () => {
   let dir: string;
   let store: SummaryStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'summary-store-dismiss-'));
+    dir = mkdtempSync(join(tmpdir(), 'summary-store-query-'));
     store = new SummaryStore({ dir });
   });
 
@@ -94,93 +151,40 @@ describe('SummaryStore.dismiss', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('sets dismissedAt on a pending summary', async () => {
-    const summary = makeSummary();
-    await store.create(summary);
-    const result = await store.dismiss(summary.id);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.dismissedAt).toBeDefined();
-      expect(result.data.id).toBe(summary.id);
+  it('filters by ticker (case-insensitive)', async () => {
+    await store.create(makeSummary({ id: 's-1', ticker: 'AAPL', what: 'AAPL beats earnings' }));
+    await store.create(makeSummary({ id: 's-2', ticker: 'NVDA', what: 'NVDA datacenter demand surge' }));
+
+    const results = await store.query({ ticker: 'aapl' });
+    expect(results.map((s) => s.id)).toEqual(['s-1']);
+  });
+
+  it('filters by flow', async () => {
+    await store.create(makeSummary({ id: 's-micro', flow: 'MICRO', what: 'micro note' }));
+    await store.create(makeSummary({ id: 's-macro', flow: 'MACRO', what: 'macro note' }));
+
+    const micro = await store.query({ flow: 'MICRO' });
+    expect(micro.map((s) => s.id)).toEqual(['s-micro']);
+
+    const macro = await store.query({ flow: 'MACRO' });
+    expect(macro.map((s) => s.id)).toEqual(['s-macro']);
+  });
+
+  it('honours limit', async () => {
+    for (let i = 0; i < 5; i++) {
+      await store.create(makeSummary({ id: `s-${i}`, what: `note ${i}` }));
     }
-  });
-
-  it('returns error for non-existent summary', async () => {
-    const result = await store.dismiss('non-existent-id');
-    expect(result.success).toBe(false);
-  });
-
-  it('returns error for already dismissed summary', async () => {
-    const summary = makeSummary();
-    await store.create(summary);
-    await store.dismiss(summary.id);
-    const result = await store.dismiss(summary.id);
-    expect(result.success).toBe(false);
-    if (!result.success) expect(result.error).toContain('already dismissed');
-  });
-
-  it('returns error for non-PENDING summary', async () => {
-    const summary = makeSummary();
-    await store.create(summary);
-    await store.approve(summary.id);
-    const result = await store.dismiss(summary.id);
-    expect(result.success).toBe(false);
-    if (!result.success) expect(result.error).toContain('APPROVED');
-  });
-
-  it('auto-expires if summary has passed expiresAt', async () => {
-    const summary = makeSummary({ expiresAt: new Date(Date.now() - 1000).toISOString() });
-    await store.create(summary);
-    const result = await store.dismiss(summary.id);
-    expect(result.success).toBe(false);
-    if (!result.success) expect(result.error).toContain('expired');
-  });
-
-  it('dismissed summaries are excluded from getPending', async () => {
-    const summary = makeSummary();
-    await store.create(summary);
-    await store.dismiss(summary.id);
-    const pending = await store.getPending();
-    expect(pending).toHaveLength(0);
-  });
-
-  it('dismissed summaries are excluded from query by default', async () => {
-    const summary = makeSummary();
-    await store.create(summary);
-    await store.dismiss(summary.id);
-    const results = await store.query({ status: 'PENDING' });
-    expect(results).toHaveLength(0);
-  });
-
-  it('dismissed summaries are included when dismissed=true', async () => {
-    const summary = makeSummary();
-    await store.create(summary);
-    await store.dismiss(summary.id);
-    const results = await store.query({ dismissed: true });
-    expect(results).toHaveLength(1);
-    expect(results[0].dismissedAt).toBeDefined();
-  });
-
-  it('query without dismissed filter excludes dismissed summaries', async () => {
-    const a1 = makeSummary({ id: 's-vis' });
-    const a2 = makeSummary({ id: 's-dis' });
-    await store.create(a1);
-    await store.create(a2);
-    await store.dismiss('s-dis');
-
-    const results = await store.query({});
-    const ids = results.map((r) => r.id);
-    expect(ids).toContain('s-vis');
-    expect(ids).not.toContain('s-dis');
+    const results = await store.query({ limit: 3 });
+    expect(results).toHaveLength(3);
   });
 });
 
-describe('SummaryStore.hasPendingTrigger', () => {
+describe('SummaryStore.getById', () => {
   let dir: string;
   let store: SummaryStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'summary-store-trigger-'));
+    dir = mkdtempSync(join(tmpdir(), 'summary-store-byid-'));
     store = new SummaryStore({ dir });
   });
 
@@ -188,54 +192,15 @@ describe('SummaryStore.hasPendingTrigger', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('returns true when a PENDING summary with matching triggerId exists', async () => {
-    await store.create(makeSummary({ id: 's-1', triggerId: 'skill-RSI-AAPL' }));
-    expect(await store.hasPendingTrigger('skill-RSI-AAPL')).toBe(true);
+  it('returns the matching summary', async () => {
+    const summary = makeSummary({ id: 's-target' });
+    await store.create(summary);
+    const found = await store.getById('s-target');
+    expect(found?.id).toBe('s-target');
   });
 
-  it('returns false when no summary has the triggerId', async () => {
-    await store.create(makeSummary({ id: 's-1', triggerId: 'skill-RSI-AAPL' }));
-    expect(await store.hasPendingTrigger('skill-RSI-GOOG')).toBe(false);
-  });
-
-  it('returns false when the matching summary is APPROVED (no longer PENDING)', async () => {
-    await store.create(makeSummary({ id: 's-1', triggerId: 'skill-RSI-AAPL' }));
-    await store.approve('s-1');
-    expect(await store.hasPendingTrigger('skill-RSI-AAPL')).toBe(false);
-  });
-
-  it('returns false when the matching summary is REJECTED', async () => {
-    await store.create(makeSummary({ id: 's-1', triggerId: 'skill-RSI-AAPL' }));
-    await store.reject('s-1');
-    expect(await store.hasPendingTrigger('skill-RSI-AAPL')).toBe(false);
-  });
-
-  it('returns false when the matching summary is dismissed', async () => {
-    await store.create(makeSummary({ id: 's-1', triggerId: 'skill-RSI-AAPL' }));
-    await store.dismiss('s-1');
-    expect(await store.hasPendingTrigger('skill-RSI-AAPL')).toBe(false);
-  });
-
-  it('returns false when the matching summary has expired', async () => {
-    await store.create(
-      makeSummary({
-        id: 's-1',
-        triggerId: 'skill-RSI-AAPL',
-        expiresAt: new Date(Date.now() - 1000).toISOString(),
-      }),
-    );
-    expect(await store.hasPendingTrigger('skill-RSI-AAPL')).toBe(false);
-  });
-
-  it('returns false when store is empty', async () => {
-    expect(await store.hasPendingTrigger('skill-RSI-AAPL')).toBe(false);
-  });
-
-  it('returns true when multiple summaries exist and one PENDING matches', async () => {
-    await store.create(makeSummary({ id: 's-1', triggerId: 'skill-RSI-AAPL' }));
-    await store.approve('s-1');
-    // Second summary with same triggerId, still PENDING
-    await store.create(makeSummary({ id: 's-2', triggerId: 'skill-RSI-AAPL' }));
-    expect(await store.hasPendingTrigger('skill-RSI-AAPL')).toBe(true);
+  it('returns null for an unknown id', async () => {
+    const found = await store.getById('does-not-exist');
+    expect(found).toBeNull();
   });
 });

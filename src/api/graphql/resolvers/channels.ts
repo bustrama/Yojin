@@ -31,9 +31,9 @@ export function setChannelOAuthDir(dir: string): void {
   oauthDir = dir;
 }
 
-const ALL_NOTIFICATION_TYPES = ['snap.ready', 'insight.ready', 'summary.created', 'approval.requested'];
+const ALL_NOTIFICATION_TYPES = ['snap.ready', 'insight.ready', 'action.created', 'approval.requested'];
 /** Notification types enabled by default when user has no explicit preferences. */
-const DEFAULT_ENABLED_TYPES = ['insight.ready', 'summary.created', 'approval.requested'];
+const DEFAULT_ENABLED_TYPES = ['insight.ready', 'action.created', 'approval.requested'];
 
 interface ChannelDef {
   id: string;

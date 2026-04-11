@@ -13,9 +13,11 @@ import { join } from 'node:path';
 import { JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
+import { ActionStore } from './actions/action-store.js';
 import { createDefaultProfiles } from './agents/defaults.js';
 import { AgentRegistry } from './agents/registry.js';
 import { pubsub } from './api/graphql/pubsub.js';
+import { setActionStore } from './api/graphql/resolvers/actions.js';
 import { setAiConfigVault } from './api/graphql/resolvers/ai-config.js';
 import { setChannelDataRoot, setChannelOAuthDir, setChannelVault } from './api/graphql/resolvers/channels.js';
 import { setConnectionManager } from './api/graphql/resolvers/connections.js';
@@ -168,6 +170,7 @@ export interface YojinServices {
   /** Mutable ref — workflows set this before agent stages to track pipeline duration. */
   assessmentWorkflowStartMs: { value: number };
   summaryStore: SummaryStore;
+  actionStore: ActionStore;
   skillStore: SkillStore;
   skillEvaluator: SkillEvaluator;
   watchlistStore: WatchlistStore;
@@ -657,9 +660,13 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     toolRegistry.register(tool);
   }
 
-  // Summary store
+  // Summary store — neutral intel observations from macro + micro insights
   const summaryStore = new SummaryStore({ dir: `${dataRoot}/summaries` });
   setSummaryStore(summaryStore);
+
+  // Action store — BUY/SELL/REVIEW outcomes from Skill/Strategy triggers
+  const actionStore = new ActionStore({ dir: `${dataRoot}/actions` });
+  setActionStore(actionStore);
 
   // Skill store + evaluator — seed strategies from Markdown on first run
   const skillsDir = `${dataRoot}/skills`;
@@ -754,6 +761,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     assessmentStore,
     assessmentWorkflowStartMs,
     summaryStore,
+    actionStore,
     skillStore,
     skillEvaluator,
     watchlistStore,

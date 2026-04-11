@@ -6,8 +6,7 @@
  * are available, per-asset snaps are included alongside portfolio-level items.
  */
 
-import { randomUUID } from 'node:crypto';
-
+import { computeSnapContentHash, snapIdFromHash } from './content-hash.js';
 import type { Snap } from './types.js';
 import { assetSnapsFromMicro } from './types.js';
 import type { MicroInsight } from '../insights/micro-types.js';
@@ -22,14 +21,19 @@ export interface SnapFromInsightOptions {
 export function snapFromInsight(report: InsightReport, options?: SnapFromInsightOptions): Snap {
   const assetSnaps = options?.microInsights ? assetSnapsFromMicro(options.microInsights.values()) : [];
 
+  const intelSummary = report.portfolio.intelSummary ?? '';
+  const actionItems = report.portfolio.actionItems.map((item) => ({
+    text: item.text,
+    signalIds: item.signalIds,
+  }));
+  const contentHash = computeSnapContentHash({ intelSummary, actionItems });
+
   return {
-    id: `snap-${randomUUID().slice(0, 8)}`,
+    id: snapIdFromHash(contentHash),
     generatedAt: new Date().toISOString(),
-    intelSummary: report.portfolio.intelSummary ?? '',
-    actionItems: report.portfolio.actionItems.map((item) => ({
-      text: item.text,
-      signalIds: item.signalIds,
-    })),
+    intelSummary,
+    actionItems,
     assetSnaps,
+    contentHash,
   };
 }

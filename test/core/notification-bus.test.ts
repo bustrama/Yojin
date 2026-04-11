@@ -40,10 +40,15 @@ describe('NotificationBus', () => {
     const bus = new NotificationBus();
     const h1 = vi.fn();
     const h2 = vi.fn();
-    bus.on('summary.created', h1);
-    bus.on('summary.created', h2);
+    bus.on('action.created', h1);
+    bus.on('action.created', h2);
 
-    const event: NotificationEvent = { type: 'summary.created', summaryId: 'sum-1' };
+    const event: NotificationEvent = {
+      type: 'action.created',
+      actionId: 'act-1',
+      verdict: 'BUY',
+      ticker: 'AAPL',
+    };
     bus.publish(event);
 
     expect(h1).toHaveBeenCalledWith(event);

@@ -559,28 +559,59 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
-  # Summaries (approval workflow)
+  # Summaries — neutral intel observations from macro + micro insight pipelines
   # ---------------------------------------------------------------------------
 
-  enum SummaryStatus {
+  enum SummaryFlow {
+    MACRO
+    MICRO
+  }
+
+  type Summary {
+    id: ID!
+    ticker: String!
+    what: String!
+    flow: SummaryFlow!
+    severity: Float
+    severityLabel: String!
+    sourceSignalIds: [ID!]!
+    contentHash: String!
+    createdAt: String!
+  }
+
+  # ---------------------------------------------------------------------------
+  # Actions — BUY/SELL/REVIEW outcomes from Skill/Strategy triggers
+  # ---------------------------------------------------------------------------
+
+  enum ActionVerdict {
+    BUY
+    SELL
+    TRIM
+    HOLD
+    REVIEW
+  }
+
+  enum ActionStatus {
     PENDING
     APPROVED
     REJECTED
     EXPIRED
   }
 
-  type Summary {
+  type Action {
     id: ID!
-    signalId: ID
-    skillId: ID
+    skillId: ID!
+    skillName: String!
+    triggerId: ID!
+    triggerType: String!
+    verdict: ActionVerdict!
     what: String!
     why: String!
     tickers: [String!]!
-    source: String!
     riskContext: String
     severity: Float
     severityLabel: String!
-    status: SummaryStatus!
+    status: ActionStatus!
     expiresAt: String!
     createdAt: String!
     resolvedAt: String
@@ -1246,8 +1277,10 @@ export const typeDefs = /* GraphQL */ `
     notificationPreferences: [NotificationPreferences!]!
     snap: Snap
     activityLog(types: [ActivityEventType!], since: String, limit: Int): [ActivityEvent!]!
-    summaries(status: SummaryStatus, since: String, limit: Int, dismissed: Boolean): [Summary!]!
+    summaries(ticker: String, flow: SummaryFlow, since: String, limit: Int): [Summary!]!
     summary(id: ID!): Summary
+    actions(status: ActionStatus, since: String, limit: Int, dismissed: Boolean): [Action!]!
+    action(id: ID!): Action
     skills(category: SkillCategory, active: Boolean, style: String, query: String): [Skill!]!
     skill(id: ID!): Skill
     exportSkill(id: ID!): String!
@@ -1324,9 +1357,9 @@ export const typeDefs = /* GraphQL */ `
     refreshIntelFeed: RefreshIntelFeedResult!
     addToWatchlist(symbol: String!, name: String!, assetClass: AssetClass!): WatchlistResult!
     removeFromWatchlist(symbol: String!): WatchlistResult!
-    approveSummary(id: ID!): Summary!
-    rejectSummary(id: ID!): Summary!
-    dismissSummary(id: ID!): Summary!
+    approveAction(id: ID!): Action!
+    rejectAction(id: ID!): Action!
+    dismissAction(id: ID!): Action!
     toggleSkill(id: ID!, active: Boolean!): Skill!
     createSkill(input: CreateSkillInput!): Skill!
     updateSkill(id: ID!, input: UpdateSkillInput!): Skill!

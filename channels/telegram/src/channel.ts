@@ -1,7 +1,8 @@
 import type { Bot } from 'grammy';
 
-import { buildApprovalKeyboard, buildSummaryKeyboard, createBot } from './bot.js';
-import { chunkMessage, escapeHtml, formatInsight, formatSnap, formatSummary } from './formatting.js';
+import { buildActionKeyboard, buildApprovalKeyboard, createBot } from './bot.js';
+import { chunkMessage, escapeHtml, formatAction, formatInsight, formatSnap } from './formatting.js';
+import type { ActionStore } from '../../../src/actions/action-store.js';
 import { isNotificationEnabled } from '../../../src/api/graphql/resolvers/channels.js';
 import type { NotificationBus } from '../../../src/core/notification-bus.js';
 import type { InsightStore } from '../../../src/insights/insight-store.js';
@@ -18,7 +19,6 @@ import type {
   TypingHandle,
 } from '../../../src/plugins/types.js';
 import type { SnapStore } from '../../../src/snap/snap-store.js';
-import type { SummaryStore } from '../../../src/summaries/summary-store.js';
 import { formatDisplayCardForTelegram } from '../../../src/tools/channel-display-formatters.js';
 import type { ApprovalGate } from '../../../src/trust/approval/approval-gate.js';
 import type { SecretVault } from '../../../src/trust/vault/types.js';
@@ -33,7 +33,7 @@ export interface TelegramChannelDeps {
   approvalGate?: ApprovalGate;
   snapStore?: SnapStore;
   insightStore?: InsightStore;
-  summaryStore?: SummaryStore;
+  actionStore?: ActionStore;
 }
 
 export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlugin {
@@ -126,12 +126,12 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
         onApprovalCallback: (requestId, approved) => {
           deps.approvalGate?.resolve(requestId, approved);
         },
-        onSummaryCallback: async (summaryId, approved) => {
-          if (!deps.summaryStore) return;
+        onActionCallback: async (actionId, approved) => {
+          if (!deps.actionStore) return;
           if (approved) {
-            await deps.summaryStore.approve(summaryId);
+            await deps.actionStore.approve(actionId);
           } else {
-            await deps.summaryStore.reject(summaryId);
+            await deps.actionStore.reject(actionId);
           }
         },
         onApprovalDetails: async (requestId) => {
@@ -311,17 +311,17 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
     );
 
     unsubscribers.push(
-      bus.on('summary.created', async (event) => {
-        if (!bot || !activeChatId || !deps.summaryStore) return;
-        if (!(await isNotificationEnabled('telegram', 'summary.created'))) return;
+      bus.on('action.created', async (event) => {
+        if (!bot || !activeChatId || !deps.actionStore) return;
+        if (!(await isNotificationEnabled('telegram', 'action.created'))) return;
         try {
-          const summary = await deps.summaryStore.getById(event.summaryId);
-          if (!summary) return;
-          const text = formatSummary(summary);
-          const keyboard = buildSummaryKeyboard(summary.id);
+          const action = await deps.actionStore.getById(event.actionId);
+          if (!action) return;
+          const text = formatAction(action);
+          const keyboard = buildActionKeyboard(action.id);
           await bot.api.sendMessage(activeChatId, text, { parse_mode: 'HTML', reply_markup: keyboard });
         } catch (err) {
-          logger.error('Failed to push summary', { error: err });
+          logger.error('Failed to push action', { error: err });
         }
       }),
     );

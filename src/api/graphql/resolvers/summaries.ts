@@ -1,11 +1,13 @@
 /**
- * Summary resolvers — query and mutate summaries with approval workflow.
+ * Summary resolvers — query neutral intel observations from macro + micro
+ * insight pipelines. Summaries are read-only: no mutations, no approval
+ * lifecycle. Action-style mutations live in resolvers/actions.ts.
  *
  * Module-level state: setSummaryStore is called once during server startup.
  */
 
 import type { SummaryStore } from '../../../summaries/summary-store.js';
-import type { Summary, SummaryStatus } from '../../../summaries/types.js';
+import type { Summary, SummaryFlow } from '../../../summaries/types.js';
 
 function deriveSeverityLabel(severity: number | undefined): string {
   if (severity == null) return 'MEDIUM';
@@ -30,41 +32,27 @@ export function setSummaryStore(s: SummaryStore): void {
 
 interface SummaryGql {
   id: string;
-  signalId: string | null;
-  skillId: string | null;
+  ticker: string;
   what: string;
-  why: string;
-  tickers: string[];
-  source: string;
-  riskContext: string | null;
+  flow: SummaryFlow;
   severity: number | null;
   severityLabel: string;
-  status: SummaryStatus;
-  expiresAt: string;
+  sourceSignalIds: string[];
+  contentHash: string;
   createdAt: string;
-  resolvedAt: string | null;
-  resolvedBy: string | null;
-  dismissedAt: string | null;
 }
 
 function toGql(summary: Summary): SummaryGql {
   return {
     id: summary.id,
-    signalId: summary.signalId ?? null,
-    skillId: summary.skillId ?? null,
+    ticker: summary.ticker,
     what: summary.what,
-    why: summary.why,
-    tickers: summary.tickers ?? [],
-    source: summary.source,
-    riskContext: summary.riskContext ?? null,
+    flow: summary.flow,
     severity: summary.severity ?? null,
     severityLabel: deriveSeverityLabel(summary.severity),
-    status: summary.status,
-    expiresAt: summary.expiresAt,
+    sourceSignalIds: summary.sourceSignalIds ?? [],
+    contentHash: summary.contentHash,
     createdAt: summary.createdAt,
-    resolvedAt: summary.resolvedAt ?? null,
-    resolvedBy: summary.resolvedBy ?? null,
-    dismissedAt: summary.dismissedAt ?? null,
   };
 }
 
@@ -74,15 +62,15 @@ function toGql(summary: Summary): SummaryGql {
 
 export async function summariesResolver(
   _parent: unknown,
-  args: { status?: SummaryStatus; since?: string; limit?: number; dismissed?: boolean },
+  args: { ticker?: string; flow?: SummaryFlow; since?: string; limit?: number },
 ): Promise<SummaryGql[]> {
   if (!store) return [];
 
   const summaries = await store.query({
-    status: args.status,
+    ticker: args.ticker,
+    flow: args.flow,
     since: args.since,
     limit: args.limit ?? 50,
-    dismissed: args.dismissed,
   });
 
   return summaries.map(toGql);
@@ -93,37 +81,4 @@ export async function summaryResolver(_parent: unknown, args: { id: string }): P
 
   const summary = await store.getById(args.id);
   return summary ? toGql(summary) : null;
-}
-
-// ---------------------------------------------------------------------------
-// Mutation resolvers
-// ---------------------------------------------------------------------------
-
-export async function approveSummaryMutation(_parent: unknown, args: { id: string }): Promise<SummaryGql> {
-  if (!store) throw new Error('Summary store not initialized');
-
-  const result = await store.approve(args.id);
-  if (!result.success) {
-    throw new Error(result.error);
-  }
-
-  return toGql(result.data);
-}
-
-export async function rejectSummaryMutation(_parent: unknown, args: { id: string }): Promise<SummaryGql> {
-  if (!store) throw new Error('Summary store not initialized');
-
-  const result = await store.reject(args.id);
-  if (!result.success) {
-    throw new Error(result.error);
-  }
-
-  return toGql(result.data);
-}
-
-export async function dismissSummaryMutation(_parent: unknown, args: { id: string }): Promise<SummaryGql> {
-  if (!store) throw new Error('Summary store not initialized');
-  const result = await store.dismiss(args.id);
-  if (!result.success) throw new Error(result.error);
-  return toGql(result.data);
 }

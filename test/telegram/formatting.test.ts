@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   chunkMessage,
   escapeHtml,
+  formatAction,
   formatInsight,
   formatSnap,
-  formatSummary,
 } from '../../channels/telegram/src/formatting.js';
+import type { Action } from '../../src/actions/types.js';
 import type { InsightReport } from '../../src/insights/types.js';
 import type { Snap } from '../../src/snap/types.js';
-import type { Summary } from '../../src/summaries/types.js';
 
 describe('escapeHtml', () => {
   it('escapes HTML special characters', () => {
@@ -78,37 +78,52 @@ describe('formatSnap', () => {
   });
 });
 
-describe('formatSummary', () => {
-  it('formats with HTML tags', () => {
-    const summary: Summary = {
-      id: 'act-1',
-      what: 'Review AAPL — bearish divergence detected',
-      why: 'RSI divergence on daily chart',
-      source: 'skill: momentum',
-      status: 'PENDING',
-      expiresAt: '2026-03-31T08:00:00Z',
-      createdAt: '2026-03-30T08:00:00Z',
-    };
+describe('formatAction', () => {
+  const baseAction: Action = {
+    id: 'act-1',
+    skillId: 'momentum',
+    skillName: 'Momentum Breakout',
+    triggerId: 'momentum-PRICE_MOVE-AAPL',
+    triggerType: 'PRICE_MOVE',
+    verdict: 'BUY',
+    what: 'BUY AAPL — golden cross + expanding volume',
+    why: 'RSI reclaimed 50 and the 50D crossed above the 200D',
+    tickers: ['AAPL'],
+    status: 'PENDING',
+    expiresAt: '2026-03-31T08:00:00Z',
+    createdAt: '2026-03-30T08:00:00Z',
+  };
 
-    const result = formatSummary(summary);
-    expect(result).toContain('<b>New Action</b>');
-    expect(result).toContain('Review AAPL');
-    expect(result).not.toContain('<i>Why:</i>');
+  it('renders verdict and ticker in the header', () => {
+    const result = formatAction(baseAction);
+    expect(result).toContain('<b>BUY AAPL</b>');
+    expect(result).toContain('golden cross');
+    expect(result).toContain('RSI reclaimed 50');
   });
 
-  it('uses ticker as header for micro-observation actions', () => {
-    const microSummary: Summary = {
-      id: 'act-2',
-      what: 'Rocket Lab completes Mynaric acquisition',
-      why: 'Observation from RKLB research',
-      source: 'micro-observation: RKLB',
-      status: 'PENDING',
-      expiresAt: '2026-03-31T08:00:00Z',
-      createdAt: '2026-03-30T08:00:00Z',
+  it('omits the reasoning block when it duplicates the headline', () => {
+    const action: Action = { ...baseAction, why: baseAction.what };
+    const result = formatAction(action);
+    const occurrences = result.split('golden cross').length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('falls back to verdict-only header when no ticker is present', () => {
+    const action: Action = { ...baseAction, tickers: [], verdict: 'REVIEW', what: 'REVIEW portfolio — concentration' };
+    const result = formatAction(action);
+    expect(result).toContain('<b>REVIEW</b>');
+    expect(result).not.toContain('REVIEW  —');
+  });
+
+  it('escapes HTML special characters from headlines and reasoning', () => {
+    const action: Action = {
+      ...baseAction,
+      what: 'BUY AAPL — P&L improves <sharply>',
+      why: 'Conviction & risk both <high>',
     };
-    const result = formatSummary(microSummary);
-    expect(result).toContain('<b>RKLB</b>');
-    expect(result).not.toContain('New Action');
+    const result = formatAction(action);
+    expect(result).toContain('P&amp;L improves &lt;sharply&gt;');
+    expect(result).toContain('Conviction &amp; risk both &lt;high&gt;');
   });
 });
 

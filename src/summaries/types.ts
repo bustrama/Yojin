@@ -1,26 +1,30 @@
 /**
- * Summary data model — first-class output type for the signal/intel pipeline.
+ * Summary data model — neutral intel observations produced by the insight
+ * pipelines (macro + micro). Summaries are NOT opinionated — they do not
+ * contain BUY/SELL recommendations and have no approval lifecycle. They are
+ * the Intel Feed content layer.
  *
- * A Summary represents an observation or proposed step (e.g. "Review AAPL position")
- * that requires human approval before execution. Summaries flow through
- * PENDING -> APPROVED | REJECTED | EXPIRED.
+ * Summaries NEVER come from Skills/Strategies — skill-triggered records are
+ * Actions and live in src/actions/. If a producer mentions skillId, it's
+ * writing to the wrong store.
  *
- * Storage: file-driven JSONL in data/summaries/ (date-partitioned, append-only).
- * GraphQL: Summary, SummaryStatus types in schema.ts.
- *
- * All types are Zod schemas — the single source of truth for validation and inference.
+ * Storage: append-only JSONL in data/summaries/ (date-partitioned).
+ * GraphQL: Summary type in schema.ts.
  */
+
+import { createHash } from 'node:crypto';
 
 import { z } from 'zod';
 
-import { DateTimeField, IdField } from '../types/base.js';
+import { DateTimeField, IdField, ScoreRange } from '../types/base.js';
 
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
-export const SummaryStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED']);
-export type SummaryStatus = z.infer<typeof SummaryStatusSchema>;
+/** Which flow produced this summary. */
+export const SummaryFlowSchema = z.enum(['MACRO', 'MICRO']);
+export type SummaryFlow = z.infer<typeof SummaryFlowSchema>;
 
 // ---------------------------------------------------------------------------
 // Summary — the core entity
@@ -28,23 +32,32 @@ export type SummaryStatus = z.infer<typeof SummaryStatusSchema>;
 
 export const SummarySchema = z.object({
   id: IdField,
-  signalId: z.string().optional(), // originating signal, if any
-  skillId: z.string().optional(), // originating skill, if any
-  triggerId: z.string().optional(), // dedup key: "${skillId}-${triggerType}-${ticker}"
-  what: z.string().min(1), // plain English: "Review AAPL — bearish divergence detected"
-  why: z.string().min(1), // reasoning trace
-  tickers: z.array(z.string()).default([]), // related ticker symbols
-  source: z.string().min(1), // skill name or "rule: ..." or "agent: strategist"
-  riskContext: z.string().optional(), // guard checks summary
-  // 0–1 severity score — acts as priority. Used to rank summaries and to gate
-  // low-impact micro updates. Producers that don't score summaries can omit this
-  // (absent = 0 for comparison purposes).
-  severity: z.number().min(0).max(1).optional(),
-  status: SummaryStatusSchema.default('PENDING'),
-  expiresAt: DateTimeField, // auto-reject after this
+  /** Ticker this observation is about. Portfolio-wide summaries use 'PORTFOLIO'. */
+  ticker: z.string().min(1),
+  /** One-line neutral observation: "Truist cuts AAPL PT to $323". */
+  what: z.string().min(1),
+  /** Which pipeline emitted this summary. */
+  flow: SummaryFlowSchema,
+  /** Optional 0–1 priority score — used for ranking in the Intel Feed. */
+  severity: ScoreRange.optional(),
+  /** Signals this observation was derived from (for traceability). */
+  sourceSignalIds: z.array(IdField).default([]),
+  /**
+   * Stable dedup hash: sha256(`${ticker}|${flow}|${normalizedWhat}`).
+   * Two summaries with the same contentHash within the dedup window are
+   * treated as duplicates — the newer one wins, the older one is skipped.
+   */
+  contentHash: z.string().min(1),
   createdAt: DateTimeField,
-  resolvedAt: DateTimeField.optional(),
-  resolvedBy: z.string().optional(), // 'user' | 'timeout' | 'superseded'
-  dismissedAt: DateTimeField.optional(),
 });
 export type Summary = z.infer<typeof SummarySchema>;
+
+/**
+ * Compute the stable content hash for a summary. Used for dedup so the same
+ * observation arriving from micro and then macro doesn't double-fire in the
+ * Intel Feed.
+ */
+export function computeSummaryContentHash(ticker: string, flow: SummaryFlow, what: string): string {
+  const normalized = what.trim().toLowerCase().replace(/\s+/g, ' ');
+  return createHash('sha256').update(`${ticker.toUpperCase()}|${flow}|${normalized}`).digest('hex');
+}

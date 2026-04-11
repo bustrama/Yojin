@@ -1,7 +1,7 @@
+import type { Action } from '../../../src/actions/types.js';
 import { chunkMessage as chunkMessageBase, escapeHtml } from '../../../src/formatting/index.js';
 import type { InsightReport } from '../../../src/insights/types.js';
 import type { Snap } from '../../../src/snap/types.js';
-import type { Summary } from '../../../src/summaries/types.js';
 
 export { escapeHtml } from '../../../src/formatting/index.js';
 
@@ -28,10 +28,17 @@ export function formatSnap(snap: Snap): string {
   return lines.join('\n');
 }
 
-export function formatSummary(summary: Summary): string {
-  const ticker = summary.source?.match(/micro-observation:\s*(\S+)/)?.[1];
-  const header = ticker ? `\u{26A1} <b>${escapeHtml(ticker)}</b>` : '\u{26A1} <b>New Action</b>';
-  return [header, escapeHtml(summary.what)].join('\n');
+/** Format an Action for Telegram HTML: verdict badge + headline + reasoning. */
+export function formatAction(action: Action): string {
+  const ticker = action.tickers[0];
+  const header = ticker
+    ? `\u{26A1} <b>${escapeHtml(action.verdict)} ${escapeHtml(ticker)}</b>`
+    : `\u{26A1} <b>${escapeHtml(action.verdict)}</b>`;
+  const lines = [header, escapeHtml(action.what)];
+  if (action.why && action.why !== action.what) {
+    lines.push('', escapeHtml(action.why));
+  }
+  return lines.join('\n');
 }
 
 export function formatInsight(report: InsightReport): string {

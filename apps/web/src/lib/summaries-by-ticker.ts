@@ -2,16 +2,10 @@
  * Shared helpers for reading the Summaries feed by ticker.
  *
  * Used by the Summaries card (yojin-snap-card) and the positions preview hover
- * popover — both need to map `summary.source` → ticker and sort severity-first.
+ * popover — both need to group by ticker and sort severity-first.
  */
 
 import type { Summary } from '../api/types';
-
-/** Extract ticker from `source: "micro-observation: AAPL"`. */
-export function extractTickerFromSource(source: string): string | null {
-  const match = source.match(/^micro-observation:\s*(.+)$/i);
-  return match?.[1]?.trim() ?? null;
-}
 
 /** Map a 0–1 severity score to a bullet color class (matches the analyzer prompt's ladder). */
 export function severityBulletColor(severity: number | null): string {
@@ -31,18 +25,16 @@ export function insightsHrefForTicker(ticker: string): string {
 
 /**
  * Group summaries into ticker-keyed buckets. Each bucket is sorted by severity
- * DESC, then createdAt DESC. Summaries with no ticker in the source land under
- * the empty-string key. Callers that only need per-ticker lookups (e.g. the
- * positions hover popover) should use `map.get(symbol)`; callers that need
+ * DESC, then createdAt DESC. Callers that only need per-ticker lookups (e.g.
+ * the positions hover popover) should use `map.get(symbol)`; callers that need
  * the full list (the Summaries card) should iterate and layer their own sort.
  */
 export function groupSummariesByTicker(summaries: readonly Summary[]): Map<string, Summary[]> {
   const byTicker = new Map<string, Summary[]>();
   for (const summary of summaries) {
-    const key = summary.tickers?.[0] ?? extractTickerFromSource(summary.source) ?? '';
-    const bucket = byTicker.get(key) ?? [];
+    const bucket = byTicker.get(summary.ticker) ?? [];
     bucket.push(summary);
-    byTicker.set(key, bucket);
+    byTicker.set(summary.ticker, bucket);
   }
   for (const items of byTicker.values()) {
     items.sort((a, b) => {

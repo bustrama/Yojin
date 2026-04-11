@@ -3,9 +3,10 @@ import { join } from 'node:path';
 
 import type { WAMessage, WASocket } from '@whiskeysockets/baileys';
 
-import { chunkMessage, formatInsight, formatSnap, formatSummary, toWhatsApp } from './formatting.js';
+import { chunkMessage, formatAction, formatInsight, formatSnap, toWhatsApp } from './formatting.js';
 import { createWhatsAppSession } from './session.js';
 import type { WhatsAppSession } from './session.js';
+import type { ActionStore } from '../../../src/actions/action-store.js';
 import { isNotificationEnabled } from '../../../src/api/graphql/resolvers/channels.js';
 import { QUICK_ACTIONS } from '../../../src/channels/quick-actions.js';
 import type { NotificationBus } from '../../../src/core/notification-bus.js';
@@ -23,7 +24,6 @@ import type {
   TypingHandle,
 } from '../../../src/plugins/types.js';
 import type { SnapStore } from '../../../src/snap/snap-store.js';
-import type { SummaryStore } from '../../../src/summaries/summary-store.js';
 import { formatDisplayCardForWhatsApp } from '../../../src/tools/channel-display-formatters.js';
 import type { ApprovalGate } from '../../../src/trust/approval/approval-gate.js';
 import type { PiiRedactor } from '../../../src/trust/pii/types.js';
@@ -40,7 +40,7 @@ export interface WhatsAppChannelDeps {
   approvalGate?: ApprovalGate;
   snapStore?: SnapStore;
   insightStore?: InsightStore;
-  summaryStore?: SummaryStore;
+  actionStore?: ActionStore;
   oauthDir?: string;
 }
 
@@ -374,15 +374,15 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
     );
 
     unsubscribers.push(
-      bus.on('summary.created', async (event) => {
-        if (!session?.isConnected() || !selfJid || !deps.summaryStore) return;
-        if (!(await isNotificationEnabled('whatsapp', 'summary.created'))) return;
+      bus.on('action.created', async (event) => {
+        if (!session?.isConnected() || !selfJid || !deps.actionStore) return;
+        if (!(await isNotificationEnabled('whatsapp', 'action.created'))) return;
         try {
-          const summary = await deps.summaryStore.getById(event.summaryId);
-          if (!summary) return;
-          await sendNotification(formatSummary(summary));
+          const action = await deps.actionStore.getById(event.actionId);
+          if (!action) return;
+          await sendNotification(formatAction(action));
         } catch (err) {
-          logger.error('Failed to push summary', { error: err });
+          logger.error('Failed to push action', { error: err });
         }
       }),
     );

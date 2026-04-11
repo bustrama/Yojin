@@ -18,8 +18,12 @@ export {
   useAddToWatchlist,
   useRemoveFromWatchlist,
   useSummaries,
-  useApproveSummary,
-  useRejectSummary,
+  useSummary,
+  useActions,
+  useAction,
+  useApproveAction,
+  useRejectAction,
+  useDismissAction,
 } from './hooks/index.js';
 
 // Types — for components that need to type props or local state
@@ -48,7 +52,10 @@ export type {
   WatchlistResult,
   SymbolSearchResult,
   Summary,
-  SummaryStatus,
+  SummaryFlow,
+  Action,
+  ActionVerdict,
+  ActionStatus,
 } from './types.js';
 
 export { KNOWN_PLATFORMS, isKnownPlatform } from './types.js';

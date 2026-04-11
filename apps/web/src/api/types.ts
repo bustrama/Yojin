@@ -1107,23 +1107,63 @@ export interface CurationWorkflowStatusQueryResult {
 }
 
 // ---------------------------------------------------------------------------
-// Summaries
+// Summaries — neutral intel observations from macro + micro insight pipelines.
+// Read-only: no approval lifecycle. Action-style records live in `Action`.
 // ---------------------------------------------------------------------------
 
-export type SummaryStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+export type SummaryFlow = 'MACRO' | 'MICRO';
 
 export interface Summary {
   id: string;
-  signalId: string | null;
-  skillId: string | null;
+  ticker: string;
+  what: string;
+  flow: SummaryFlow;
+  severity: number | null;
+  severityLabel: string;
+  sourceSignalIds: string[];
+  contentHash: string;
+  createdAt: string;
+}
+
+export interface SummariesQueryResult {
+  summaries: Summary[];
+}
+export interface SummariesQueryVariables {
+  ticker?: string;
+  flow?: SummaryFlow;
+  since?: string;
+  limit?: number;
+}
+
+export interface SummaryQueryResult {
+  summary: Summary | null;
+}
+export interface SummaryQueryVariables {
+  id: string;
+}
+
+// ---------------------------------------------------------------------------
+// Actions — BUY/SELL/REVIEW outcomes produced by Skill/Strategy triggers.
+// Opinionated layer with a PENDING → APPROVED | REJECTED | EXPIRED lifecycle.
+// ---------------------------------------------------------------------------
+
+export type ActionVerdict = 'BUY' | 'SELL' | 'TRIM' | 'HOLD' | 'REVIEW';
+export type ActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+
+export interface Action {
+  id: string;
+  skillId: string;
+  skillName: string;
+  triggerId: string;
+  triggerType: string;
+  verdict: ActionVerdict;
   what: string;
   why: string;
   tickers: string[];
-  source: string;
   riskContext: string | null;
   severity: number | null;
   severityLabel: string;
-  status: SummaryStatus;
+  status: ActionStatus;
   expiresAt: string;
   createdAt: string;
   resolvedAt: string | null;
@@ -1131,30 +1171,42 @@ export interface Summary {
   dismissedAt: string | null;
 }
 
-export interface SummariesQueryResult {
-  summaries: Summary[];
+export interface ActionsQueryResult {
+  actions: Action[];
 }
-export interface SummariesQueryVariables {
-  status?: SummaryStatus;
+export interface ActionsQueryVariables {
+  status?: ActionStatus;
   since?: string;
   limit?: number;
   dismissed?: boolean;
 }
 
-export interface ApproveSummaryVariables {
+export interface ActionQueryResult {
+  action: Action | null;
+}
+export interface ActionQueryVariables {
   id: string;
 }
 
-export interface ApproveSummaryMutationResult {
-  approveSummary: Summary;
-}
-
-export interface RejectSummaryVariables {
+export interface ApproveActionVariables {
   id: string;
 }
+export interface ApproveActionMutationResult {
+  approveAction: Action;
+}
 
-export interface RejectSummaryMutationResult {
-  rejectSummary: Summary;
+export interface RejectActionVariables {
+  id: string;
+}
+export interface RejectActionMutationResult {
+  rejectAction: Action;
+}
+
+export interface DismissActionVariables {
+  id: string;
+}
+export interface DismissActionMutationResult {
+  dismissAction: Action;
 }
 
 // ---------------------------------------------------------------------------

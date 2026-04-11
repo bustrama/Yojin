@@ -6,8 +6,7 @@
  * re-generates the snap from scratch — keeps it concise as new data arrives.
  */
 
-import { randomUUID } from 'node:crypto';
-
+import { computeSnapContentHash, snapIdFromHash } from './content-hash.js';
 import type { Snap } from './types.js';
 import { assetSnapsFromMicro } from './types.js';
 import type { ProviderRouter } from '../ai-providers/router.js';
@@ -127,16 +126,21 @@ export async function snapFromMicro(
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    const actionItems = Array.isArray(parsed.actionItems)
+    const actionItemTexts = Array.isArray(parsed.actionItems)
       ? (parsed.actionItems as unknown[]).filter((x): x is string => typeof x === 'string')
       : [];
 
+    const intelSummary = typeof parsed.intelSummary === 'string' ? parsed.intelSummary : '';
+    const actionItems = actionItemTexts.map((text) => ({ text, signalIds: matchSignalIds(text, insights) }));
+    const contentHash = computeSnapContentHash({ intelSummary, actionItems });
+
     return {
-      id: `snap-${randomUUID().slice(0, 8)}`,
+      id: snapIdFromHash(contentHash),
       generatedAt: new Date().toISOString(),
-      intelSummary: typeof parsed.intelSummary === 'string' ? parsed.intelSummary : '',
-      actionItems: actionItems.map((text) => ({ text, signalIds: matchSignalIds(text, insights) })),
+      intelSummary,
+      actionItems,
       assetSnaps,
+      contentHash,
     };
   } catch (err) {
     logger.warn('Snap synthesis failed — falling back to top asset snap', { error: String(err) });
@@ -145,12 +149,17 @@ export async function snapFromMicro(
     const top = insights[0];
     if (!top) return null;
 
+    const intelSummary = top.assetSnap;
+    const actionItems = top.assetActions.slice(0, 5).map((text) => ({ text, signalIds: top.topSignalIds }));
+    const contentHash = computeSnapContentHash({ intelSummary, actionItems });
+
     return {
-      id: `snap-${randomUUID().slice(0, 8)}`,
+      id: snapIdFromHash(contentHash),
       generatedAt: new Date().toISOString(),
-      intelSummary: top.assetSnap,
-      actionItems: top.assetActions.slice(0, 5).map((text) => ({ text, signalIds: top.topSignalIds })),
+      intelSummary,
+      actionItems,
       assetSnaps,
+      contentHash,
     };
   }
 }
