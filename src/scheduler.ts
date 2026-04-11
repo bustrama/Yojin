@@ -52,7 +52,7 @@ import { buildPortfolioContext, buildSingleTickerContext } from './strategies/po
 import type { PortfolioContext, StrategyEvaluator } from './strategies/strategy-evaluator.js';
 import type { StrategyEvaluation } from './strategies/types.js';
 import type { SummaryStore } from './summaries/summary-store.js';
-import { computeSummaryContentHash } from './summaries/types.js';
+import { computeSummaryContentHash, hasSubstance } from './summaries/types.js';
 import type { WatchlistStore } from './watchlist/watchlist-store.js';
 
 const logger = createSubsystemLogger('scheduler');
@@ -1128,6 +1128,12 @@ export class Scheduler {
       for (const what of insight.assetActions) {
         const trimmed = what.trim();
         if (!trimmed) continue;
+        // Quality gate: drop bare-indicator strings like "MFI 75." that
+        // would otherwise render as useless Intel Feed headlines.
+        if (!hasSubstance(trimmed)) {
+          logger.debug('Skipping low-substance micro summary', { ticker, what: trimmed });
+          continue;
+        }
 
         const contentHash = computeSummaryContentHash(ticker, 'MICRO', trimmed);
         const result = await this.summaryStore.create({

@@ -6,8 +6,12 @@
  *
  * Placement rules:
  *  - `positions[].thesis` → Summary under the real ticker, severity = conviction.
+ *    The thesis is passed through `extractLead` (full lead paragraph, not just
+ *    the first sentence) so terse first sentences like "MFI 75." don't become
+ *    the display string. A `hasSubstance` gate rejects bare-indicator output
+ *    entirely rather than displaying it as-is.
  *  - `positions[].risks[]` / `opportunities[]` → Summaries under the real ticker,
- *    severity = null (they sort below the headline thesis).
+ *    severity = null (they sort below the headline thesis). Same substance gate.
  *  - `portfolio.topRisks[]` / `topOpportunities[]` / `actionItems[]` → Summaries
  *    under the PORTFOLIO_TICKER sentinel. These MUST be cross-cutting or
  *    portfolio-wide only — single-ticker content belongs on the position.
@@ -16,23 +20,16 @@
  */
 
 import type { InsightReport, PositionInsight } from './types.js';
-import { PORTFOLIO_TICKER, type Summary, computeSummaryContentHash } from '../summaries/types.js';
+import {
+  PORTFOLIO_TICKER,
+  type Summary,
+  computeSummaryContentHash,
+  extractLead,
+  hasSubstance,
+} from '../summaries/types.js';
 
 /** Summary record minus the randomly-generated id, which is assigned by the caller. */
 export type MacroSummaryInput = Omit<Summary, 'id'>;
-
-/**
- * Extract the first sentence from a multi-sentence thesis, capped at a
- * reasonable display length. Used when flattening a position thesis into a
- * one-line Summary observation.
- */
-export function firstSentence(text: string, maxLen = 240): string {
-  const trimmed = text.trim();
-  if (!trimmed) return '';
-  const match = trimmed.match(/^[^.!?]*[.!?]/);
-  const candidate = match ? match[0].trim() : trimmed;
-  return candidate.length <= maxLen ? candidate : candidate.slice(0, maxLen - 1) + '…';
-}
 
 function buildPositionSummaries(position: PositionInsight, createdAt: string): MacroSummaryInput[] {
   const ticker = position.symbol.toUpperCase();
@@ -40,9 +37,11 @@ function buildPositionSummaries(position: PositionInsight, createdAt: string): M
   const out: MacroSummaryInput[] = [];
 
   // Headline thesis — one Summary, severity = conviction so it sorts to the
-  // top of the per-ticker bucket in the Intel Feed.
-  const thesis = firstSentence(position.thesis);
-  if (thesis) {
+  // top of the per-ticker bucket in the Intel Feed. Skip entirely if the
+  // thesis is bare-indicator noise ("MFI 75.") — a low-quality thesis must
+  // not bury good risks/opportunities under it.
+  const thesis = extractLead(position.thesis);
+  if (thesis && hasSubstance(thesis)) {
     out.push({
       ticker,
       what: thesis,
@@ -60,7 +59,7 @@ function buildPositionSummaries(position: PositionInsight, createdAt: string): M
   // the thesis first and the supporting observations on expand.
   for (const risk of position.risks) {
     const what = risk.trim();
-    if (!what) continue;
+    if (!what || !hasSubstance(what)) continue;
     out.push({
       ticker,
       what,
@@ -72,7 +71,7 @@ function buildPositionSummaries(position: PositionInsight, createdAt: string): M
   }
   for (const opportunity of position.opportunities) {
     const what = opportunity.trim();
-    if (!what) continue;
+    if (!what || !hasSubstance(what)) continue;
     out.push({
       ticker,
       what,
@@ -109,7 +108,7 @@ export function buildMacroSummaryInputs(report: InsightReport): MacroSummaryInpu
   ];
   for (const item of portfolioItems) {
     const what = item.text.trim();
-    if (!what) continue;
+    if (!what || !hasSubstance(what)) continue;
     out.push({
       ticker: PORTFOLIO_TICKER,
       what,

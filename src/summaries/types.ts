@@ -70,3 +70,41 @@ export function computeSummaryContentHash(ticker: string, flow: SummaryFlow, wha
   const normalized = what.trim().toLowerCase().replace(/\s+/g, ' ');
   return createHash('sha256').update(`${ticker.toUpperCase()}|${flow}|${normalized}`).digest('hex');
 }
+
+/**
+ * Extract a display-ready lead paragraph from a longer thesis / free-form text.
+ * Unlike a "first sentence" extractor, this preserves the full narrative up to
+ * `maxLen` characters and trims on the nearest word boundary so the reader
+ * keeps context rather than being cut off after a 7-char fragment like
+ * "MFI 75." (which is the first sentence of "MFI 75. RSI neutral. …").
+ *
+ * Used by the macro summary builder — tests in
+ * `test/summaries/types.test.ts` cap on word boundaries and the ellipsis.
+ */
+export function extractLead(text: string, maxLen = 400): string {
+  const trimmed = text.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+  if (trimmed.length <= maxLen) return trimmed;
+  const truncated = trimmed.slice(0, maxLen - 1);
+  const lastSpace = truncated.lastIndexOf(' ');
+  const safe = lastSpace > maxLen * 0.5 ? truncated.slice(0, lastSpace) : truncated;
+  return safe.replace(/[,;:\s]+$/, '') + '…';
+}
+
+/**
+ * Quality gate for Summary.what text. Rejects bare-indicator or metadata
+ * strings like "MFI 75.", "RSI 80", "Price 108.45" that carry no narrative.
+ *
+ * Rule: a usable observation must contain at least two alphabetic word
+ * tokens of 3+ letters. That lets through "Gap up on no catalyst"
+ * (2 alpha runs: "Gap", "catalyst") and "Convertible bond inflows" while
+ * blocking "MFI 75." (1 alpha run: "MFI") and "RSI 80" (1 alpha run).
+ *
+ * The gate is applied at the summary producer layer — not at the SummaryStore
+ * — so the store stays a pure persistence layer and the policy is owned by
+ * the pipelines that produce observations.
+ */
+export function hasSubstance(text: string): boolean {
+  const alphaWords = text.match(/[A-Za-z]{3,}/g);
+  return (alphaWords?.length ?? 0) >= 2;
+}

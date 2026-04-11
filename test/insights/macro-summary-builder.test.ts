@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildMacroSummaryInputs, firstSentence } from '../../src/insights/macro-summary-builder.js';
+import { buildMacroSummaryInputs } from '../../src/insights/macro-summary-builder.js';
 import type { InsightReport, PositionInsight } from '../../src/insights/types.js';
 import { PORTFOLIO_TICKER } from '../../src/summaries/types.js';
 
@@ -55,29 +55,8 @@ function makeReport(positions: PositionInsight[], overrides: Partial<InsightRepo
   };
 }
 
-describe('firstSentence', () => {
-  it('returns the first sentence of a multi-sentence thesis', () => {
-    expect(firstSentence('AAPL beats earnings. Guidance raised. Stock up.')).toBe('AAPL beats earnings.');
-  });
-
-  it('returns the full text when there is no sentence terminator', () => {
-    expect(firstSentence('AAPL beats earnings')).toBe('AAPL beats earnings');
-  });
-
-  it('truncates with an ellipsis when longer than maxLen', () => {
-    const long = 'x'.repeat(300);
-    const result = firstSentence(long, 240);
-    expect(result.length).toBe(240);
-    expect(result.endsWith('…')).toBe(true);
-  });
-
-  it('returns empty string for whitespace-only input', () => {
-    expect(firstSentence('   \n  ')).toBe('');
-  });
-});
-
 describe('buildMacroSummaryInputs — per-position placement', () => {
-  it('files the position thesis under the real ticker with severity=conviction', () => {
+  it('files the full position thesis under the real ticker with severity=conviction', () => {
     const report = makeReport([
       makePosition('aapl', { conviction: 0.85, thesis: 'AAPL supply chain risk. Guidance unclear.' }),
     ]);
@@ -87,9 +66,36 @@ describe('buildMacroSummaryInputs — per-position placement', () => {
     expect(inputs).toHaveLength(1);
     const [thesis] = inputs;
     expect(thesis.ticker).toBe('AAPL');
-    expect(thesis.what).toBe('AAPL supply chain risk.');
+    // The whole thesis is kept — not just the first sentence — so context
+    // survives. See extractLead in src/summaries/types.ts.
+    expect(thesis.what).toBe('AAPL supply chain risk. Guidance unclear.');
     expect(thesis.flow).toBe('MACRO');
     expect(thesis.severity).toBe(0.85);
+  });
+
+  it('drops a bare-indicator thesis ("MFI 75.") via the substance gate', () => {
+    // Regression test for the "MFI 75." ICVT issue: the LLM sometimes writes
+    // terse data-dump theses. Those must NOT surface as the per-ticker
+    // headline — let the micro flow's narrative summaries win instead.
+    const report = makeReport([makePosition('ICVT', { thesis: 'MFI 75.' })]);
+    const inputs = buildMacroSummaryInputs(report);
+    expect(inputs).toHaveLength(0);
+  });
+
+  it('drops bare-indicator risks/opportunities via the substance gate', () => {
+    const report = makeReport([
+      makePosition('NVDA', {
+        thesis: 'NVDA datacenter demand is accelerating into 2H.',
+        risks: ['RSI 80', 'China export controls'],
+        opportunities: ['Price 108', 'Enterprise AI uptake'],
+      }),
+    ]);
+    const inputs = buildMacroSummaryInputs(report);
+    const texts = inputs.map((i) => i.what);
+    expect(texts).toContain('China export controls');
+    expect(texts).toContain('Enterprise AI uptake');
+    expect(texts).not.toContain('RSI 80');
+    expect(texts).not.toContain('Price 108');
   });
 
   it('files per-position risks under the real ticker, NOT under PORTFOLIO', () => {
