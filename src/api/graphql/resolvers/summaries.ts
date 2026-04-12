@@ -8,7 +8,7 @@
  */
 
 import type { SignalArchive } from '../../../signals/archive.js';
-import type { SignalType } from '../../../signals/types.js';
+import type { Signal, SignalType } from '../../../signals/types.js';
 import type { SummaryStore } from '../../../summaries/summary-store.js';
 import type { Summary, SummaryFlow } from '../../../summaries/types.js';
 
@@ -54,11 +54,23 @@ interface SummaryGql {
   severity: number | null;
   severityLabel: string;
   sourceSignalIds: string[];
+  sourceSignals: SummarySourceSignalGql[];
   contentHash: string;
   createdAt: string;
 }
 
-function toGql(summary: Summary): SummaryGql {
+function signalToSourceGql(s: Signal): SummarySourceSignalGql {
+  return {
+    id: s.id,
+    type: s.type,
+    title: s.title,
+    link: typeof s.metadata?.link === 'string' ? s.metadata.link : null,
+    sourceName: s.sources[0]?.name ?? null,
+  };
+}
+
+function toGql(summary: Summary, signalMap: Map<string, Signal>): SummaryGql {
+  const ids = summary.sourceSignalIds ?? [];
   return {
     id: summary.id,
     ticker: summary.ticker,
@@ -66,32 +78,34 @@ function toGql(summary: Summary): SummaryGql {
     flow: summary.flow,
     severity: summary.severity ?? null,
     severityLabel: deriveSeverityLabel(summary.severity),
-    sourceSignalIds: summary.sourceSignalIds ?? [],
+    sourceSignalIds: ids,
+    sourceSignals: ids.flatMap((id) => {
+      const sig = signalMap.get(id);
+      return sig ? [signalToSourceGql(sig)] : [];
+    }),
     contentHash: summary.contentHash,
     createdAt: summary.createdAt,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Field resolvers
+// Batch helpers
 // ---------------------------------------------------------------------------
 
-async function resolveSourceSignals(parent: SummaryGql): Promise<SummarySourceSignalGql[]> {
-  if (!signalArchive || parent.sourceSignalIds.length === 0) return [];
-
-  const signals = await signalArchive.getByIds(parent.sourceSignalIds);
-  return signals.map((s) => ({
-    id: s.id,
-    type: s.type,
-    title: s.title,
-    link: typeof s.metadata?.link === 'string' ? s.metadata.link : null,
-    sourceName: s.sources[0]?.name ?? null,
-  }));
+/**
+ * Collect all sourceSignalIds across summaries and resolve them in a single
+ * archive pass. Returns a lookup map keyed by signal ID.
+ */
+async function batchResolveSourceSignals(summaries: Summary[]): Promise<Map<string, Signal>> {
+  if (!signalArchive) return new Map();
+  const allIds = new Set<string>();
+  for (const s of summaries) {
+    for (const id of s.sourceSignalIds ?? []) allIds.add(id);
+  }
+  if (allIds.size === 0) return new Map();
+  const signals = await signalArchive.getByIds([...allIds]);
+  return new Map(signals.map((s) => [s.id, s]));
 }
-
-export const summaryFieldResolvers = {
-  sourceSignals: resolveSourceSignals,
-};
 
 // ---------------------------------------------------------------------------
 // Query resolvers
@@ -110,12 +124,16 @@ export async function summariesResolver(
     limit: args.limit ?? 50,
   });
 
-  return summaries.map(toGql);
+  const signalMap = await batchResolveSourceSignals(summaries);
+  return summaries.map((s) => toGql(s, signalMap));
 }
 
 export async function summaryResolver(_parent: unknown, args: { id: string }): Promise<SummaryGql | null> {
   if (!store) return null;
 
   const summary = await store.getById(args.id);
-  return summary ? toGql(summary) : null;
+  if (!summary) return null;
+
+  const signalMap = await batchResolveSourceSignals([summary]);
+  return toGql(summary, signalMap);
 }

@@ -1551,7 +1551,6 @@ export const SUMMARY_FIELDS = gql`
     flow
     severity
     severityLabel
-    sourceSignalIds
     sourceSignals {
       id
       type

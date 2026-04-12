@@ -1128,7 +1128,6 @@ export interface Summary {
   flow: SummaryFlow;
   severity: number | null;
   severityLabel: string;
-  sourceSignalIds: string[];
   sourceSignals: SummarySourceSignal[];
   contentHash: string;
   createdAt: string;

@@ -140,7 +140,7 @@ import {
   resolveSyncStrategySource,
   resolveToggleStrategySource,
 } from './resolvers/strategy-sources.js';
-import { summariesResolver, summaryFieldResolvers, summaryResolver } from './resolvers/summaries.js';
+import { summariesResolver, summaryResolver } from './resolvers/summaries.js';
 import {
   addVaultSecretMutation,
   changeVaultPassphraseMutation,
@@ -217,7 +217,6 @@ const schema = createSchema({
     PortfolioSnapshot: portfolioSnapshotFieldResolvers,
     Position: positionFieldResolvers,
     SignalGroup: signalGroupFieldResolvers,
-    Summary: summaryFieldResolvers,
     Mutation: {
       refreshPositions: refreshPositionsMutation,
       addManualPosition: addManualPositionMutation,
