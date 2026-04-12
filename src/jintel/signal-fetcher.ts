@@ -57,6 +57,9 @@ const ENRICHMENT_FIELDS = [
   'topHolders',
 ] as const;
 
+// Reddit-owned domains — native media/shortlinks, not external articles
+const REDDIT_DOMAIN_RE = /\b(reddit\.com|redd\.it|i\.redd\.it|v\.redd\.it|preview\.redd\.it)\b/;
+
 // Quality thresholds — filter low-engagement social posts to keep signal-to-noise high
 const SOCIAL_MIN_REDDIT_SCORE = 5;
 const SOCIAL_MIN_REDDIT_COMMENT_SCORE = 3;
@@ -539,19 +542,32 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
   if (social) {
     for (const post of social.reddit ?? []) {
       if (post.score < SOCIAL_MIN_REDDIT_SCORE) continue;
+      // Link posts point to an external article; self-posts point to reddit.com.
+      // Attribute link posts to the original source so the user knows where the
+      // information actually comes from, with "(via r/...)" for provenance.
+      // Reddit-owned domains (i.redd.it, v.redd.it, redd.it) are native media, not external articles.
+      const isLinkPost = post.url && !REDDIT_DOMAIN_RE.test(post.url);
+      const sourceName = isLinkPost
+        ? `${extractDomain(post.url)} (via r/${post.subreddit})`
+        : `Jintel Social (r/${post.subreddit})`;
       signals.push({
         sourceId: `jintel-social-reddit-${post.id}`,
-        sourceName: `Jintel Social (r/${post.subreddit})`,
+        sourceName,
         sourceType: SourceType.API,
-        reliability: 0.6,
+        reliability: isLinkPost ? 0.65 : 0.6,
         title: `${entity.name ?? tickers[0]}: r/${post.subreddit} — ${post.title}`,
         content: post.text.length > 500 ? post.text.slice(0, 497) + '…' : post.text,
         link: post.url,
         publishedAt: post.date ?? now,
-        type: SignalType.SOCIALS,
+        type: isLinkPost ? SignalType.NEWS : SignalType.SOCIALS,
         tickers,
         confidence: Math.min(0.85, 0.5 + post.score / 1000),
-        metadata: { subreddit: post.subreddit, score: post.score, numComments: post.numComments },
+        metadata: {
+          subreddit: post.subreddit,
+          score: post.score,
+          numComments: post.numComments,
+          ...(isLinkPost && { redditPostId: post.id }),
+        },
       });
     }
 
@@ -907,4 +923,13 @@ function latestSP500(data: SP500DataPoint[]): SP500DataPoint | undefined {
 function toPublishedAt(dateStr: string): string {
   const ms = new Date(dateStr).getTime();
   return ms ? new Date(dateStr).toISOString() : `${dateStr}T00:00:00.000Z`;
+}
+
+/** Extract the domain from a URL, stripping www. prefix. Falls back to the raw URL on parse failure. */
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
 }
