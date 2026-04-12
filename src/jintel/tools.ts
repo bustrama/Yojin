@@ -166,20 +166,39 @@ async function safeCall<T>(
   }
 }
 
+/** Minimum severity required for SANCTIONS risk signals. Filters out fuzzy false positives. */
+const MIN_SANCTIONS_SEVERITY: Set<string> = new Set(['HIGH', 'CRITICAL']);
+
+/** Map Jintel RiskSignal.type → Yojin SignalType. */
+const RISK_TYPE_TO_SIGNAL_TYPE: Record<string, z.infer<typeof SignalTypeSchema>> = {
+  SANCTIONS: SignalType.REGULATORY,
+  REGULATORY_ACTION: SignalType.REGULATORY,
+  LITIGATION: SignalType.REGULATORY,
+  PEP: SignalType.REGULATORY,
+  ADVERSE_MEDIA: SignalType.SENTIMENT,
+};
+
 export function riskSignalsToRaw(signals: RiskSignal[], tickers: string[]): RawSignalInput[] {
-  return signals.map((s) => ({
-    sourceId: 'jintel',
-    sourceName: 'Jintel',
-    sourceType: SourceType.API,
-    reliability: 0.8,
-    title: `[${s.severity}] ${s.type}: ${s.description}`,
-    content: s.description,
-    publishedAt: s.date ?? new Date().toISOString(),
-    type: SignalType.SENTIMENT,
-    tickers,
-    confidence: SEVERITY_CONFIDENCE[s.severity] ?? 0.7,
-    metadata: { riskType: s.type, severity: s.severity, source: s.source },
-  }));
+  return signals
+    .filter((s) => {
+      // Filter out low-severity SANCTIONS matches — these are typically fuzzy false positives
+      // (e.g. "SPECIAL MATERIALS CORPORATION" matching "MP Materials Corp" on a shared noun).
+      if (s.type === 'SANCTIONS' && !MIN_SANCTIONS_SEVERITY.has(s.severity)) return false;
+      return true;
+    })
+    .map((s) => ({
+      sourceId: 'jintel',
+      sourceName: 'Jintel',
+      sourceType: SourceType.API,
+      reliability: 0.8,
+      title: `[${s.severity}] ${s.type}: ${s.description}`,
+      content: s.description,
+      publishedAt: s.date ?? new Date().toISOString(),
+      type: RISK_TYPE_TO_SIGNAL_TYPE[s.type] ?? SignalType.SENTIMENT,
+      tickers,
+      confidence: SEVERITY_CONFIDENCE[s.severity] ?? 0.7,
+      metadata: { riskType: s.type, severity: s.severity, source: s.source },
+    }));
 }
 
 /** Build ArraySubGraphOptions and the matching $filter variable from optional since/limit params. */
