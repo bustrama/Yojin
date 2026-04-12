@@ -567,6 +567,14 @@ export const typeDefs = /* GraphQL */ `
     MICRO
   }
 
+  type SummarySourceSignal {
+    id: ID!
+    type: SignalType!
+    title: String!
+    link: String
+    sourceName: String
+  }
+
   type Summary {
     id: ID!
     ticker: String!
@@ -575,6 +583,7 @@ export const typeDefs = /* GraphQL */ `
     severity: Float
     severityLabel: String!
     sourceSignalIds: [ID!]!
+    sourceSignals: [SummarySourceSignal!]!
     contentHash: String!
     createdAt: String!
   }

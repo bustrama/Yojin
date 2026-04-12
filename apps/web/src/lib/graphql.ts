@@ -47,6 +47,7 @@ const cache = cacheExchange({
     AssetSnap: () => null, // embedded — nested under Snap
     MicroInsight: (data) => data.id as string,
     Summary: (data) => data.id as string,
+    SummarySourceSignal: () => null, // embedded — nested under Summary
     Action: (data) => data.id as string,
     EmotionState: () => null, // embedded — nested under InsightReport
     RefreshIntelFeedResult: () => null, // embedded — mutation result
