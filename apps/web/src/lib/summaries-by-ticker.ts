@@ -30,7 +30,7 @@ export function severityBulletColor(severity: number | null): string {
 
 /** Build the insights deep-link for a ticker (matches the App.tsx redirect shape). */
 export function insightsHrefForTicker(ticker: string): string {
-  const params = new URLSearchParams({ tab: 'all', ticker });
+  const params = new URLSearchParams({ tab: 'position', ticker });
   return `/insights?${params.toString()}`;
 }
 

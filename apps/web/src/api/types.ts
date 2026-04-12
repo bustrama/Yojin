@@ -1113,6 +1113,14 @@ export interface CurationWorkflowStatusQueryResult {
 
 export type SummaryFlow = 'MACRO' | 'MICRO';
 
+export interface SummarySourceSignal {
+  id: string;
+  type: string;
+  title: string;
+  link: string | null;
+  sourceName: string | null;
+}
+
 export interface Summary {
   id: string;
   ticker: string;
@@ -1121,6 +1129,7 @@ export interface Summary {
   severity: number | null;
   severityLabel: string;
   sourceSignalIds: string[];
+  sourceSignals: SummarySourceSignal[];
   contentHash: string;
   createdAt: string;
 }

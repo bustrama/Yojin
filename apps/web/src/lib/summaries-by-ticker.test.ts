@@ -13,6 +13,7 @@ function makeSummary(overrides: Partial<Summary> = {}): Summary {
     severity: overrides.severity ?? 0.5,
     severityLabel: overrides.severityLabel ?? 'MEDIUM',
     sourceSignalIds: overrides.sourceSignalIds ?? [],
+    sourceSignals: overrides.sourceSignals ?? [],
     contentHash: overrides.contentHash ?? 'deadbeef',
     createdAt: overrides.createdAt ?? '2026-04-11T12:00:00.000Z',
   };

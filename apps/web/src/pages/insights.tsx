@@ -332,6 +332,22 @@ function InsightsContent() {
       .sort((a, b) => b.signals.length - a.signals.length);
   }, [allCuratedSignals, positions, report]);
 
+  // Scroll to a specific ticker's position card when navigating from summaries.
+  // Depends on signalsByTicker so it retries once data loads and cards render.
+  const scrolledToTickerRef = useRef(false);
+  useEffect(() => {
+    if (scrolledToTickerRef.current || !initialTicker || viewTab !== 'position') return;
+    // Defer to next frame so the DOM has rendered the position cards.
+    const raf = requestAnimationFrame(() => {
+      const el = document.getElementById(`position-${initialTicker}`);
+      if (el) {
+        scrolledToTickerRef.current = true;
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [initialTicker, viewTab, signalsByTicker]);
+
   // All Signals view: client-side filtered
   const filteredSignals = useMemo(() => {
     let items = allCuratedSignals;
@@ -525,18 +541,20 @@ function InsightsContent() {
                   const position = positions.find((p) => p.symbol === ticker);
                   const insight = report?.positions.find((p) => p.symbol === ticker);
                   return (
-                    <PositionSignalCard
-                      key={ticker}
-                      ticker={ticker}
-                      name={position?.name ?? insight?.name ?? ticker}
-                      signals={signals}
-                      insight={insight}
-                      onViewAll={navigateToSignals}
-                      onViewSignal={(id) => {
-                        setHighlightId(id);
-                        setViewTab('all');
-                      }}
-                    />
+                    <div key={ticker} id={`position-${ticker}`}>
+                      <PositionSignalCard
+                        ticker={ticker}
+                        name={position?.name ?? insight?.name ?? ticker}
+                        signals={signals}
+                        insight={insight}
+                        onViewAll={navigateToSignals}
+                        onViewSignal={(id) => {
+                          setHighlightId(id);
+                          setViewTab('all');
+                        }}
+                        autoExpand={ticker === initialTicker}
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -759,6 +777,7 @@ function PositionSignalCard({
   insight,
   onViewAll,
   onViewSignal,
+  autoExpand = false,
 }: {
   ticker: string;
   name: string;
@@ -766,8 +785,9 @@ function PositionSignalCard({
   insight?: PositionInsight;
   onViewAll: (ticker: string) => void;
   onViewSignal: (signalId: string) => void;
+  autoExpand?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand);
 
   const sorted = useMemo(
     () => [...signals].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()),

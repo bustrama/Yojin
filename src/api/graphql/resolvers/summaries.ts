@@ -3,9 +3,12 @@
  * insight pipelines. Summaries are read-only: no mutations, no approval
  * lifecycle. Action-style mutations live in resolvers/actions.ts.
  *
- * Module-level state: setSummaryStore is called once during server startup.
+ * Module-level state: setSummaryStore and setSummarySignalArchive are called
+ * once during server startup.
  */
 
+import type { SignalArchive } from '../../../signals/archive.js';
+import type { SignalType } from '../../../signals/types.js';
 import type { SummaryStore } from '../../../summaries/summary-store.js';
 import type { Summary, SummaryFlow } from '../../../summaries/types.js';
 
@@ -21,14 +24,27 @@ function deriveSeverityLabel(severity: number | undefined): string {
 // ---------------------------------------------------------------------------
 
 let store: SummaryStore | null = null;
+let signalArchive: SignalArchive | null = null;
 
 export function setSummaryStore(s: SummaryStore): void {
   store = s;
 }
 
+export function setSummarySignalArchive(a: SignalArchive): void {
+  signalArchive = a;
+}
+
 // ---------------------------------------------------------------------------
 // GraphQL shapes
 // ---------------------------------------------------------------------------
+
+interface SummarySourceSignalGql {
+  id: string;
+  type: SignalType;
+  title: string;
+  link: string | null;
+  sourceName: string | null;
+}
 
 interface SummaryGql {
   id: string;
@@ -55,6 +71,27 @@ function toGql(summary: Summary): SummaryGql {
     createdAt: summary.createdAt,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Field resolvers
+// ---------------------------------------------------------------------------
+
+async function resolveSourceSignals(parent: SummaryGql): Promise<SummarySourceSignalGql[]> {
+  if (!signalArchive || parent.sourceSignalIds.length === 0) return [];
+
+  const signals = await signalArchive.getByIds(parent.sourceSignalIds);
+  return signals.map((s) => ({
+    id: s.id,
+    type: s.type,
+    title: s.title,
+    link: typeof s.metadata?.link === 'string' ? s.metadata.link : null,
+    sourceName: s.sources[0]?.name ?? null,
+  }));
+}
+
+export const summaryFieldResolvers = {
+  sourceSignals: resolveSourceSignals,
+};
 
 // ---------------------------------------------------------------------------
 // Query resolvers

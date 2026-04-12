@@ -1552,6 +1552,13 @@ export const SUMMARY_FIELDS = gql`
     severity
     severityLabel
     sourceSignalIds
+    sourceSignals {
+      id
+      type
+      title
+      link
+      sourceName
+    }
     contentHash
     createdAt
   }

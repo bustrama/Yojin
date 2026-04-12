@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { useSummaries } from '../../api';
+import type { SummarySourceSignal } from '../../api/types';
 import { groupSummariesByTicker, insightsHrefForTicker, severityBulletColor } from '../../lib/summaries-by-ticker';
 import { useFeatureStatus } from '../../lib/feature-status';
 import { cn, timeAgo } from '../../lib/utils';
@@ -28,14 +29,19 @@ const UPDATED_GLOW_MS = 3_000;
  */
 const MAX_WHATS_PER_TICKER = 1;
 
+interface SummaryItem {
+  what: string;
+  sourceSignals: SummarySourceSignal[];
+}
+
 interface TickerGroup {
   key: string;
   ticker: string | null;
   topSeverity: number | null;
   topSummaryId: string;
   latestCreatedAt: string;
-  /** All `what` strings for this ticker, sorted by severity DESC. */
-  whats: string[];
+  /** All summary items for this ticker, sorted by severity DESC. */
+  items: SummaryItem[];
 }
 
 export function YojinSnapCard() {
@@ -62,8 +68,8 @@ export function YojinSnapCard() {
   const grouped: TickerGroup[] = useMemo(() => {
     const byTicker = groupSummariesByTicker(summaries ?? []);
     const groups: TickerGroup[] = [];
-    for (const [key, items] of byTicker) {
-      const top = items[0];
+    for (const [key, bucket] of byTicker) {
+      const top = bucket[0];
       if (!top) continue;
       groups.push({
         key: key || '__untagged__',
@@ -71,7 +77,7 @@ export function YojinSnapCard() {
         topSeverity: top.severity,
         topSummaryId: top.id,
         latestCreatedAt: top.createdAt,
-        whats: items.map((a) => a.what),
+        items: bucket.map((a) => ({ what: a.what, sourceSignals: a.sourceSignals ?? [] })),
       });
     }
     return groups.sort((a, b) => {
@@ -85,7 +91,7 @@ export function YojinSnapCard() {
   // Count only the summaries that survived the grouping filter (the mapping
   // layer drops portfolio-level sentinel rows). Using `summaries.length`
   // directly would report a higher total than the user can actually see.
-  const totalSummaries = useMemo(() => grouped.reduce((sum, g) => sum + g.whats.length, 0), [grouped]);
+  const totalSummaries = useMemo(() => grouped.reduce((sum, g) => sum + g.items.length, 0), [grouped]);
 
   // Click "+N more" to open the full per-ticker list in a modal.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -167,8 +173,8 @@ export function YojinSnapCard() {
     >
       <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-5 pb-5">
         {grouped.map((group) => {
-          const visibleWhats = group.whats.slice(0, MAX_WHATS_PER_TICKER);
-          const hiddenCount = group.whats.length - visibleWhats.length;
+          const visibleItems = group.items.slice(0, MAX_WHATS_PER_TICKER);
+          const hiddenCount = group.items.length - visibleItems.length;
           return (
             <li key={group.key} className="flex items-start gap-2">
               <span
@@ -183,7 +189,7 @@ export function YojinSnapCard() {
                     {group.ticker}
                   </Link>
                 )}
-                {visibleWhats.join(' · ')}
+                {visibleItems.map((item) => item.what).join(' · ')}
                 {hiddenCount > 0 && (
                   <>
                     {' '}
@@ -209,8 +215,8 @@ export function YojinSnapCard() {
       >
         {selectedGroup && (
           <div className="flex flex-col gap-4">
-            <ul className="flex flex-col gap-3">
-              {selectedGroup.whats.map((what, i) => (
+            <ul className="flex flex-col gap-4">
+              {selectedGroup.items.map((item, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <span
                     className={cn(
@@ -218,7 +224,16 @@ export function YojinSnapCard() {
                       severityBulletColor(selectedGroup.topSeverity),
                     )}
                   />
-                  <span className="text-sm leading-relaxed text-text-secondary">{what}</span>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm leading-relaxed text-text-secondary">{item.what}</span>
+                    {item.sourceSignals.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {item.sourceSignals.map((sig) => (
+                          <SourceChip key={sig.id} signal={sig} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -235,6 +250,36 @@ export function YojinSnapCard() {
         )}
       </Modal>
     </DashboardCard>
+  );
+}
+
+function SourceChip({ signal }: { signal: SummarySourceSignal }) {
+  const label = signal.sourceName || signal.title;
+
+  if (signal.link) {
+    return (
+      <a
+        href={signal.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 rounded-md bg-bg-tertiary px-1.5 py-0.5 text-xs text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        title={signal.title}
+      >
+        <span className="max-w-[200px] truncate">{label}</span>
+        <svg className="h-3 w-3 flex-shrink-0 opacity-50" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M3.75 2a.75.75 0 0 0 0 1.5h5.69L2.22 10.72a.75.75 0 1 0 1.06 1.06L10.5 4.56v5.69a.75.75 0 0 0 1.5 0V2.75a.75.75 0 0 0-.75-.75H3.75Z" />
+        </svg>
+      </a>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-bg-tertiary px-1.5 py-0.5 text-xs text-text-muted"
+      title={signal.title}
+    >
+      <span className="max-w-[200px] truncate">{label}</span>
+    </span>
   );
 }
 
