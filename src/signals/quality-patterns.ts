@@ -61,6 +61,15 @@ export const FALSE_MATCH_TEXT_RE =
   /\bnot (?:related to|about|referring to)\b|\bno relevance to\b|\bnot .{1,40}(?:stock|ticker|corporation|company)\b|\bis about .{1,60}, not\b/i;
 
 /**
+ * Deterministic self-invalidating safety net — catches cases where the LLM's own
+ * summary admits the signal is unverifiable, anecdotal, or speculative but still
+ * returns verdict=KEEP. Applied in QualityAgent.parseResponse() to override verdict
+ * to DROP with dropReason=low_quality.
+ */
+export const SELF_INVALIDATING_RE =
+  /\blacks (?:independent )?verification\b|\bunverified claim\b|\bremains? speculative\b|\brel(?:y|ies) on anecdotal\b|\bno (?:independent )?confirmation\b|\bcannot be (?:verified|substantiated|corroborated)\b|\bself[- ]reported (?:and )?unverified\b|\bno (?:supporting )?evidence\b|\bbased on (?:a single|one) (?:user'?s?|person'?s?) (?:observation|claim|report)\b/i;
+
+/**
  * Broader false-match pattern including explicit "false match" / "false positive" labels.
  * Used by the curation pipeline where signals may arrive from external sources
  * with tier1/tier2 explicitly calling out false matches.
