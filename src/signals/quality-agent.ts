@@ -11,7 +11,7 @@
  *   - duplicateOf (title of existing signal if this is a duplicate — enables source merge)
  */
 
-import { FALSE_MATCH_TEXT_RE } from './quality-patterns.js';
+import { FALSE_MATCH_TEXT_RE, SELF_INVALIDATING_RE } from './quality-patterns.js';
 import type { Signal, SignalOutputType, SignalSentiment } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 
@@ -197,6 +197,14 @@ Look at the SUBSTANCE, not the exact words. If two headlines would be the same s
 
 **DROP with dropReason "low_quality"** when qualityScore < ${this.minQualityScore}. Low quality = no material investment relevance, clickbait, generic commentary, old news rehashed, ad content.
 
+**DROP with dropReason "low_quality"** when the signal is self-invalidating — the content or your own analysis admits the claim cannot be substantiated. Red flags:
+- Key points state the claim "lacks independent verification", "relies on anecdotal observation", "remains speculative", or "unverified"
+- The source is a social media post that has been removed, deleted, or returns a dead link (content references "[removed]", "[deleted]", "post unavailable", or the signal metadata indicates the source is gone)
+- The signal's own content undermines its thesis — e.g. bullish headline but the body says "no confirmation from company guidance" or "based on one user's observation"
+If the model generating the signal effectively admitted it has no informational value, trust that admission and DROP.
+
+**DROP with dropReason "low_quality"** when a social media signal comes from a low signal-to-noise source and lacks substance. Subreddits like r/wallstreetbets, r/stocks, r/pennystocks, r/cryptocurrency, r/CryptoMoonShots, and similar retail-hype communities produce mostly noise. A post from these sources must contain a specific, verifiable claim with supporting data (financial metrics, filings references, named sources) to score above ${this.minQualityScore}. Vague sentiment ("this stock is going to moon"), anecdotal claims ("I noticed traffic is up"), and hype without evidence score ≤ 30.
+
 **KEEP** for everything else — real financial signals with investment relevance.
 
 ## Writer motivation & ticker connection
@@ -213,7 +221,7 @@ If the ticker is only connected through a broad sector label, a shared buzzword,
 - 90-100: Direct material impact (earnings, FDA approval, merger, major insider transaction)
 - 70-89: Useful context (analyst upgrade, sector news with specific company analysis, relevant macro data with direct mechanism)
 - 40-69: Tangential but ticker-specific (generic market commentary about the specific company with some analytical substance)
-- 0-39: Noise (no relevance, clickbait, false match, boilerplate, macro headline with ticker name-dropped via sector umbrella, industry-mismatch articles where the core subject is a different vertical than the tagged company, price-restatement articles)
+- 0-39: Noise (no relevance, clickbait, false match, boilerplate, macro headline with ticker name-dropped via sector umbrella, industry-mismatch articles where the core subject is a different vertical than the tagged company, price-restatement articles, self-invalidating claims that admit lack of verification, social posts from low-SNR sources without verifiable data)
 
 **Price-restatement = 0-39.** An article that states the current price with a vague "amid [X]" clause and no named catalyst, actor, or mechanism is noise — the price is already visible on the portfolio screen. To score above 39, the content must name a specific verifiable event, actor, or causal mechanism (e.g. "Moody's rates first Bitcoin-backed bond", "SEC approves spot ETF"). Examples that score 0-39: "BTC at $68K amid geopolitical developments", "Bitcoin crosses $69K amid altcoin gains", "BTC near $67,969, up 0.32% intraday", "BTC consolidation alongside ETH and XRP".
 
@@ -273,6 +281,12 @@ If the ticker is only connected through a broad sector label, a shared buzzword,
     if (verdict === 'KEEP' && (FALSE_MATCH_TEXT_RE.test(tier1) || FALSE_MATCH_TEXT_RE.test(tier2))) {
       verdict = 'DROP';
       dropReason = 'false_match';
+    }
+
+    // Deterministic safety net: if the LLM's own text admits the claim is unverifiable, override verdict
+    if (verdict === 'KEEP' && (SELF_INVALIDATING_RE.test(tier1) || SELF_INVALIDATING_RE.test(tier2))) {
+      verdict = 'DROP';
+      dropReason = 'low_quality';
     }
 
     // Enforce quality score threshold
