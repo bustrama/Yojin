@@ -148,6 +148,78 @@ export async function fetchJintelSignals(
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Deterministic ticker-content relevance check.
+ *
+ * Returns true when the text (title + snippet) does NOT meaningfully reference
+ * the ticker or entity name — i.e. the signal is likely a false-match from
+ * Jintel's entity mapping.
+ *
+ * Catches two failure modes:
+ *  1. Short tickers matched as substrings inside product/brand names
+ *     (e.g. "Gemini 2.5 Flash Lite" → LITE, "Flock Safety" → FLY)
+ *  2. Content about an entirely different company/topic that Jintel
+ *     associated via a shared buzzword.
+ *
+ * Uses word-boundary matching per CLAUDE.md TS rules: "Use word boundaries
+ * when matching identifiers in text."
+ */
+function isTickerContentMismatch(text: string, tickers: string[], entityName: string | undefined): boolean {
+  // If we have no entity name and only synthetic tickers, can't validate
+  if (!entityName && tickers.length === 0) return false;
+
+  // Check 1: Does the text mention any of the tickers as a standalone symbol?
+  // Word boundaries: not preceded/followed by alphanumeric chars.
+  for (const ticker of tickers) {
+    // Skip crypto pairs like BTC-USD — always match the base
+    const base = ticker.includes('-') ? ticker.split('-')[0] : ticker;
+    const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Cashtag format ($LITE, $FLY) is high-confidence — always trust it
+    const cashtagRe = new RegExp(`\\$${escaped}\\b`);
+    if (cashtagRe.test(text)) return false;
+
+    // Exchange-prefixed format (NASDAQ:LITE) is high-confidence
+    const exchangeRe = new RegExp(`\\b(?:NASDAQ|NYSE|AMEX|LSE|TSE|ASX):${escaped}\\b`);
+    if (exchangeRe.test(text)) return false;
+
+    // Bare word-boundary match — check if the ticker appears in ALL-CAPS in
+    // the original text. "PLTR expands..." is an intentional ticker reference;
+    // "Flash Lite" is a product name where "Lite" coincidentally matches LITE.
+    const allCapsRe = new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`);
+    if (allCapsRe.test(text)) return false; // ALL-CAPS match — intentional ticker reference
+
+    // Case-insensitive match (e.g. "Lite" in "Flash Lite") — for short tickers
+    // (≤4 chars), this is unreliable as it catches product names, abbreviations,
+    // and common English words. Require entity name corroboration.
+    const caseInsensitiveRe = new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, 'i');
+    if (caseInsensitiveRe.test(text)) {
+      if (base.length >= 5) return false; // Long ticker — even mixed-case is likely intentional
+      // Short ticker in mixed case — fall through to entity name check for corroboration
+    }
+  }
+
+  // Check 2: Does the text mention the entity name (company name)?
+  if (entityName) {
+    const nameLower = entityName.toLowerCase();
+    const textLower = text.toLowerCase();
+    // For multi-word names, check containment directly
+    if (nameLower.length >= 4 && textLower.includes(nameLower)) {
+      return false; // Company name found
+    }
+    // For short names, use word boundary
+    if (nameLower.length < 4) {
+      const escapedName = nameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const nameRe = new RegExp(`\\b${escapedName}\\b`, 'i');
+      if (nameRe.test(text)) return false;
+    }
+  }
+
+  // Neither a high-confidence ticker reference (cashtag, exchange-prefix, ALL-CAPS)
+  // nor entity name found in text — likely a mismatch
+  return true;
+}
+
 /** Titles that are just entity names with optional ticker suffix (e.g. "Invesco QQQ ETF | ICVT", "Apple Inc (AAPL)") */
 function isEntityNameTitle(title: string, entityName: string | undefined): boolean {
   if (!entityName) return false;
@@ -322,6 +394,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     if (JUNK_TITLE_RE.test(article.title)) continue;
     if (article.link && JUNK_DOMAIN_RE.test(article.link)) continue;
     if (isEntityNameTitle(article.title, entityName)) continue;
+    if (isTickerContentMismatch(`${article.title} ${article.snippet ?? ''}`, tickers, entityName)) continue;
     const { sentimentScore } = article;
     signals.push({
       sourceId: `jintel-news-${article.source.toLowerCase().replace(/\s+/g, '-')}`,
@@ -346,6 +419,7 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
     if (JUNK_TITLE_RE.test(article.title)) continue;
     if (article.url && JUNK_DOMAIN_RE.test(article.url)) continue;
     if (isEntityNameTitle(article.title, entityName)) continue;
+    if (isTickerContentMismatch(`${article.title} ${article.text ?? ''}`, tickers, entityName)) continue;
     signals.push({
       sourceId: 'jintel-research',
       sourceName: 'Jintel Research',
@@ -458,9 +532,12 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
   }
 
   // 12. Hacker News discussions — tech/investor community commentary.
-  // Only high-points stories to avoid noise; relevance handled by quality agent.
+  // Only high-points stories to avoid noise; ticker-content mismatch filter catches
+  // short tickers matched as substrings in product names (e.g. "Flash Lite" → LITE).
   for (const story of entity.discussions ?? []) {
     if (story.points < SOCIAL_MIN_HN_POINTS) continue;
+    const storyText = `${story.title} ${story.topComments?.[0]?.text ?? ''}`;
+    if (isTickerContentMismatch(storyText, tickers, entityName)) continue;
     signals.push({
       sourceId: `jintel-discussions-hn-${story.objectId}`,
       sourceName: 'Jintel Discussions (HN)',

@@ -138,3 +138,181 @@ describe('enrichmentToSignals — signal type classification', () => {
     expect(newsSignals[0].type).not.toBe('FUNDAMENTAL');
   });
 });
+
+describe('enrichmentToSignals — ticker-content mismatch filter', () => {
+  it('drops HN discussion where ticker appears only as product name substring ("Flash Lite" → LITE)', () => {
+    const entity = makeEntity({
+      name: 'Lumentum Holdings',
+      discussions: [
+        {
+          objectId: 'hn-123',
+          title: 'AI model writing similarity study questions pricing power',
+          url: 'https://example.com/article',
+          hnUrl: 'https://news.ycombinator.com/item?id=123',
+          points: 50,
+          numComments: 30,
+          topComments: [{ text: 'Gemini 2.5 Flash Lite performs surprisingly well for the price' }],
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['LITE']);
+    const hnSignals = signals.filter((s) => s.sourceName === 'Jintel Discussions (HN)');
+
+    expect(hnSignals).toHaveLength(0);
+  });
+
+  it('drops news article about unrelated company (Flock Safety → FLY)', () => {
+    const entity = makeEntity({
+      name: 'Firefly Aerospace',
+      news: [
+        {
+          title: 'Flock Safety raises $275M to expand surveillance network',
+          link: 'https://example.com/flock',
+          snippet: 'Flock Safety, the license plate reader company, announced a new funding round.',
+          source: 'TechCrunch',
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['FLY']);
+    const newsSignals = signals.filter((s) => s.sourceName?.includes('Jintel News'));
+
+    expect(newsSignals).toHaveLength(0);
+  });
+
+  it('keeps news article that mentions the ticker as a standalone symbol', () => {
+    const entity = makeEntity({
+      name: 'Firefly Aerospace',
+      news: [
+        {
+          title: 'FLY stock surges after successful lunar lander mission',
+          link: 'https://example.com/fly-launch',
+          snippet: 'Firefly Aerospace shares jumped 15% after its Blue Ghost lander touched down.',
+          source: 'Reuters',
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['FLY']);
+    const newsSignals = signals.filter((s) => s.sourceName?.includes('Jintel News'));
+
+    expect(newsSignals).toHaveLength(1);
+  });
+
+  it('keeps news article that mentions the entity name', () => {
+    const entity = makeEntity({
+      name: 'Lumentum Holdings',
+      news: [
+        {
+          title: 'Lumentum Holdings reports Q2 earnings above estimates',
+          link: 'https://example.com/lumentum',
+          snippet: 'Lumentum delivered strong results driven by fiber optic demand.',
+          source: 'Bloomberg',
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['LITE']);
+    const newsSignals = signals.filter((s) => s.sourceName?.includes('Jintel News'));
+
+    expect(newsSignals).toHaveLength(1);
+  });
+
+  it('keeps research article with cashtag ticker reference ($LITE)', () => {
+    const entity = makeEntity({
+      name: 'Lumentum Holdings',
+      research: [
+        {
+          title: 'Analysis: $LITE positioned for AI networking growth',
+          url: 'https://example.com/research',
+          text: '$LITE benefits from data center buildout cycle.',
+          score: 0.85,
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['LITE']);
+    const researchSignals = signals.filter((s) => s.sourceName === 'Jintel Research');
+
+    expect(researchSignals).toHaveLength(1);
+  });
+
+  it('keeps short ticker when mentioned as cashtag ($FLY)', () => {
+    const entity = makeEntity({
+      name: 'Firefly Aerospace',
+      news: [
+        {
+          title: 'Is $FLY the next space play?',
+          link: 'https://example.com/fly-analysis',
+          snippet: 'Retail investors are watching this lunar lander stock.',
+          source: 'SeekingAlpha',
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['FLY']);
+    const newsSignals = signals.filter((s) => s.sourceName?.includes('Jintel News'));
+
+    expect(newsSignals).toHaveLength(1);
+  });
+
+  it('keeps short ticker when it appears in ALL-CAPS in the text (PLTR)', () => {
+    const entity = makeEntity({
+      name: 'Palantir Technologies',
+      discussions: [
+        {
+          objectId: 'hn-456',
+          title: 'PLTR expands government contracts in Europe',
+          url: 'https://example.com/pltr',
+          hnUrl: 'https://news.ycombinator.com/item?id=456',
+          points: 100,
+          numComments: 50,
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['PLTR']);
+    const hnSignals = signals.filter((s) => s.sourceName === 'Jintel Discussions (HN)');
+
+    expect(hnSignals).toHaveLength(1); // "PLTR" in ALL-CAPS → intentional ticker reference
+  });
+
+  it('keeps 5-char ticker on bare word-boundary match without entity name', () => {
+    const entity = makeEntity({
+      name: 'NovaBay Pharmaceuticals',
+      news: [
+        {
+          title: 'NBAYF reports positive trial results',
+          link: 'https://example.com/nbayf',
+          snippet: 'The biotech company reported promising Phase 2 data.',
+          source: 'Reuters',
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['NBAYF']);
+    const newsSignals = signals.filter((s) => s.sourceName?.includes('Jintel News'));
+
+    expect(newsSignals).toHaveLength(1);
+  });
+
+  it('drops research article with no ticker or entity name reference', () => {
+    const entity = makeEntity({
+      name: 'Firefly Aerospace',
+      research: [
+        {
+          title: 'The Future of Urban Air Mobility',
+          url: 'https://example.com/uam',
+          text: 'Electric VTOL aircraft are reshaping transportation.',
+          score: 0.8,
+        },
+      ],
+    });
+
+    const signals = enrichmentToSignals(entity, ['FLY']);
+    const researchSignals = signals.filter((s) => s.sourceName === 'Jintel Research');
+
+    expect(researchSignals).toHaveLength(0);
+  });
+});
