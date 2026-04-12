@@ -57,6 +57,9 @@ const ENRICHMENT_FIELDS = [
   'topHolders',
 ] as const;
 
+// Reddit-owned domains — native media/shortlinks, not external articles
+const REDDIT_DOMAIN_RE = /\b(reddit\.com|redd\.it|i\.redd\.it|v\.redd\.it|preview\.redd\.it)\b/;
+
 // Quality thresholds — filter low-engagement social posts to keep signal-to-noise high
 const SOCIAL_MIN_REDDIT_SCORE = 5;
 const SOCIAL_MIN_REDDIT_COMMENT_SCORE = 3;
@@ -542,7 +545,8 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       // Link posts point to an external article; self-posts point to reddit.com.
       // Attribute link posts to the original source so the user knows where the
       // information actually comes from, with "(via r/...)" for provenance.
-      const isLinkPost = post.url && !post.url.includes('reddit.com/');
+      // Reddit-owned domains (i.redd.it, v.redd.it, redd.it) are native media, not external articles.
+      const isLinkPost = post.url && !REDDIT_DOMAIN_RE.test(post.url);
       const sourceName = isLinkPost
         ? `${extractDomain(post.url)} (via r/${post.subreddit})`
         : `Jintel Social (r/${post.subreddit})`;

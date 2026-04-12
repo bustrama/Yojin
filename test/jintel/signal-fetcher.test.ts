@@ -387,6 +387,33 @@ describe('enrichmentToSignals — Reddit source attribution', () => {
     expect(reddit[0].metadata?.redditPostId).toBe('abc123');
   });
 
+  it('treats Reddit media URLs (i.redd.it, v.redd.it) as self-posts', () => {
+    const entity = makeEntity({
+      social: {
+        reddit: [
+          {
+            id: 'img001',
+            title: 'BTC chart looking bullish',
+            subreddit: 'Bitcoin',
+            author: 'chart_guy',
+            score: 100,
+            numComments: 20,
+            url: 'https://i.redd.it/abc123.png',
+            text: 'Look at this chart',
+            date: '2026-04-10T10:00:00Z',
+          },
+        ],
+      },
+    });
+
+    const signals = enrichmentToSignals(entity, ['BTC']);
+    const reddit = signals.filter((s) => s.sourceId.includes('reddit'));
+
+    expect(reddit).toHaveLength(1);
+    expect(reddit[0].sourceName).toBe('Jintel Social (r/Bitcoin)');
+    expect(reddit[0].type).toBe('SOCIALS');
+  });
+
   it('keeps self-posts attributed to the subreddit', () => {
     const entity = makeEntity({
       social: {
