@@ -23,6 +23,7 @@ import {
   type HackerNewsStory,
   INFLATION,
   INTEREST_RATES,
+  type InstitutionalHolding,
   JintelAuthError,
   type JintelClient,
   type JintelResult,
@@ -91,6 +92,7 @@ const JINTEL_QUERY_KIND = z.enum([
   'short_interest',
   'financials',
   'executives',
+  'institutional_holdings',
 ]);
 
 type JintelQueryKind = z.infer<typeof JINTEL_QUERY_KIND>;
@@ -108,6 +110,7 @@ const ENRICHMENT_FIELDS = z.enum([
   'social',
   'predictions',
   'discussions',
+  'institutionalHoldings',
 ]);
 
 const SEVERITY_CONFIDENCE: Record<string, number> = {
@@ -318,6 +321,10 @@ function formatEnrichment(entity: Entity): string {
     sections.push(`## Discussions\n${formatDiscussions(entity.discussions)}`);
   }
 
+  if (entity.institutionalHoldings?.length) {
+    sections.push(`## Institutional Holdings (13F)\n${formatInstitutionalHoldings(entity.institutionalHoldings)}`);
+  }
+
   // financials & executives are planned jintel-client fields (not yet in Entity type).
   // Access via cast until the client ships these as first-class enrichment fields.
   const ext = entity as Entity & { financials?: FinancialStatements; executives?: KeyExecutive[] };
@@ -455,6 +462,21 @@ function formatShortInterest(reports: ShortInterestReport[]): string {
       if (r.shortInterest != null) parts.push(`Shares short: ${formatNumber(r.shortInterest)}`);
       if (r.daysToCover != null) parts.push(`Days to cover: ${r.daysToCover.toFixed(1)}`);
       if (r.change != null) parts.push(`Change: ${r.change >= 0 ? '+' : ''}${formatNumber(r.change)}`);
+      return parts.join(' | ');
+    })
+    .join('\n');
+}
+
+function formatInstitutionalHoldings(holdings: InstitutionalHolding[]): string {
+  if (holdings.length === 0) return 'No institutional holdings data available.';
+  return holdings
+    .map((h) => {
+      const parts = [`${h.issuerName} (${h.titleOfClass})`];
+      parts.push(`CUSIP: ${h.cusip}`);
+      parts.push(`Value: $${formatNumber(h.value * 1000)}`);
+      parts.push(`Shares: ${formatNumber(h.shares)}`);
+      parts.push(`Discretion: ${h.investmentDiscretion}`);
+      parts.push(`Report: ${h.reportDate} | Filed: ${h.filingDate}`);
       return parts.join(' | ');
     })
     .join('\n');
@@ -1115,6 +1137,37 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
+  const getInstitutionalHoldings: ToolDefinition = {
+    name: 'get_institutional_holdings',
+    description:
+      'Get 13F institutional holdings for a filer by SEC CIK number. Returns the latest 13F-HR filing portfolio ' +
+      'showing all equity positions reported to the SEC.\n\n' +
+      'Use when the user asks about what a fund/institution holds, e.g. "What does Berkshire Hathaway own?" ' +
+      'or "Show me Bridgewater\'s portfolio". Requires the filer\'s CIK (Central Index Key) from SEC EDGAR.',
+    parameters: z.object({
+      cik: z.string().min(1).describe('SEC CIK number of the filer (e.g. "0001067983" for Berkshire Hathaway)'),
+      since: z.string().optional().describe('ISO timestamp — only return holdings from filings after this date'),
+      until: z.string().optional().describe('ISO timestamp — only return holdings from filings before this date'),
+      limit: z.number().int().min(1).max(200).optional().describe('Max holdings to return (default: all)'),
+    }),
+    async execute(params: { cik: string; since?: string; until?: string; limit?: number }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const filter: { since?: string; until?: string; limit?: number; sort?: 'ASC' | 'DESC' } = { sort: 'DESC' };
+      if (params.since) filter.since = params.since;
+      if (params.until) filter.until = params.until;
+      if (params.limit) filter.limit = params.limit;
+      const result = await safeCall(() => client.institutionalHoldings(params.cik, filter));
+      if (!result.ok) return result.toolResult;
+      const handled = handleResult(result.data);
+      if (!handled.ok) return handled.toolResult;
+      const holdings = handled.data as InstitutionalHolding[];
+      return {
+        content: `# Institutional Holdings (13F) — CIK ${params.cik}\n\n${formatInstitutionalHoldings(holdings)}`,
+      };
+    },
+  };
+
   const getFamaFrench: ToolDefinition = {
     name: 'get_fama_french',
     description:
@@ -1302,13 +1355,16 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     name: 'jintel_query',
     description:
       'Generic Jintel query tool for quotes, fundamentals, market data, history, news, research, sentiment, ' +
-      'technicals, derivatives, risk, regulatory, short_interest, financials, or executives. Use this when you want ' +
-      'one Jintel-backed entry point instead of choosing a more specialized tool.',
+      'technicals, derivatives, risk, regulatory, short_interest, financials, executives, or institutional_holdings. ' +
+      'Use this when you want one Jintel-backed entry point instead of choosing a more specialized tool.',
     parameters: z.object({
       kind: JINTEL_QUERY_KIND.describe(
-        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, or executives',
+        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, executives, or institutional_holdings',
       ),
-      ticker: z.string().optional().describe('Single ticker symbol (e.g. AAPL, BTC, NVDA)'),
+      ticker: z
+        .string()
+        .optional()
+        .describe('Single ticker symbol (e.g. AAPL, BTC, NVDA) or CIK for institutional_holdings'),
       tickers: z.array(z.string()).optional().describe('Ticker batch for quote/history queries'),
       range: z.string().optional().describe('History range for history queries (default "1y")'),
       interval: z.string().optional().describe('History interval for history queries (default "1d")'),
@@ -1366,6 +1422,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
           return getFinancials.execute({ ticker: singleTicker });
         case 'executives':
           return getExecutives.execute({ ticker: singleTicker });
+        case 'institutional_holdings':
+          return getInstitutionalHoldings.execute({ cik: singleTicker });
       }
 
       return { content: `Unsupported Jintel query kind: ${params.kind}`, isError: true };
@@ -1513,5 +1571,6 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     getDiscussions,
     getFinancials,
     getExecutives,
+    getInstitutionalHoldings,
   ];
 }

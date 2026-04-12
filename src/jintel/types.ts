@@ -15,6 +15,7 @@ export type {
   FamaFrenchSeries,
   FactorDataPoint,
   HackerNewsStory,
+  InstitutionalHolding,
   PredictionMarket,
   PriceEvent,
   PriceEventType,
