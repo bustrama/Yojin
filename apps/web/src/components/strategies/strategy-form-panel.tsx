@@ -169,7 +169,11 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
     }
   }
 
-  const posPercent = data.maxPositionSize !== undefined ? Math.round(data.maxPositionSize * 100) : 0;
+  // Use Math.max(1, ...) to prevent small non-zero values from rounding to 0 and being cleared
+  const posPercent =
+    data.maxPositionSize !== undefined && data.maxPositionSize > 0
+      ? Math.max(1, Math.round(data.maxPositionSize * 100))
+      : 0;
 
   return (
     <div className="flex flex-col h-full">

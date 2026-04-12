@@ -2,7 +2,7 @@ import PositionsListCard from './positions-list-card';
 import PortfolioOverviewCard from './portfolio-overview-card';
 import AllocationCard from './allocation-card';
 import MorningBriefingCard from './morning-briefing-card';
-import { StrategyProposalCard } from './strategy-proposal-card';
+import { StrategyProposalCard } from './strategy-proposal-card.js';
 
 interface ToolRendererProps {
   tool: string;

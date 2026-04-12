@@ -19,6 +19,9 @@ export interface StrategyStudioProps {
   editMode?: boolean;
 }
 
+/** Strategy Studio thread prefix — sessions starting with this are filtered from the sidebar. */
+export const STRATEGY_STUDIO_PREFIX = 'strategy-studio-';
+
 const EMPTY_FORM: StrategyFormData = {
   name: '',
   description: '',
@@ -37,6 +40,7 @@ function strategyToFormData(strategy: Strategy): StrategyFormData {
     description: strategy.description,
     category: strategy.category,
     style: strategy.style,
+    // Keep uppercase (matches form CAPABILITIES); GraphQL resolver handles case conversion
     requires: [...strategy.requires],
     content: strategy.content,
     triggers: strategy.triggers.map((t) => ({
@@ -79,7 +83,7 @@ function buildInitialMessage(strategy: Strategy | null | undefined, editMode: bo
 }
 
 export function StrategyStudio({ open, onClose, strategy, editMode }: StrategyStudioProps) {
-  const [threadId] = useState(() => `strategy-studio-${Date.now()}`);
+  const [threadId] = useState(() => `${STRATEGY_STUDIO_PREFIX}${Date.now()}`);
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
@@ -90,6 +94,7 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
   const [formVisible, setFormVisible] = useState(() => !!strategy);
 
   const [initialResponseReceived, setInitialResponseReceived] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const completedIdsRef = useRef(new Set<string>());
   const toolCardsRef = useRef<ToolCardRef[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -119,9 +124,11 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
       if (card.tool === 'propose-strategy') {
         try {
           const proposed = JSON.parse(card.params) as Partial<StrategyFormData>;
+          // Ensure trigger.params is always an object (server may send undefined)
           if (proposed.triggers) {
             proposed.triggers = proposed.triggers.map((t) => ({ ...t, params: t.params ?? {} }));
           }
+          // GraphQL returns uppercase capabilities; normalize for form
           if (proposed.requires) {
             proposed.requires = proposed.requires.map((r) => r.toUpperCase());
           }
@@ -177,18 +184,30 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
     hasSentInitialRef.current = true;
     const handle = setTimeout(() => setIsLoading(true), 0);
     const msg = buildInitialMessage(strategy, editMode);
-    void sendMessageMutation({ threadId, message: msg });
+    void (async () => {
+      const result = await sendMessageMutation({ threadId, message: msg });
+      if (result.error) {
+        setMutationError(result.error.message);
+        setIsLoading(false);
+        setInitialResponseReceived(true);
+      }
+    })();
     return () => clearTimeout(handle);
   }, [open, strategy, editMode, threadId, sendMessageMutation]);
 
   const handleSend = useCallback(
-    (text: string) => {
+    async (text: string) => {
       if (!text.trim() || isLoading) return;
+      setMutationError(null);
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
       setIsLoading(true);
       setStreamingContent('');
       toolCardsRef.current = [];
-      void sendMessageMutation({ threadId, message: text });
+      const result = await sendMessageMutation({ threadId, message: text });
+      if (result.error) {
+        setMutationError(result.error.message);
+        setIsLoading(false);
+      }
     },
     [threadId, sendMessageMutation, isLoading],
   );
@@ -238,6 +257,11 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
                 <span className="h-2 w-2 animate-pulse rounded-full bg-text-muted" />
                 <span className="h-2 w-2 animate-pulse rounded-full bg-text-muted [animation-delay:150ms]" />
                 <span className="h-2 w-2 animate-pulse rounded-full bg-text-muted [animation-delay:300ms]" />
+              </div>
+            )}
+            {mutationError && (
+              <div className="rounded-lg bg-error/10 border border-error/30 px-4 py-2 text-sm text-error">
+                {mutationError}
               </div>
             )}
             <div ref={messagesEndRef} />

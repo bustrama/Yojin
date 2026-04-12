@@ -16,6 +16,9 @@ import type { ChatEvent, ToolCardRef } from '../types.js';
 /** Display tool prefix — tools named `display_*` trigger TOOL_CARD events. */
 const DISPLAY_TOOL_PREFIX = 'display_';
 
+/** Strategy Studio thread prefix — sessions starting with this are filtered from the sidebar. */
+const STRATEGY_STUDIO_PREFIX = 'strategy-studio-';
+
 /** Convert a display tool name to a frontend card name (snake_case → kebab-case, strip prefix). */
 function toCardName(toolName: string): string {
   return toolName.slice(DISPLAY_TOOL_PREFIX.length).replace(/_/g, '-');
@@ -234,7 +237,7 @@ export async function sessionsQuery(): Promise<SessionSummaryGql[]> {
     if (!meta) continue;
     // Only show web channel sessions in the sidebar
     if (meta.channelId !== 'web') continue;
-    if ((meta.threadId ?? '').startsWith('strategy-studio-')) continue;
+    if ((meta.threadId ?? '').startsWith(STRATEGY_STUDIO_PREFIX)) continue;
 
     const messages = history.map((e) => e.message);
     const lastEntry = history[history.length - 1];

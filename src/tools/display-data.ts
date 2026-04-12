@@ -8,6 +8,9 @@
 
 import { z } from 'zod';
 
+import { DataCapabilitySchema } from '../strategies/capabilities.js';
+import { StrategyCategorySchema, TriggerTypeSchema } from '../strategies/types.js';
+
 // ---------------------------------------------------------------------------
 // Portfolio Overview
 // ---------------------------------------------------------------------------
@@ -93,13 +96,13 @@ export type MorningBriefingData = z.infer<typeof MorningBriefingDataSchema>;
 export const StrategyProposalDataSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
-  category: z.string().min(1),
+  category: StrategyCategorySchema,
   style: z.string().min(1),
-  requires: z.array(z.string()),
+  requires: z.array(DataCapabilitySchema),
   content: z.string().min(1),
   triggers: z.array(
     z.object({
-      type: z.string().min(1),
+      type: TriggerTypeSchema,
       description: z.string().min(1),
       params: z.record(z.string(), z.unknown()).optional(),
     }),

@@ -23,6 +23,25 @@ function formatStrategyProposalPlain(d: StrategyProposalData, escape: (s: string
   return lines.join('\n');
 }
 
+function formatStrategyProposalTelegram(d: StrategyProposalData): string {
+  const esc = escapeHtml;
+  const lines = [
+    `\u{1F4A1} <b>Strategy Proposal:</b> ${esc(d.name)}`,
+    '',
+    esc(d.description),
+    '',
+    `<b>Category:</b> ${esc(d.category)} | <b>Style:</b> ${esc(d.style)}`,
+  ];
+  if (d.tickers.length > 0) {
+    lines.push(`<b>Tickers:</b> ${d.tickers.map((t) => `<code>${esc(t)}</code>`).join(', ')}`);
+  }
+  lines.push('', '<b>Triggers:</b>');
+  for (const t of d.triggers) {
+    lines.push(`  \u2022 <code>${esc(t.type)}</code>: ${esc(t.description)}`);
+  }
+  return lines.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Slack (mrkdwn)
 // ---------------------------------------------------------------------------
@@ -205,7 +224,7 @@ export function formatDisplayCardForTelegram(card: DisplayCardData): string {
     }
 
     case 'strategy-proposal':
-      return formatStrategyProposalPlain(card.data, esc);
+      return formatStrategyProposalTelegram(card.data);
   }
 }
 
