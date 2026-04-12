@@ -354,3 +354,64 @@ describe('enrichmentToSignals — ticker-content mismatch filter', () => {
     expect(researchSignals).toHaveLength(0);
   });
 });
+
+describe('enrichmentToSignals — Reddit source attribution', () => {
+  it('attributes link posts to the original article domain', () => {
+    const entity = makeEntity({
+      social: {
+        reddit: [
+          {
+            id: 'abc123',
+            title: 'ETH network activity near ATH at $2,130',
+            subreddit: 'CryptoCurrency',
+            author: 'crypto_user',
+            score: 50,
+            numComments: 30,
+            url: 'https://www.ethnews.com/ethereum-network-activity-near-all-time-high-as-eth-hits-2130/',
+            text: 'Interesting article about ETH activity',
+            date: '2026-04-10T12:00:00Z',
+          },
+        ],
+      },
+    });
+
+    const signals = enrichmentToSignals(entity, ['ETH']);
+    const reddit = signals.filter((s) => s.sourceId.includes('reddit'));
+
+    expect(reddit).toHaveLength(1);
+    expect(reddit[0].sourceName).toBe('ethnews.com (via r/CryptoCurrency)');
+    expect(reddit[0].type).toBe('NEWS');
+    expect(reddit[0].link).toBe(
+      'https://www.ethnews.com/ethereum-network-activity-near-all-time-high-as-eth-hits-2130/',
+    );
+    expect(reddit[0].metadata?.redditPostId).toBe('abc123');
+  });
+
+  it('keeps self-posts attributed to the subreddit', () => {
+    const entity = makeEntity({
+      social: {
+        reddit: [
+          {
+            id: 'def456',
+            title: 'What do you think about ETH staking?',
+            subreddit: 'CryptoCurrency',
+            author: 'eth_fan',
+            score: 20,
+            numComments: 15,
+            url: 'https://reddit.com/r/CryptoCurrency/comments/def456/what_do_you_think_about_eth_staking/',
+            text: 'I have been staking ETH and wondering what others think.',
+            date: '2026-04-10T14:00:00Z',
+          },
+        ],
+      },
+    });
+
+    const signals = enrichmentToSignals(entity, ['ETH']);
+    const reddit = signals.filter((s) => s.sourceId.includes('reddit'));
+
+    expect(reddit).toHaveLength(1);
+    expect(reddit[0].sourceName).toBe('Jintel Social (r/CryptoCurrency)');
+    expect(reddit[0].type).toBe('SOCIALS');
+    expect(reddit[0].metadata?.redditPostId).toBeUndefined();
+  });
+});
