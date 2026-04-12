@@ -30,6 +30,8 @@ export default function ToolRenderer({ tool, params }: ToolRendererProps) {
     case 'morning-briefing':
       card = <MorningBriefingCard />;
       break;
+    case 'propose-strategy':
+      return null;
     default:
       return (
         <div className="rounded-xl border border-border bg-bg-card px-6 py-4">

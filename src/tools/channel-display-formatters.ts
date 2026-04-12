@@ -6,9 +6,17 @@
  * in their sendMessage implementation.
  */
 
-import type { DisplayCardData } from './display-data.js';
+import type { DisplayCardData, StrategyProposalData } from './display-data.js';
 import { fmtCurrency, fmtPnl, pnlEmoji } from './display-format-helpers.js';
 import { escapeHtml } from '../formatting/index.js';
+
+function formatStrategyProposalPlain(d: StrategyProposalData): string {
+  const lines = [`Strategy Proposal: ${d.name}`, '', d.description, `Category: ${d.category} | Style: ${d.style}`];
+  if (d.tickers.length > 0) lines.push(`Tickers: ${d.tickers.join(', ')}`);
+  lines.push('', 'Triggers:');
+  for (const t of d.triggers) lines.push(`  ${t.type}: ${t.description}`);
+  return lines.join('\n');
+}
 
 // ---------------------------------------------------------------------------
 // Slack (mrkdwn)
@@ -91,6 +99,9 @@ export function formatDisplayCardForSlack(card: DisplayCardData): string {
       }
       return lines.join('\n');
     }
+
+    case 'strategy-proposal':
+      return formatStrategyProposalPlain(card.data);
   }
 }
 
@@ -187,6 +198,9 @@ export function formatDisplayCardForTelegram(card: DisplayCardData): string {
       }
       return lines.join('\n');
     }
+
+    case 'strategy-proposal':
+      return formatStrategyProposalPlain(card.data);
   }
 }
 
@@ -273,5 +287,8 @@ export function formatDisplayCardForWhatsApp(card: DisplayCardData): string {
       }
       return lines.join('\n');
     }
+
+    case 'strategy-proposal':
+      return formatStrategyProposalPlain(card.data);
   }
 }

@@ -1,0 +1,262 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMutation, useSubscription } from 'urql';
+
+import { SEND_MESSAGE_MUTATION, CHAT_SUBSCRIPTION } from '../../lib/chat-documents.js';
+import { cn } from '../../lib/utils.js';
+import Modal from '../common/modal.js';
+import ChatMessage from '../chat/chat-message.js';
+import ChatInput from '../chat/chat-input.js';
+import SuggestionChips from './suggestion-chips.js';
+import StrategyFormPanel from './strategy-form-panel.js';
+import type { StrategyFormData } from './strategy-form-panel.js';
+import type { Strategy } from './types.js';
+import type { ToolCardRef } from '../../lib/chat-context.js';
+
+interface ChatMsg {
+  id: string;
+  role: 'assistant' | 'user';
+  content: string;
+  toolCards?: ToolCardRef[];
+}
+
+interface ChatEvent {
+  type: 'THINKING' | 'TOOL_USE' | 'TEXT_DELTA' | 'MESSAGE_COMPLETE' | 'PII_REDACTED' | 'ERROR' | 'TOOL_CARD';
+  threadId: string;
+  delta?: string;
+  accumulatedText?: string;
+  messageId?: string;
+  content?: string;
+  error?: string;
+  toolName?: string;
+  piiTypesFound?: string[];
+  toolCard?: ToolCardRef;
+}
+
+export interface StrategyStudioProps {
+  open: boolean;
+  onClose: () => void;
+  strategy?: Strategy | null;
+  editMode?: boolean;
+}
+
+const EMPTY_FORM: StrategyFormData = {
+  name: '',
+  description: '',
+  category: 'MARKET',
+  style: '',
+  requires: [],
+  content: '',
+  triggers: [{ type: 'PRICE_MOVE', description: '', params: {} }],
+  tickers: [],
+  maxPositionSize: undefined,
+};
+
+function strategyToFormData(strategy: Strategy): StrategyFormData {
+  return {
+    name: strategy.name,
+    description: strategy.description,
+    category: strategy.category,
+    style: strategy.style,
+    requires: [...strategy.requires],
+    content: strategy.content,
+    triggers: strategy.triggers.map((t) => ({
+      type: t.type,
+      description: t.description,
+      params: t.params ? (JSON.parse(t.params) as Record<string, unknown>) : {},
+    })),
+    tickers: [...strategy.tickers],
+    maxPositionSize: strategy.maxPositionSize ?? undefined,
+  };
+}
+
+function buildInitialMessage(strategy: Strategy | null | undefined, editMode: boolean | undefined): string {
+  if (!strategy) {
+    return '[STRATEGY STUDIO \u2014 CREATE MODE] Help me create a new trading strategy. Ask me about my goals, preferred style, and which tickers I want to trade.';
+  }
+  const data = JSON.stringify(strategyToFormData(strategy));
+  if (editMode) {
+    return `[STRATEGY STUDIO \u2014 EDIT MODE] I want to edit this strategy: ${strategy.name}. Current data: ${data}`;
+  }
+  return `[STRATEGY STUDIO \u2014 FORK MODE] I want to fork this strategy: ${strategy.name}. Current data: ${data}`;
+}
+
+export default function StrategyStudio({ open, onClose, strategy, editMode }: StrategyStudioProps) {
+  const [threadId] = useState(() => `strategy-studio-${Date.now()}`);
+
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [streamingContent, setStreamingContent] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState<StrategyFormData>(() =>
+    strategy ? strategyToFormData(strategy) : { ...EMPTY_FORM },
+  );
+  const [formVisible, setFormVisible] = useState(() => !!strategy);
+
+  const completedIdsRef = useRef(new Set<string>());
+  const toolCardsRef = useRef<ToolCardRef[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasSentInitialRef = useRef(false);
+
+  const [, sendMessageMutation] = useMutation(SEND_MESSAGE_MUTATION);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, streamingContent, scrollToBottom]);
+
+  const handleSubscription = useCallback((_prev: unknown, data: { onChatMessage: ChatEvent }) => {
+    const event = data.onChatMessage;
+
+    if (event.type === 'THINKING') {
+      setIsLoading(true);
+    } else if (event.type === 'TOOL_CARD' && event.toolCard) {
+      const card = event.toolCard;
+      const isDuplicate = toolCardsRef.current.some((c) => c.tool === card.tool && c.params === card.params);
+      if (!isDuplicate) {
+        toolCardsRef.current.push(card);
+      }
+      if (card.tool === 'propose-strategy') {
+        try {
+          const proposed = JSON.parse(card.params) as Partial<StrategyFormData>;
+          setFormData((prev) => ({ ...prev, ...proposed }));
+          setFormVisible(true);
+        } catch {
+          // ignore malformed JSON
+        }
+      }
+    } else if (event.type === 'TEXT_DELTA') {
+      setIsLoading(false);
+      if (event.accumulatedText != null) {
+        setStreamingContent(event.accumulatedText);
+      } else if (event.delta != null) {
+        setStreamingContent((prev) => prev + event.delta);
+      }
+    } else if (event.type === 'MESSAGE_COMPLETE') {
+      const msgId = event.messageId ?? crypto.randomUUID();
+      if (completedIdsRef.current.has(msgId)) return data;
+      completedIdsRef.current.add(msgId);
+      const toolCards = toolCardsRef.current.length > 0 ? [...toolCardsRef.current] : undefined;
+      setMessages((prev) => [...prev, { id: msgId, role: 'assistant', content: event.content ?? '', toolCards }]);
+      setStreamingContent('');
+      setIsLoading(false);
+      toolCardsRef.current = [];
+    } else if (event.type === 'ERROR') {
+      if (event.messageId) {
+        if (completedIdsRef.current.has(event.messageId)) return data;
+        completedIdsRef.current.add(event.messageId);
+      }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: event.messageId ?? crypto.randomUUID(),
+          role: 'assistant',
+          content: `Something went wrong. ${event.error ?? ''}`,
+        },
+      ]);
+      setStreamingContent('');
+      setIsLoading(false);
+      toolCardsRef.current = [];
+    }
+
+    return data;
+  }, []);
+
+  useSubscription({ query: CHAT_SUBSCRIPTION, variables: { threadId }, pause: !open }, handleSubscription);
+
+  // Send initial context message on mount
+  useEffect(() => {
+    if (!open || hasSentInitialRef.current) return;
+    hasSentInitialRef.current = true;
+    const msg = buildInitialMessage(strategy, editMode);
+    void sendMessageMutation({ threadId, message: msg });
+  }, [open, strategy, editMode, threadId, sendMessageMutation]);
+
+  const handleSend = useCallback(
+    (text: string) => {
+      if (!text.trim() || isLoading) return;
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
+      setIsLoading(true);
+      setStreamingContent('');
+      toolCardsRef.current = [];
+      void sendMessageMutation({ threadId, message: text });
+    },
+    [threadId, sendMessageMutation, isLoading],
+  );
+
+  const handleChipSelect = useCallback(
+    (text: string) => {
+      handleSend(text);
+    },
+    [handleSend],
+  );
+
+  const handleSaved = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth="max-w-6xl" className="flex h-[85vh] flex-col overflow-hidden p-0">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
+        <h2 className="font-headline text-base text-text-primary">Strategy Studio</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="cursor-pointer text-text-muted transition-colors hover:text-text-primary"
+          aria-label="Close"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Body: Chat (left) + Form (right) */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Chat Panel */}
+        <div className={cn('flex flex-col', formVisible ? 'w-1/2 border-r border-border' : 'w-full')}>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {messages.map((msg) => (
+              <ChatMessage key={msg.id} role={msg.role} content={msg.content} toolCards={msg.toolCards} />
+            ))}
+            {streamingContent && <ChatMessage role="assistant" content={streamingContent} streaming />}
+            {isLoading && !streamingContent && (
+              <div className="flex items-center gap-1.5 py-2">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-text-muted" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-text-muted [animation-delay:150ms]" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-text-muted [animation-delay:300ms]" />
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Suggestion Chips + Input */}
+          <div className="border-t border-border px-4 py-3">
+            {messages.length === 0 && !isLoading && <SuggestionChips onSelect={handleChipSelect} />}
+            <ChatInput
+              onSend={handleSend}
+              disabled={isLoading}
+              disableAttachment
+              placeholder="Describe your strategy idea..."
+            />
+          </div>
+        </div>
+
+        {/* Form Panel */}
+        {formVisible && (
+          <div className="w-1/2">
+            <StrategyFormPanel
+              data={formData}
+              onChange={setFormData}
+              editId={editMode && strategy ? strategy.id : undefined}
+              onSaved={handleSaved}
+            />
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}

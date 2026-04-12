@@ -234,6 +234,7 @@ export async function sessionsQuery(): Promise<SessionSummaryGql[]> {
     if (!meta) continue;
     // Only show web channel sessions in the sidebar
     if (meta.channelId !== 'web') continue;
+    if ((meta.threadId ?? '').startsWith('strategy-studio-')) continue;
 
     const messages = history.map((e) => e.message);
     const lastEntry = history[history.length - 1];
