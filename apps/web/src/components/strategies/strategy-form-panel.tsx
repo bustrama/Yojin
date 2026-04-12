@@ -85,6 +85,17 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
   const [tickerRaw, setTickerRaw] = useState(() => data.tickers.join(', '));
   const tickerInputFocused = useRef(false);
 
+  const [triggerIds, setTriggerIds] = useState<string[]>(() => data.triggers.map(() => crypto.randomUUID()));
+  useEffect(() => {
+    setTriggerIds((prev) => {
+      if (prev.length === data.triggers.length) return prev;
+      if (data.triggers.length > prev.length) {
+        return [...prev, ...Array.from({ length: data.triggers.length - prev.length }, () => crypto.randomUUID())];
+      }
+      return prev.slice(0, data.triggers.length);
+    });
+  }, [data.triggers.length]);
+
   useEffect(() => {
     if (!tickerInputFocused.current) {
       setTickerRaw(data.tickers.join(', '));
@@ -97,6 +108,7 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
   const saveDisabled =
     saving ||
     !data.name.trim() ||
+    !data.description.trim() ||
     !data.content.trim() ||
     !data.style.trim() ||
     data.triggers.every((t) => !t.description.trim());
@@ -111,10 +123,12 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
   }
 
   function addTrigger() {
+    setTriggerIds((prev) => [...prev, crypto.randomUUID()]);
     update({ triggers: [...data.triggers, { type: 'PRICE_MOVE', description: '', params: {} }] });
   }
 
   function removeTrigger(index: number) {
+    setTriggerIds((prev) => prev.filter((_, i) => i !== index));
     update({ triggers: data.triggers.filter((_, i) => i !== index) });
   }
 
@@ -258,7 +272,7 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
           </div>
           <div className="space-y-2">
             {data.triggers.map((trigger, i) => (
-              <div key={i} className="bg-bg-tertiary rounded-lg p-3 space-y-2">
+              <div key={triggerIds[i] ?? i} className="bg-bg-tertiary rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
                   <select
                     value={trigger.type}
@@ -327,7 +341,7 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
             <input
               type="range"
               min={0}
-              max={25}
+              max={100}
               step={1}
               value={posPercent}
               onChange={(e) => {
@@ -369,7 +383,7 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
         <div>
           <label className={labelClass}>Content</label>
           {showPreview ? (
-            <div className="bg-bg-card border border-border rounded-lg p-4 prose prose-invert prose-sm max-w-none text-text-primary min-h-[200px]">
+            <div className="bg-bg-card border border-border rounded-lg p-4 prose prose-invert prose-sm max-w-none text-text-primary min-h-[500px]">
               {data.content ? (
                 <ReactMarkdown>{data.content}</ReactMarkdown>
               ) : (
@@ -381,8 +395,8 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
               value={data.content}
               onChange={(e) => update({ content: e.target.value })}
               placeholder={MARKDOWN_PLACEHOLDER}
-              rows={12}
-              className={cn(inputClass, 'font-mono resize-none min-h-[200px]')}
+              rows={24}
+              className={cn(inputClass, 'font-mono resize-none min-h-[500px]')}
             />
           )}
         </div>

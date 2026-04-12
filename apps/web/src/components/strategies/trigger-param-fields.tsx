@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 import { cn } from '../../lib/utils.js';
 
 export interface TriggerParams {
@@ -116,6 +118,14 @@ interface SelectInputProps {
 }
 
 export function SelectInput({ label, value, onChange, options, className }: SelectInputProps) {
+  // Persist the displayed default so unmodified selects are included in saved params.
+  useEffect(() => {
+    if (value === undefined && options[0]) {
+      onChange(options[0].value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally only on mount
+
   return (
     <div className={className}>
       <label className={labelClass}>{label}</label>
@@ -177,6 +187,10 @@ export function MultiSelectChips({ label, selected, onChange, options, className
 // --- Per-trigger-type field renderers ---
 
 function set(params: TriggerParams, key: string, value: unknown): TriggerParams {
+  if (value === undefined) {
+    const { [key]: _removed, ...rest } = params;
+    return rest;
+  }
   return { ...params, [key]: value };
 }
 
@@ -191,8 +205,8 @@ function PriceMoveFields({ params, onChange }: { params: TriggerParams; onChange
       />
       <NumberInput
         label="Threshold"
-        value={params.threshold as number | undefined}
-        onChange={(v) => onChange(set(params, 'threshold', v))}
+        value={(params.threshold as number | undefined) !== undefined ? (params.threshold as number) * 100 : undefined}
+        onChange={(v) => onChange(set(params, 'threshold', v !== undefined ? v / 100 : undefined))}
         placeholder="5"
         suffix="%"
         min={0}
@@ -244,12 +258,15 @@ function IndicatorThresholdFields({
 }
 
 function DrawdownFields({ params, onChange }: { params: TriggerParams; onChange: (p: TriggerParams) => void }) {
+  // Stored as negative fraction (-0.10); displayed as positive percent (10).
+  const displayValue =
+    (params.threshold as number | undefined) !== undefined ? Math.abs(params.threshold as number) * 100 : undefined;
   return (
     <div className="grid grid-cols-3 gap-2">
       <NumberInput
         label="Threshold"
-        value={params.threshold as number | undefined}
-        onChange={(v) => onChange(set(params, 'threshold', v))}
+        value={displayValue}
+        onChange={(v) => onChange(set(params, 'threshold', v !== undefined ? -(v / 100) : undefined))}
         placeholder="10"
         suffix="%"
         min={0}
@@ -318,8 +335,8 @@ function ConcentrationDriftFields({
     <div className="grid grid-cols-3 gap-2">
       <NumberInput
         label="Max Weight"
-        value={params.maxWeight as number | undefined}
-        onChange={(v) => onChange(set(params, 'maxWeight', v))}
+        value={(params.maxWeight as number | undefined) !== undefined ? (params.maxWeight as number) * 100 : undefined}
+        onChange={(v) => onChange(set(params, 'maxWeight', v !== undefined ? v / 100 : undefined))}
         placeholder="25"
         suffix="%"
         min={0}

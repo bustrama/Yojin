@@ -34,7 +34,7 @@ export default function StrategyDetailModal({ open, strategyId, onClose }: Strat
   const [editing, setEditing] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
   const [forking, setForking] = useState(false);
-  const [forkKey, setForkKey] = useState(0);
+  const [forkKey, setForkKey] = useState(1000); // offset from editorKey to prevent key collisions
   const [error, setError] = useState<string | null>(null);
 
   const strategy = result.data?.strategy;

@@ -34,6 +34,18 @@ const EMPTY_FORM: StrategyFormData = {
   maxPositionSize: undefined,
 };
 
+function parseParams(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 function strategyToFormData(strategy: Strategy): StrategyFormData {
   return {
     name: strategy.name,
@@ -46,7 +58,7 @@ function strategyToFormData(strategy: Strategy): StrategyFormData {
     triggers: strategy.triggers.map((t) => ({
       type: t.type,
       description: t.description,
-      params: t.params ? (JSON.parse(t.params) as Record<string, unknown>) : {},
+      params: parseParams(t.params),
     })),
     tickers: [...strategy.tickers],
     maxPositionSize: strategy.maxPositionSize ?? undefined,
@@ -93,7 +105,6 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
   );
   const [formVisible, setFormVisible] = useState(() => !!strategy);
 
-  const [initialResponseReceived, setInitialResponseReceived] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const completedIdsRef = useRef(new Set<string>());
   const toolCardsRef = useRef<ToolCardRef[]>([]);
@@ -110,74 +121,96 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
     scrollToBottom();
   }, [messages, streamingContent, scrollToBottom]);
 
-  const handleSubscription = useCallback((_prev: unknown, data: { onChatMessage: ChatEvent }) => {
-    const event = data.onChatMessage;
+  // Pure accumulator — no side effects. Events are processed in the useEffect below.
+  const handleSubscription = useCallback(
+    (prev: ChatEvent[] | undefined, data: { onChatMessage: ChatEvent }): ChatEvent[] => {
+      return [...(prev ?? []), data.onChatMessage];
+    },
+    [],
+  );
 
-    if (event.type === 'THINKING') {
-      setIsLoading(true);
-    } else if (event.type === 'TOOL_CARD' && event.toolCard) {
-      const card = event.toolCard;
-      const isDuplicate = toolCardsRef.current.some((c) => c.tool === card.tool && c.params === card.params);
-      if (!isDuplicate) {
-        toolCardsRef.current.push(card);
-      }
-      if (card.tool === 'propose-strategy') {
-        try {
-          const proposed = JSON.parse(card.params) as Partial<StrategyFormData>;
-          // Ensure trigger.params is always an object (server may send undefined)
-          if (proposed.triggers) {
-            proposed.triggers = proposed.triggers.map((t) => ({ ...t, params: t.params ?? {} }));
+  const [{ data: subscriptionData }] = useSubscription(
+    { query: CHAT_SUBSCRIPTION, variables: { threadId }, pause: !open },
+    handleSubscription,
+  );
+
+  const processedCountRef = useRef(0);
+
+  const handleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const events: ChatEvent[] = subscriptionData ?? [];
+    const toProcess = events.slice(processedCountRef.current);
+    if (toProcess.length === 0) return;
+    processedCountRef.current = events.length;
+
+    handleTimeoutRef.current = setTimeout(() => {
+      for (const event of toProcess) {
+        if (event.type === 'THINKING') {
+          setIsLoading(true);
+        } else if (event.type === 'TOOL_CARD' && event.toolCard) {
+          const card = event.toolCard;
+          const isDuplicate = toolCardsRef.current.some((c) => c.tool === card.tool && c.params === card.params);
+          if (!isDuplicate) {
+            toolCardsRef.current.push(card);
           }
-          // GraphQL returns uppercase capabilities; normalize for form
-          if (proposed.requires) {
-            proposed.requires = proposed.requires.map((r) => r.toUpperCase());
+          if (card.tool === 'propose-strategy') {
+            try {
+              const proposed = JSON.parse(card.params) as Partial<StrategyFormData>;
+              // Ensure trigger.params is always an object (server may send undefined)
+              if (proposed.triggers) {
+                proposed.triggers = proposed.triggers.map((t) => ({ ...t, params: t.params ?? {} }));
+              }
+              // GraphQL returns uppercase capabilities; normalize for form
+              if (proposed.requires) {
+                proposed.requires = proposed.requires.map((r) => r.toUpperCase());
+              }
+              setFormData((prev) => ({ ...prev, ...proposed }));
+              setFormVisible(true);
+            } catch (err) {
+              console.error('Failed to parse strategy proposal params', err);
+            }
           }
-          setFormData((prev) => ({ ...prev, ...proposed }));
-          setFormVisible(true);
-        } catch (err) {
-          console.error('Failed to parse strategy proposal params', err);
+        } else if (event.type === 'TEXT_DELTA') {
+          setIsLoading(false);
+          if (event.accumulatedText != null) {
+            setStreamingContent(event.accumulatedText);
+          } else if (event.delta != null) {
+            setStreamingContent((prev) => prev + event.delta);
+          }
+        } else if (event.type === 'MESSAGE_COMPLETE') {
+          const msgId = event.messageId ?? crypto.randomUUID();
+          if (completedIdsRef.current.has(msgId)) continue;
+          completedIdsRef.current.add(msgId);
+          const toolCards = toolCardsRef.current.length > 0 ? [...toolCardsRef.current] : undefined;
+          setMessages((prev) => [...prev, { id: msgId, role: 'assistant', content: event.content ?? '', toolCards }]);
+          setStreamingContent('');
+          setIsLoading(false);
+          toolCardsRef.current = [];
+        } else if (event.type === 'ERROR') {
+          if (event.messageId) {
+            if (completedIdsRef.current.has(event.messageId)) continue;
+            completedIdsRef.current.add(event.messageId);
+          }
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: event.messageId ?? crypto.randomUUID(),
+              role: 'assistant',
+              content: `Something went wrong. ${event.error ?? ''}`,
+            },
+          ]);
+          setStreamingContent('');
+          setIsLoading(false);
+          toolCardsRef.current = [];
         }
       }
-    } else if (event.type === 'TEXT_DELTA') {
-      setIsLoading(false);
-      if (event.accumulatedText != null) {
-        setStreamingContent(event.accumulatedText);
-      } else if (event.delta != null) {
-        setStreamingContent((prev) => prev + event.delta);
-      }
-    } else if (event.type === 'MESSAGE_COMPLETE') {
-      const msgId = event.messageId ?? crypto.randomUUID();
-      if (completedIdsRef.current.has(msgId)) return data;
-      completedIdsRef.current.add(msgId);
-      setInitialResponseReceived(true);
-      const toolCards = toolCardsRef.current.length > 0 ? [...toolCardsRef.current] : undefined;
-      setMessages((prev) => [...prev, { id: msgId, role: 'assistant', content: event.content ?? '', toolCards }]);
-      setStreamingContent('');
-      setIsLoading(false);
-      toolCardsRef.current = [];
-    } else if (event.type === 'ERROR') {
-      if (event.messageId) {
-        if (completedIdsRef.current.has(event.messageId)) return data;
-        completedIdsRef.current.add(event.messageId);
-      }
-      setInitialResponseReceived(true);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: event.messageId ?? crypto.randomUUID(),
-          role: 'assistant',
-          content: `Something went wrong. ${event.error ?? ''}`,
-        },
-      ]);
-      setStreamingContent('');
-      setIsLoading(false);
-      toolCardsRef.current = [];
-    }
+    }, 0);
 
-    return data;
-  }, []);
-
-  useSubscription({ query: CHAT_SUBSCRIPTION, variables: { threadId }, pause: !open }, handleSubscription);
+    return () => {
+      if (handleTimeoutRef.current !== null) clearTimeout(handleTimeoutRef.current);
+    };
+  }, [subscriptionData]);
 
   useEffect(() => {
     if (!open || hasSentInitialRef.current) return;
@@ -189,7 +222,6 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
       if (result.error) {
         setMutationError(result.error.message);
         setIsLoading(false);
-        setInitialResponseReceived(true);
       }
     })();
     return () => clearTimeout(handle);
@@ -223,7 +255,7 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
     onClose();
   }, [onClose]);
 
-  const showChips = messages.length === 0 && !isLoading && !initialResponseReceived;
+  const showChips = !messages.some((m) => m.role === 'user');
 
   return (
     <Modal open={open} onClose={onClose} maxWidth="max-w-6xl" className="flex h-[85vh] flex-col overflow-hidden p-0">
@@ -245,7 +277,7 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
       {/* Body: Chat (left) + Form (right) */}
       <div className="flex flex-1 overflow-hidden">
         {/* Chat Panel */}
-        <div className={cn('flex flex-col', formVisible ? 'w-1/2 border-r border-border' : 'w-full')}>
+        <div className={cn('flex flex-col', formVisible ? 'w-2/5 border-r border-border' : 'w-full')}>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
             {messages.map((msg) => (
@@ -281,7 +313,7 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
 
         {/* Form Panel */}
         {formVisible && (
-          <div className="w-1/2">
+          <div className="w-3/5">
             <StrategyFormPanel
               data={formData}
               onChange={setFormData}
