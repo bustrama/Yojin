@@ -28,7 +28,7 @@ export type AssetSnap = z.infer<typeof AssetSnapSchema>;
 export function assetSnapsFromMicro(microInsights: Iterable<MicroInsight>): AssetSnap[] {
   const result: AssetSnap[] = [];
   for (const mi of microInsights) {
-    if (mi.assetSnap.length > 0) {
+    if (mi.source === 'portfolio' && mi.assetSnap.length > 0) {
       result.push({ symbol: mi.symbol, snap: mi.assetSnap, rating: mi.rating, generatedAt: mi.generatedAt });
     }
   }
