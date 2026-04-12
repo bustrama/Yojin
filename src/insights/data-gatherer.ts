@@ -77,6 +77,8 @@ export interface DataBrief {
   newsArticles: NewsArticleBrief[];
   // Research reports (from Jintel)
   researchReports: ResearchBrief[];
+  // Institutional holdings (13F)
+  institutionalHoldings: InstitutionalHoldingBrief[];
   // Ticker profile (per-asset institutional knowledge)
   profile: TickerProfileBrief | null;
 }
@@ -145,6 +147,14 @@ interface ResearchBrief {
   text: string;
   date: string | null;
   score: number;
+}
+
+interface InstitutionalHoldingBrief {
+  issuerName: string;
+  titleOfClass: string;
+  value: number;
+  shares: number;
+  reportDate: string;
 }
 
 interface GatherResult {
@@ -348,6 +358,16 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
       }
     }
 
+    // Institutional holdings (13F — top positions by value)
+    if (b.institutionalHoldings.length > 0) {
+      lines.push(`Institutional holdings (13F, ${b.institutionalHoldings[0].reportDate}):`);
+      for (const h of b.institutionalHoldings.slice(0, 5)) {
+        lines.push(
+          `  - ${h.issuerName} (${h.titleOfClass}): ${formatLargeNumber(h.shares)} shares, $${formatLargeNumber(h.value * 1000)}`,
+        );
+      }
+    }
+
     // Memories (prioritize reflected memories with lessons)
     if (b.memories.length > 0) {
       lines.push(`Past analysis:`);
@@ -477,7 +497,7 @@ export function formatRiskMetrics(briefs: DataBrief[]): string {
 // Unified Jintel enrichment — single query for ALL signal types
 // ---------------------------------------------------------------------------
 
-/** Batch enrich query: market + risk + regulatory + technicals + sentiment. */
+/** Batch enrich query: market + risk + regulatory + technicals + sentiment + news + research + holdings. */
 const BATCH_ENRICH_QUERY = buildBatchEnrichQuery([
   'market',
   'risk',
@@ -486,6 +506,7 @@ const BATCH_ENRICH_QUERY = buildBatchEnrichQuery([
   'sentiment',
   'news',
   'research',
+  'institutionalHoldings',
 ]);
 
 /**
@@ -736,6 +757,13 @@ export function buildBrief(
       text: r.text.slice(0, 300),
       date: r.publishedDate ?? null,
       score: r.score,
+    })),
+    institutionalHoldings: (entity?.institutionalHoldings ?? []).slice(0, 10).map((h) => ({
+      issuerName: h.issuerName,
+      titleOfClass: h.titleOfClass,
+      value: h.value,
+      shares: h.shares,
+      reportDate: h.reportDate,
     })),
     memories,
     profile,

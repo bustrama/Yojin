@@ -51,6 +51,7 @@ const ENRICHMENT_FIELDS = [
   'regulatory',
   'social',
   'discussions',
+  'institutionalHoldings',
 ] as const;
 
 // Quality thresholds — filter low-engagement social posts to keep signal-to-noise high
@@ -661,6 +662,34 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       type: SignalType.FUNDAMENTAL,
       tickers,
       confidence: 0.8,
+    });
+  }
+
+  // 15. Institutional holdings (13F) — equity only; null for crypto/ETF.
+  // Stable title for content-hash dedup. 13F filings update quarterly.
+  // Value is reported in thousands of USD — multiply for display.
+  const holdings = entity.institutionalHoldings;
+  if (holdings?.length) {
+    const topHoldings = holdings.slice(0, 10);
+    const lines = topHoldings.map((h) => {
+      return `${h.issuerName} (${h.titleOfClass}): ${formatNumber(h.shares)} shares, $${formatNumber(h.value * 1000)} | Filed: ${h.filingDate}`;
+    });
+    if (holdings.length > 10) {
+      lines.push(`... and ${holdings.length - 10} more holdings`);
+    }
+    const reportDate = holdings[0].reportDate;
+    signals.push({
+      sourceId: 'jintel-institutional-holdings',
+      sourceName: 'Jintel 13F Holdings',
+      sourceType: SourceType.ENRICHMENT,
+      reliability: 0.95,
+      title: `${entity.name ?? tickers[0]} Institutional Holdings (13F)`,
+      content: lines.join('\n'),
+      publishedAt: reportDate.includes('T') ? reportDate : `${reportDate}T00:00:00Z`,
+      type: SignalType.FUNDAMENTAL,
+      tickers,
+      confidence: 0.95,
+      metadata: { reportDate, filingDate: holdings[0].filingDate, holdingCount: holdings.length },
     });
   }
 

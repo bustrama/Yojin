@@ -64,6 +64,7 @@ function makeBrief(overrides?: Partial<DataBrief>): DataBrief {
     sentimentDirection: 'BULLISH',
     newsArticles: [],
     researchReports: [],
+    institutionalHoldings: [],
     memories: [
       {
         situation: 'Previous analysis showed bullish momentum',
