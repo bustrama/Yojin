@@ -333,7 +333,7 @@ function MockChatPage() {
                 <p className="font-headline text-lg text-white">Saturday, March 29</p>
                 <div className="mt-4 grid grid-cols-4 gap-3">
                   {[
-                    { v: '3', l: 'Actions' },
+                    { v: '3', l: 'Summaries' },
                     { v: '2', l: 'Alerts' },
                     { v: '4', l: 'Insights' },
                     { v: '58.2%', l: 'Margin' },

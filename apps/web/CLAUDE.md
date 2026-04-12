@@ -50,8 +50,8 @@ src/
 │   ├── portfolio/    # Portfolio page components
 │   ├── charts/       # Data visualization components
 │   ├── chat/         # Chat interface components
-│   └── skills/       # Alert rules & skills UI
-├── pages/            # Route pages (Dashboard, Positions, Position, Chat, Skills, Profile, Settings)
+│   └── strategies/       # Alert rules & strategies UI
+├── pages/            # Route pages (Dashboard, Positions, Position, Chat, Strategies, Profile, Settings)
 ├── lib/              # Utilities (graphql client, theme provider, cn() helper)
 ├── App.tsx           # Route definitions
 ├── main.tsx          # React entry point
@@ -70,7 +70,7 @@ Routes defined in `App.tsx`, all nested under `<AppShell>`:
 | `/insights` | Insights | Multi-agent portfolio analysis |
 | `/signals` | Signals | Signal archive with search, filters, deep-linking |
 | `/chat` | Chat | AI chat REPL |
-| `/skills` | Skills | Alert rules and skill browser |
+| `/strategies` | Strategies | Alert rules and strategy browser |
 | `/profile` | Profile | User profile |
 | `/settings` | Settings | App settings |
 

@@ -8,7 +8,7 @@ const segmentLabels: Record<string, string> = {
   portfolio: 'Portfolio',
   insights: 'Insights',
   watchlist: 'Watchlist',
-  skills: 'Strategies',
+  strategies: 'Strategies',
   profile: 'Profile',
   settings: 'Settings',
 };

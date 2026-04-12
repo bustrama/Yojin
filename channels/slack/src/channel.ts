@@ -1,6 +1,7 @@
 import { App, type SlackEventMiddlewareArgs } from '@slack/bolt';
 
 import type { ActionStore } from '../../../src/actions/action-store.js';
+import type { Action } from '../../../src/actions/types.js';
 import { isNotificationEnabled } from '../../../src/api/graphql/resolvers/channels.js';
 import { QUICK_ACTIONS } from '../../../src/channels/quick-actions.js';
 import type { NotificationBus } from '../../../src/core/notification-bus.js';
@@ -38,7 +39,7 @@ function formatSnap(snap: { intelSummary: string; actionItems: { text: string; s
     lines.push('', snap.intelSummary, '');
   }
   if (snap.actionItems.length > 0) {
-    lines.push('*Actions:*');
+    lines.push('*Summaries:*');
     for (const item of snap.actionItems) {
       lines.push(`• ${item.text}`);
     }
@@ -46,10 +47,15 @@ function formatSnap(snap: { intelSummary: string; actionItems: { text: string; s
   return lines.join('\n');
 }
 
-function formatAction(action: { what: string; why: string; source: string }): string {
-  const ticker = action.source?.match(/micro-observation:\s*(\S+)/)?.[1];
-  const header = ticker ? `:zap: *${ticker}*` : ':zap: *New Action*';
-  return [header, action.what].join('\n');
+/** Format an Action for Slack: verdict badge + headline + reasoning. */
+function formatAction(action: Action): string {
+  const ticker = action.tickers[0];
+  const header = ticker ? `:zap: *${action.verdict} ${ticker}*` : `:zap: *${action.verdict}*`;
+  const lines = [header, action.what];
+  if (action.why && action.why !== action.what) {
+    lines.push('', action.why);
+  }
+  return lines.join('\n');
 }
 
 function formatInsight(report: InsightReport): string {
@@ -62,11 +68,11 @@ function formatInsight(report: InsightReport): string {
     const ratings = report.positions.map((p) => `${p.symbol} ${p.rating}`).join(' \u{2022} ');
     lines.push(ratings);
   }
-  // Top actions (max 3)
-  const actions = report.portfolio?.actionItems ?? [];
-  if (actions.length > 0) {
+  // Top summaries (max 3)
+  const summaries = report.portfolio?.actionItems ?? [];
+  if (summaries.length > 0) {
     lines.push('');
-    for (const item of actions.slice(0, 3)) {
+    for (const item of summaries.slice(0, 3)) {
       const text = typeof item === 'string' ? item : item.text;
       lines.push(`\u{2022} ${text}`);
     }

@@ -152,7 +152,7 @@ export default function MorningBriefingCard() {
         actions={[
           { label: 'View All Positions', onClick: () => navigate('/portfolio') },
           { label: 'Risk Report', onClick: () => navigate('/chat', { state: { preset: 'Show me my risk report' } }) },
-          { label: 'View Alerts', onClick: () => navigate('/skills') },
+          { label: 'View Alerts', onClick: () => navigate('/strategies') },
         ]}
       />
     </RichCard>

@@ -434,7 +434,7 @@ yojin/
 │   ├── portfolio/      # Snapshot store
 │   ├── watchlist/      # JSONL-backed watchlist with Jintel enrichment
 │   ├── actions/        # Action data model (PENDING → APPROVED/REJECTED/EXPIRED)
-│   ├── skills/         # Trading strategy definitions and evaluation
+│   ├── strategies/         # Trading strategy definitions and evaluation
 │   ├── snap/           # Snap briefs — short periodic summaries
 │   ├── profiles/       # Per-ticker knowledge profiles (TickerProfileStore)
 │   ├── guards/         # 12-guard safety pipeline (security/ + finance/)

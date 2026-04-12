@@ -5,8 +5,8 @@
  * Factory defaults: resolved from the package install location via import.meta.url
  */
 
-import { existsSync } from 'node:fs';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { copyFile, mkdir, rename } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,8 +41,9 @@ export const DATA_SUBDIRS = [
   'identity',
   'logs',
   'watchlist',
+  'summaries',
   'actions',
-  'skills',
+  'strategies',
   'snap',
   'profiles', // Per-ticker persistent knowledge profiles
   'data', // General-purpose data storage for data source outputs and imports
@@ -75,17 +76,40 @@ export function resolveDataRoot(): string {
 }
 
 /**
- * Resolve the factory defaults directory (bundled with package).
- * Uses import.meta.url to find the package install location.
- * Returns the absolute path to the `data/default/` directory bundled with the package.
+ * Resolve the package root directory (where package.json lives).
+ * Works from both source (src/paths.ts) and compiled output (dist/src/paths.js).
+ * This is the single source of truth — other modules should derive their paths
+ * from this helper instead of computing relative paths from their own file location,
+ * because the src→dist depth differs (src/x/file.ts is 2 levels, dist/src/x/file.js is 3).
  */
-export function resolveDefaultsRoot(): string {
+export function resolvePackageRoot(): string {
   const thisDir = dirname(fileURLToPath(import.meta.url));
   // When compiled: dist/src/paths.js → need ../../ to reach project root
   // When running source: src/paths.ts → need ../ to reach project root
   const isCompiledOutput = thisDir.split(sep).includes('dist');
-  const projectRoot = isCompiledOutput ? resolve(thisDir, '..', '..') : resolve(thisDir, '..');
-  return resolve(projectRoot, 'data', 'default');
+  return isCompiledOutput ? resolve(thisDir, '..', '..') : resolve(thisDir, '..');
+}
+
+/**
+ * Resolve the factory defaults directory (bundled with package).
+ * Returns the absolute path to the `data/default/` directory bundled with the package.
+ */
+export function resolveDefaultsRoot(): string {
+  return resolve(resolvePackageRoot(), 'data', 'default');
+}
+
+let cachedPackageVersion: string | undefined;
+/**
+ * Read the package version from package.json. Cached after first call.
+ * Centralized here so consumers don't have to compute their own relative path
+ * to package.json — source vs compiled depths differ and cause ENOENT in tests.
+ */
+export function resolvePackageVersion(): string {
+  if (cachedPackageVersion) return cachedPackageVersion;
+  const pkgPath = resolve(resolvePackageRoot(), 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version: string };
+  cachedPackageVersion = pkg.version;
+  return cachedPackageVersion;
 }
 
 /**
@@ -93,6 +117,16 @@ export function resolveDefaultsRoot(): string {
  * Called once on startup — creates subdirectories if missing.
  */
 export async function ensureDataDirs(dataRoot: string): Promise<void> {
+  // One-time migration: ~/.yojin/skills/ → ~/.yojin/strategies/
+  // Runs before mkdir so the rename sees an empty destination. If the user
+  // has both (shouldn't happen), the migration is skipped and the old dir
+  // is left in place for manual reconciliation.
+  const legacyStrategiesDir = join(dataRoot, 'skills');
+  const strategiesDir = join(dataRoot, 'strategies');
+  if (existsSync(legacyStrategiesDir) && !existsSync(strategiesDir)) {
+    await rename(legacyStrategiesDir, strategiesDir);
+  }
+
   for (const sub of DATA_SUBDIRS) {
     await mkdir(join(dataRoot, sub), { recursive: true });
   }

@@ -33,6 +33,7 @@ export function buildApprovalKeyboard(requestId: string): InlineKeyboard {
     .text('\u{1F4CB} Details', `details:${requestId}`);
 }
 
+/** Builds an approve/reject keyboard for a PENDING Action. */
 export function buildActionKeyboard(actionId: string): InlineKeyboard {
   return new InlineKeyboard()
     .text('\u{2705} Approve', `action-approve:${actionId}`)

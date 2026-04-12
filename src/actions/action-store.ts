@@ -1,17 +1,23 @@
 /**
  * Action store — append-only JSONL storage with date-partitioned files.
  *
- * Stores Actions that require human approval (PENDING -> APPROVED | REJECTED | EXPIRED).
- * Updates are appended as new lines — the highest-version entry for each ID wins on read.
+ * Stores Actions (PENDING -> APPROVED | REJECTED | EXPIRED). Updates are
+ * appended as new lines — the highest-version entry for each ID wins on read.
+ *
+ * Supersede-on-triggerId: when a fresh evaluation arrives for a triggerId that
+ * already has a PENDING record, the old record is marked EXPIRED with
+ * `resolvedBy: 'superseded'` and the new record is appended. This lets later
+ * flows (e.g. macro refining a micro-fired trigger) update the Action instead
+ * of being silently skipped.
  *
  * Storage layout:
  *   data/actions/
- *     2026-03-21.jsonl
- *     2026-03-22.jsonl
+ *     2026-04-11.jsonl
+ *     2026-04-12.jsonl
  */
 
-import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { appendFile, mkdir, readFile, readdir, rename, stat } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import type { Action, ActionStatus } from './types.js';
 import { ActionSchema } from './types.js';
@@ -27,6 +33,7 @@ interface ActionQueryFilter {
   status?: ActionStatus;
   since?: string; // ISO date string
   limit?: number;
+  dismissed?: boolean;
 }
 
 type ActionResult<T> = { success: true; data: T } | { success: false; error: string };
@@ -34,20 +41,110 @@ type ActionResult<T> = { success: true; data: T } | { success: false; error: str
 export class ActionStore {
   private readonly dir: string;
   private dirCreated = false;
+  private migrationDone = false;
 
   constructor(options: ActionStoreOptions) {
     this.dir = options.dir;
   }
 
-  /** Create a new action and append it to the date-partitioned store. */
+  /**
+   * Migrate legacy Action-shaped records out of data/summaries/ into data/actions/.
+   *
+   * Historically, Actions (strategy-triggered records) were stored in the same
+   * JSONL files as Summaries. We now split them — this migration walks every
+   * file under data/summaries/ and moves records that have a `strategyId` field
+   * into a parallel file under data/actions/. Records without `strategyId` are
+   * left in place for the new SummaryStore.
+   *
+   * Safe to call multiple times — skips if already done.
+   */
+  private async migrateFromSummaries(): Promise<void> {
+    if (this.migrationDone) return;
+    this.migrationDone = true;
+
+    const legacyDir = join(dirname(this.dir), 'summaries');
+    try {
+      await stat(legacyDir);
+    } catch {
+      return; // no legacy dir — nothing to migrate
+    }
+
+    await this.ensureDir();
+
+    let fileCount = 0;
+    let recordCount = 0;
+    try {
+      const entries = await readdir(legacyDir);
+      for (const entry of entries) {
+        if (!entry.endsWith('.jsonl')) continue;
+        const legacyPath = join(legacyDir, entry);
+        let content: string;
+        try {
+          content = await readFile(legacyPath, 'utf-8');
+        } catch {
+          continue;
+        }
+        const lines = content.split('\n').filter(Boolean);
+        const actionLines: string[] = [];
+        const summaryLines: string[] = [];
+        let sawAction = false;
+
+        for (const line of lines) {
+          try {
+            const obj = JSON.parse(line) as Record<string, unknown>;
+            if (typeof obj.strategyId === 'string' && obj.strategyId.length > 0) {
+              sawAction = true;
+              actionLines.push(line);
+            } else {
+              summaryLines.push(line);
+            }
+          } catch {
+            // Keep malformed lines in the legacy file
+            summaryLines.push(line);
+          }
+        }
+
+        if (!sawAction) continue;
+
+        // Append migrated Actions to the corresponding file in data/actions/
+        const destPath = join(this.dir, entry);
+        await appendFile(destPath, actionLines.join('\n') + '\n');
+        recordCount += actionLines.length;
+        fileCount++;
+
+        // Rewrite the legacy file without the migrated Actions.
+        // Use a temp file + rename to avoid partial writes.
+        const { writeFile } = await import('node:fs/promises');
+        const tmpPath = `${legacyPath}.migrating`;
+        await writeFile(tmpPath, summaryLines.length > 0 ? summaryLines.join('\n') + '\n' : '');
+        await rename(tmpPath, legacyPath);
+      }
+      if (fileCount > 0) {
+        logger.info(`Migrated ${recordCount} action record(s) from ${fileCount} summaries file(s)`);
+      }
+    } catch (err) {
+      logger.warn('Failed to migrate legacy summaries', { error: String(err) });
+    }
+  }
+
+  /**
+   * Create a new Action, superseding any existing PENDING record with the same
+   * triggerId. This ensures fresh evaluations (e.g. macro refining a micro
+   * trigger) replace stale ones rather than being skipped.
+   */
   async create(action: Action): Promise<ActionResult<Action>> {
     const parsed = ActionSchema.safeParse(action);
     if (!parsed.success) {
       return { success: false, error: `Invalid action: ${parsed.error.message}` };
     }
 
+    await this.supersedePendingByTriggerId(parsed.data.triggerId);
     await this.appendAction(parsed.data);
-    logger.info('Action created', { id: parsed.data.id, source: parsed.data.source });
+    logger.info('Action created', {
+      id: parsed.data.id,
+      strategyId: parsed.data.strategyId,
+      verdict: parsed.data.verdict,
+    });
     return { success: true, data: parsed.data };
   }
 
@@ -61,30 +158,27 @@ export class ActionStore {
     return this.resolve(id, 'REJECTED', 'user');
   }
 
-  /**
-   * Supersede a pending action — marked EXPIRED with resolvedBy='superseded'.
-   * Used when a higher-priority action replaces an older one for the same ticker.
-   */
-  async supersede(id: string): Promise<ActionResult<Action>> {
+  /** Dismiss a pending action (soft-hide without changing status). */
+  async dismiss(id: string): Promise<ActionResult<Action>> {
     const existing = await this.getById(id);
     if (!existing) {
       return { success: false, error: `Action not found: ${id}` };
     }
-    if (existing.status !== 'PENDING') {
-      return {
-        success: false,
-        error: `Action ${id} is already ${existing.status}, cannot supersede`,
-      };
+    if (existing.dismissedAt) {
+      return { success: false, error: `Action ${id} is already dismissed` };
     }
-
-    const updated: Action = {
-      ...existing,
-      status: 'EXPIRED',
-      resolvedAt: new Date().toISOString(),
-      resolvedBy: 'superseded',
-    };
+    if (existing.status !== 'PENDING') {
+      return { success: false, error: `Action ${id} is already ${existing.status}, cannot dismiss` };
+    }
+    const now = new Date().toISOString();
+    if (existing.expiresAt <= now) {
+      const expired: Action = { ...existing, status: 'EXPIRED', resolvedAt: now, resolvedBy: 'timeout' };
+      await this.appendAction(expired);
+      return { success: false, error: `Action ${id} has expired` };
+    }
+    const updated: Action = { ...existing, dismissedAt: now };
     await this.appendAction(updated);
-    logger.info('Action superseded', { id });
+    logger.info('Action dismissed', { id });
     return { success: true, data: updated };
   }
 
@@ -96,9 +190,9 @@ export class ActionStore {
 
     for (const action of all) {
       if (action.status !== 'PENDING') continue;
+      if (action.dismissedAt) continue;
 
       if (action.expiresAt <= now) {
-        // Auto-expire
         const expired: Action = {
           ...action,
           status: 'EXPIRED',
@@ -121,7 +215,6 @@ export class ActionStore {
 
     for (const file of files) {
       const actions = await this.readFile(file);
-      // Search in reverse for the latest entry with this ID
       for (let i = actions.length - 1; i >= 0; i--) {
         if (actions[i].id === id) return actions[i];
       }
@@ -144,12 +237,13 @@ export class ActionStore {
       for (const action of [...actions].reverse()) {
         if (results.length >= limit) break;
 
-        // Resolve effective status (auto-expire check)
         const effectiveStatus = action.status === 'PENDING' && action.expiresAt <= now ? 'EXPIRED' : action.status;
 
         if (filter.status && effectiveStatus !== filter.status) continue;
 
-        // Return with effective status
+        if (filter.dismissed === true && !action.dismissedAt) continue;
+        if (filter.dismissed !== true && action.dismissedAt) continue;
+
         if (effectiveStatus !== action.status) {
           results.push({ ...action, status: effectiveStatus as ActionStatus });
         } else {
@@ -164,6 +258,36 @@ export class ActionStore {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Mark every PENDING (non-expired, non-dismissed) record sharing this
+   * triggerId as EXPIRED with resolvedBy='superseded'. Called just before
+   * appending a fresh Action to ensure the triggerId dedup guarantees that
+   * at most one PENDING record exists per triggerId at a time.
+   */
+  private async supersedePendingByTriggerId(triggerId: string): Promise<void> {
+    const all = await this.queryAll();
+    const now = new Date().toISOString();
+
+    for (const existing of all) {
+      if (existing.triggerId !== triggerId) continue;
+      if (existing.status !== 'PENDING') continue;
+      if (existing.dismissedAt) continue;
+      if (existing.expiresAt <= now) continue;
+
+      const superseded: Action = {
+        ...existing,
+        status: 'EXPIRED',
+        resolvedAt: now,
+        resolvedBy: 'superseded',
+      };
+      await this.appendAction(superseded);
+      logger.debug('Action superseded by fresh trigger', {
+        id: existing.id,
+        triggerId,
+      });
+    }
+  }
 
   private async resolve(
     id: string,
@@ -182,7 +306,6 @@ export class ActionStore {
       };
     }
 
-    // Check expiry
     const now = new Date().toISOString();
     if (existing.expiresAt <= now) {
       const expired: Action = {
@@ -233,6 +356,7 @@ export class ActionStore {
   }
 
   private async listFiles(since?: string): Promise<string[]> {
+    await this.migrateFromSummaries();
     let dates: string[];
     try {
       const entries = await readdir(this.dir);
@@ -255,7 +379,7 @@ export class ActionStore {
   /**
    * Read a JSONL file and deduplicate by ID (last entry wins).
    * This handles the append-only update model: when an action is
-   * approved/rejected/expired, its updated version is appended.
+   * approved/rejected/expired/superseded, its updated version is appended.
    */
   private async readFile(filePath: string): Promise<Action[]> {
     try {

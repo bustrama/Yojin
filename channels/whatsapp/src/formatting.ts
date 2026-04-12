@@ -45,7 +45,7 @@ export function formatSnap(snap: Snap): string {
   }
 
   if (snap.actionItems.length > 0) {
-    lines.push('*Actions:*');
+    lines.push('*Summaries:*');
     for (const item of snap.actionItems) {
       lines.push(`\u{2022} ${item.text}`);
     }
@@ -54,10 +54,15 @@ export function formatSnap(snap: Snap): string {
   return lines.join('\n');
 }
 
+/** Format an Action for WhatsApp: verdict badge + headline + reasoning. */
 export function formatAction(action: Action): string {
-  const ticker = action.source?.match(/micro-observation:\s*(\S+)/)?.[1];
-  const header = ticker ? `\u{26A1} *${ticker}*` : '\u{26A1} *New Action*';
-  return [header, action.what].join('\n');
+  const ticker = action.tickers[0];
+  const header = ticker ? `\u{26A1} *${action.verdict} ${ticker}*` : `\u{26A1} *${action.verdict}*`;
+  const lines = [header, action.what];
+  if (action.why && action.why !== action.what) {
+    lines.push('', action.why);
+  }
+  return lines.join('\n');
 }
 
 export function formatInsight(report: InsightReport): string {
@@ -73,11 +78,11 @@ export function formatInsight(report: InsightReport): string {
     lines.push(ratings);
   }
 
-  // Top actions as short bullets (max 3)
-  const actions = report.portfolio?.actionItems ?? [];
-  if (actions.length > 0) {
+  // Top summaries as short bullets (max 3)
+  const summaries = report.portfolio?.actionItems ?? [];
+  if (summaries.length > 0) {
     lines.push('');
-    for (const item of actions.slice(0, 3)) {
+    for (const item of summaries.slice(0, 3)) {
       const text = typeof item === 'string' ? item : item.text;
       lines.push(`\u{2022} ${text}`);
     }

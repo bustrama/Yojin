@@ -1,10 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildContext } from '../src/composition.js';
 
+let testDataRoot: string;
+
+beforeAll(() => {
+  testDataRoot = mkdtempSync(join(tmpdir(), 'yojin-composition-test-'));
+});
+
+afterAll(() => {
+  rmSync(testDataRoot, { recursive: true, force: true });
+});
+
 describe('buildContext', () => {
   it('builds services with all tools registered (vault skipped)', async () => {
-    const services = await buildContext({ skipVault: true, dataRoot: '.' });
+    const services = await buildContext({ skipVault: true, dataRoot: testDataRoot });
 
     expect(services.config).toBeDefined();
     expect(services.toolRegistry).toBeDefined();
@@ -20,7 +34,7 @@ describe('buildContext', () => {
   });
 
   it('registers 64 tools (with vault-locked stubs)', async () => {
-    const services = await buildContext({ skipVault: true });
+    const services = await buildContext({ skipVault: true, dataRoot: testDataRoot });
     const schemas = services.toolRegistry.toSchemas();
 
     // 2 starter + 4 credential stubs + 8 brain + 1 security audit
@@ -37,7 +51,7 @@ describe('buildContext', () => {
     // + 2 data source query tools (query_data_source, list_data_sources)
     // + 2 memory tools (store_signal_memory, recall_signal_memories)
     // + 4 display tools (display_portfolio_overview, display_positions_list, display_allocation, display_morning_briefing)
-    // + 5 skill tools (list_skills, get_skill, activate_skill, deactivate_skill, get_skill_evaluations)
+    // + 5 strategy tools (list_strategies, get_strategy, activate_strategy, deactivate_strategy, get_strategy_evaluations)
     // + 2 new Jintel tools (get_financials, get_executives)
     // = 66
     expect(schemas.length).toBe(66);
@@ -88,7 +102,7 @@ describe('buildContext', () => {
   });
 
   it('registers 6 agent profiles', async () => {
-    const services = await buildContext({ skipVault: true });
+    const services = await buildContext({ skipVault: true, dataRoot: testDataRoot });
     const agents = services.agentRegistry.getAll();
 
     expect(agents.length).toBe(6);
@@ -104,7 +118,7 @@ describe('buildContext', () => {
   });
 
   it('vault-locked stubs return error messages', async () => {
-    const services = await buildContext({ skipVault: true });
+    const services = await buildContext({ skipVault: true, dataRoot: testDataRoot });
 
     const result = await services.toolRegistry.execute('store_credential', {
       key: 'TEST_KEY',
@@ -115,7 +129,7 @@ describe('buildContext', () => {
   });
 
   it('guard runner is frozen after construction', async () => {
-    const services = await buildContext({ skipVault: true });
+    const services = await buildContext({ skipVault: true, dataRoot: testDataRoot });
 
     // Frozen guard runner should throw if we try to add guards
     expect(() => {
@@ -125,7 +139,7 @@ describe('buildContext', () => {
   });
 
   it('can scope tools to an agent profile', async () => {
-    const services = await buildContext({ skipVault: true });
+    const services = await buildContext({ skipVault: true, dataRoot: testDataRoot });
     const { agentRegistry, toolRegistry } = services;
 
     const strategistTools = agentRegistry.getToolsForAgent('strategist', toolRegistry);

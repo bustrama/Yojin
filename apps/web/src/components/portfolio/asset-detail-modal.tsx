@@ -494,14 +494,14 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
         </Card>
       )}
 
-      {/* Actions & News */}
+      {/* Summaries & News */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card
-          title="Actions"
+          title="Summaries"
           headerAction={
             microActions.length > 0 ? (
               <span className="text-2xs text-text-muted">
-                {microActions.length} {microActions.length === 1 ? 'action' : 'actions'}
+                {microActions.length} {microActions.length === 1 ? 'summary' : 'summaries'}
               </span>
             ) : undefined
           }
@@ -520,7 +520,7 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
               <Spinner size="sm" />
             </div>
           ) : (
-            <p className="py-4 text-center text-sm text-text-muted">No pending actions</p>
+            <p className="py-4 text-center text-sm text-text-muted">No summaries yet</p>
           )}
         </Card>
 

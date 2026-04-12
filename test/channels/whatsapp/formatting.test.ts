@@ -154,18 +154,18 @@ describe('formatSnap', () => {
     expect(result).toContain('Markets are mixed');
   });
 
-  it('includes action items label with WhatsApp bold', () => {
+  it('includes summary items label with WhatsApp bold', () => {
     const result = formatSnap(snap);
-    expect(result).toContain('*Actions:*');
+    expect(result).toContain('*Summaries:*');
   });
 
-  it('includes action item text', () => {
+  it('includes summary item text', () => {
     const result = formatSnap(snap);
     expect(result).toContain('AAPL earnings beat expectations');
     expect(result).toContain('Oil prices declining');
   });
 
-  it('handles snap with no action items', () => {
+  it('handles snap with no summary items', () => {
     const emptySnap: Snap = {
       id: 'snap-2',
       generatedAt: '2026-03-30T08:00:00Z',
@@ -175,7 +175,7 @@ describe('formatSnap', () => {
     };
     const result = formatSnap(emptySnap);
     expect(result).toContain('All quiet.');
-    expect(result).not.toContain('*Actions:*');
+    expect(result).not.toContain('*Summaries:*');
   });
 
   it('does not use HTML tags', () => {
@@ -187,35 +187,45 @@ describe('formatSnap', () => {
 describe('formatAction', () => {
   const action: Action = {
     id: 'act-1',
-    what: 'Review AAPL — bearish divergence detected',
-    why: 'RSI divergence on daily chart',
-    source: 'skill: momentum',
+    strategyId: 'momentum',
+    strategyName: 'Momentum Breakout',
+    triggerId: 'momentum-PRICE_MOVE-AAPL',
+    triggerType: 'PRICE_MOVE',
+    verdict: 'BUY',
+    what: 'BUY AAPL — golden cross + expanding volume',
+    why: 'RSI reclaimed 50 and the 50D crossed above the 200D',
+    tickers: ['AAPL'],
     status: 'PENDING',
     expiresAt: '2026-03-31T08:00:00Z',
     createdAt: '2026-03-30T08:00:00Z',
   };
 
-  it('includes the New Action header with WhatsApp bold', () => {
+  it('renders verdict + ticker header with WhatsApp bold', () => {
     const result = formatAction(action);
-    expect(result).toContain('*New Action*');
+    expect(result).toContain('*BUY AAPL*');
   });
 
-  it('uses ticker as header for micro-observation actions', () => {
-    const microAction = { ...action, source: 'micro-observation: AAPL' };
-    const result = formatAction(microAction);
-    expect(result).toContain('*AAPL*');
-    expect(result).not.toContain('New Action');
+  it('includes the headline (what) field', () => {
+    const result = formatAction(action);
+    expect(result).toContain('golden cross');
   });
 
-  it('includes the what field', () => {
+  it('includes the reasoning (why) when distinct from the headline', () => {
     const result = formatAction(action);
-    expect(result).toContain('Review AAPL');
+    expect(result).toContain('RSI reclaimed 50');
   });
 
-  it('does not include why or source fields', () => {
-    const result = formatAction(action);
-    expect(result).not.toContain('_Why:_');
-    expect(result).not.toContain('_Source:_');
+  it('omits reasoning when it duplicates the headline', () => {
+    const dup: Action = { ...action, why: action.what };
+    const result = formatAction(dup);
+    const occurrences = result.split('golden cross').length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('falls back to verdict-only header when no ticker is provided', () => {
+    const noTicker: Action = { ...action, tickers: [], verdict: 'REVIEW' };
+    const result = formatAction(noTicker);
+    expect(result).toContain('*REVIEW*');
   });
 
   it('does not use HTML tags', () => {

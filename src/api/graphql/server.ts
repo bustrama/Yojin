@@ -7,7 +7,13 @@
 import { createSchema, createYoga } from 'graphql-yoga';
 import type { Hono } from 'hono';
 
-import { actionResolver, actionsResolver, approveActionMutation, rejectActionMutation } from './resolvers/actions.js';
+import {
+  actionResolver,
+  actionsResolver,
+  approveActionMutation,
+  dismissActionMutation,
+  rejectActionMutation,
+} from './resolvers/actions.js';
 import { activityLogQuery } from './resolvers/activity-log.js';
 import {
   aiConfigQuery,
@@ -107,21 +113,34 @@ import {
 import { clearAppDataMutation, deviceInfoResolver } from './resolvers/profile.js';
 import { tickerProfileQuery, tickerProfilesQuery } from './resolvers/profiles.js';
 import { riskReportQuery } from './resolvers/risk.js';
-import { schedulerStatusQuery, triggerMicroAnalysisMutation } from './resolvers/scheduler.js';
+import {
+  schedulerStatusQuery,
+  triggerMicroAnalysisMutation,
+  triggerStrategyEvaluationMutation,
+} from './resolvers/scheduler.js';
 import { assessmentStatusResolver, signalAssessmentsResolver } from './resolvers/signal-assessments.js';
 import { signalGroupFieldResolvers, signalGroupResolver, signalGroupsResolver } from './resolvers/signal-groups.js';
 import { signalsByIdsResolver } from './resolvers/signals.js';
-import {
-  resolveCreateSkill,
-  resolveDeleteSkill,
-  resolveExportSkill,
-  resolveImportSkill,
-  resolveSkill,
-  resolveSkills,
-  resolveToggleSkill,
-  resolveUpdateSkill,
-} from './resolvers/skills.js';
 import { snapQuery } from './resolvers/snap.js';
+import {
+  resolveCreateStrategy,
+  resolveDeleteStrategy,
+  resolveExportStrategy,
+  resolveImportStrategy,
+  resolveStrategies,
+  resolveStrategy,
+  resolveToggleStrategy,
+  resolveUpdateStrategy,
+} from './resolvers/strategies.js';
+import {
+  resolveAddStrategySource,
+  resolveRemoveStrategySource,
+  resolveStrategySources,
+  resolveSyncStrategies,
+  resolveSyncStrategySource,
+  resolveToggleStrategySource,
+} from './resolvers/strategy-sources.js';
+import { summariesResolver, summaryResolver } from './resolvers/summaries.js';
 import {
   addVaultSecretMutation,
   changeVaultPassphraseMutation,
@@ -181,11 +200,14 @@ const schema = createSchema({
       notificationPreferences: notificationPreferencesQuery,
       snap: snapQuery,
       activityLog: activityLogQuery,
+      summaries: summariesResolver,
+      summary: summaryResolver,
       actions: actionsResolver,
       action: actionResolver,
-      skills: resolveSkills,
-      skill: resolveSkill,
-      exportSkill: resolveExportSkill,
+      strategies: resolveStrategies,
+      strategy: resolveStrategy,
+      exportStrategy: resolveExportStrategy,
+      strategySources: resolveStrategySources,
       tickerProfile: tickerProfileQuery,
       tickerProfiles: tickerProfilesQuery,
       microInsight: microInsightQuery,
@@ -244,16 +266,23 @@ const schema = createSchema({
       removeFromWatchlist: removeFromWatchlistMutation,
       approveAction: approveActionMutation,
       rejectAction: rejectActionMutation,
-      toggleSkill: resolveToggleSkill,
-      createSkill: resolveCreateSkill,
-      updateSkill: resolveUpdateSkill,
-      deleteSkill: resolveDeleteSkill,
-      importSkill: resolveImportSkill,
+      dismissAction: dismissActionMutation,
+      toggleStrategy: resolveToggleStrategy,
+      createStrategy: resolveCreateStrategy,
+      updateStrategy: resolveUpdateStrategy,
+      deleteStrategy: resolveDeleteStrategy,
+      importStrategy: resolveImportStrategy,
+      addStrategySource: resolveAddStrategySource,
+      removeStrategySource: resolveRemoveStrategySource,
+      toggleStrategySource: resolveToggleStrategySource,
+      syncStrategies: resolveSyncStrategies,
+      syncStrategySource: resolveSyncStrategySource,
       clearAppData: clearAppDataMutation,
       saveAiConfig: saveAiConfigMutation,
       saveAiCredential: saveAiCredentialMutation,
       removeAiCredential: removeAiCredentialMutation,
       triggerMicroAnalysis: triggerMicroAnalysisMutation,
+      triggerStrategyEvaluation: triggerStrategyEvaluationMutation,
     },
     Subscription: {
       onAlert: onAlertSubscription,

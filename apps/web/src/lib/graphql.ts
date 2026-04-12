@@ -46,6 +46,7 @@ const cache = cacheExchange({
     PortfolioItem: () => null, // embedded — nested under PortfolioInsight
     AssetSnap: () => null, // embedded — nested under Snap
     MicroInsight: (data) => data.id as string,
+    Summary: (data) => data.id as string,
     Action: (data) => data.id as string,
     EmotionState: () => null, // embedded — nested under InsightReport
     RefreshIntelFeedResult: () => null, // embedded — mutation result
@@ -62,8 +63,10 @@ const cache = cacheExchange({
     PairingEvent: () => null,
     SessionSummary: (data) => data.id as string,
     SessionDetail: (data) => data.id as string,
-    Skill: (data) => data.id as string,
-    SkillTrigger: () => null, // embedded — nested under Skill
+    Strategy: (data) => data.id as string,
+    StrategyTrigger: () => null, // embedded — nested under Strategy
+    StrategySource: (data) => data.id as string,
+    StrategySyncResult: () => null, // embedded — mutation result
     SymbolSearchResult: () => null, // embedded — search result, no stable identity
     WatchlistEntry: () => null, // embedded — nested under watchlist query array
     KeychainTokenResult: () => null, // query result — singleton per provider
@@ -159,20 +162,38 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'signals');
         cache.invalidate('Query', 'curatedSignals');
       },
-      createSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      createStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      updateSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      updateStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      deleteSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      deleteStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      importSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      importStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
       },
-      toggleSkill(_result, _args, cache) {
-        cache.invalidate('Query', 'skills');
+      toggleStrategy(_result, _args, cache) {
+        cache.invalidate('Query', 'strategies');
+      },
+      addStrategySource(_result, _args, cache) {
+        cache.invalidate('Query', 'strategySources');
+        cache.invalidate('Query', 'strategies');
+      },
+      removeStrategySource(_result, _args, cache) {
+        cache.invalidate('Query', 'strategySources');
+      },
+      toggleStrategySource(_result, _args, cache) {
+        cache.invalidate('Query', 'strategySources');
+      },
+      syncStrategies(_result, _args, cache) {
+        cache.invalidate('Query', 'strategySources');
+        cache.invalidate('Query', 'strategies');
+      },
+      syncStrategySource(_result, _args, cache) {
+        cache.invalidate('Query', 'strategySources');
+        cache.invalidate('Query', 'strategies');
       },
       clearAppData(_result, _args, cache) {
         cache.invalidate('Query', 'portfolio');
@@ -185,12 +206,16 @@ const cache = cacheExchange({
         cache.invalidate('Query', 'insightReports');
         cache.invalidate('Query', 'watchlist');
         cache.invalidate('Query', 'deviceInfo');
+        cache.invalidate('Query', 'summaries');
         cache.invalidate('Query', 'actions');
       },
       approveAction(_result, _args, cache) {
         cache.invalidate('Query', 'actions');
       },
       rejectAction(_result, _args, cache) {
+        cache.invalidate('Query', 'actions');
+      },
+      dismissAction(_result, _args, cache) {
         cache.invalidate('Query', 'actions');
       },
     },

@@ -5,7 +5,7 @@ const logger = createSubsystemLogger('notification-bus');
 export type NotificationEvent =
   | { type: 'snap.ready'; snapId: string }
   | { type: 'insight.ready'; insightId: string }
-  | { type: 'action.created'; actionId: string; ticker?: string }
+  | { type: 'action.created'; actionId: string; verdict: string; ticker?: string }
   | { type: 'approval.requested'; requestId: string; action: string; description: string };
 
 export type NotificationEventType = NotificationEvent['type'];

@@ -7,7 +7,8 @@ export {
 } from './use-portfolio.js';
 export { useRiskReport } from './use-risk.js';
 export { useAlerts, useCreateAlert, useDismissAlert, useOnAlert } from './use-alerts.js';
-export { useActions, useApproveAction, useRejectAction } from './use-actions.js';
+export { useSummaries, useSummary } from './use-summaries.js';
+export { useActions, useAction, useApproveAction, useRejectAction, useDismissAction } from './use-actions.js';
 export { useQuote, useSearchSymbols, useNews, useOnPriceMove } from './use-market.js';
 export { useDeviceInfo, useClearAppData } from './use-profile.js';
 export {
@@ -38,12 +39,12 @@ export {
   useDeleteVaultSecret,
 } from './use-vault.js';
 export {
-  useSkills,
-  useSkill,
-  useExportSkill,
-  useToggleSkill,
-  useCreateSkill,
-  useUpdateSkill,
-  useDeleteSkill,
-  useImportSkill,
-} from './use-skills.js';
+  useStrategies,
+  useStrategy,
+  useExportStrategy,
+  useToggleStrategy,
+  useCreateStrategy,
+  useUpdateStrategy,
+  useDeleteStrategy,
+  useImportStrategy,
+} from './use-strategies.js';

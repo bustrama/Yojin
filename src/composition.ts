@@ -53,8 +53,10 @@ import { setProfileStore } from './api/graphql/resolvers/profiles.js';
 import { setAssessmentStore } from './api/graphql/resolvers/signal-assessments.js';
 import { setGroupSignalArchive, setSignalGroupArchive } from './api/graphql/resolvers/signal-groups.js';
 import { setSignalArchive } from './api/graphql/resolvers/signals.js';
-import { setSkillStore } from './api/graphql/resolvers/skills.js';
 import { setSnapStore } from './api/graphql/resolvers/snap.js';
+import { setStrategyStore } from './api/graphql/resolvers/strategies.js';
+import { setStrategySourceStore, setStrategyStoreForSources } from './api/graphql/resolvers/strategy-sources.js';
+import { setSummaryStore } from './api/graphql/resolvers/summaries.js';
 import { setVault, setVaultSecretChangedCallback } from './api/graphql/resolvers/vault.js';
 import {
   setWatchlistEnrichment,
@@ -102,10 +104,13 @@ import { createAssessmentTools } from './signals/curation/assessment-tools.js';
 import { SignalGroupArchive } from './signals/group-archive.js';
 import { SignalIngestor } from './signals/ingestor.js';
 import { createSignalTools } from './signals/tools.js';
-import { SkillEvaluator } from './skills/skill-evaluator.js';
-import { SkillStore } from './skills/skill-store.js';
-import { createSkillTools } from './skills/skill-tools.js';
 import { SnapStore } from './snap/snap-store.js';
+import { StrategyEvaluator } from './strategies/strategy-evaluator.js';
+import { StrategySourceStore } from './strategies/strategy-source-store.js';
+import { syncStrategies } from './strategies/strategy-source-sync.js';
+import { StrategyStore } from './strategies/strategy-store.js';
+import { createStrategyTools } from './strategies/strategy-tools.js';
+import { SummaryStore } from './summaries/summary-store.js';
 import { createApiHealthTools } from './tools/api-health.js';
 import { createBrainTools } from './tools/brain-tools.js';
 import { createDataSourceQueryTools } from './tools/data-source-query.js';
@@ -164,9 +169,10 @@ export interface YojinServices {
   assessmentStore: AssessmentStore;
   /** Mutable ref — workflows set this before agent stages to track pipeline duration. */
   assessmentWorkflowStartMs: { value: number };
+  summaryStore: SummaryStore;
   actionStore: ActionStore;
-  skillStore: SkillStore;
-  skillEvaluator: SkillEvaluator;
+  strategyStore: StrategyStore;
+  strategyEvaluator: StrategyEvaluator;
   watchlistStore: WatchlistStore;
   watchlistEnrichment: WatchlistEnrichment;
   brain: {
@@ -654,41 +660,38 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     toolRegistry.register(tool);
   }
 
-  // Action store
+  // Summary store — neutral intel observations from macro + micro insights
+  const summaryStore = new SummaryStore({ dir: `${dataRoot}/summaries` });
+  setSummaryStore(summaryStore);
+
+  // Action store — BUY/SELL/REVIEW outcomes from Strategy/Strategy triggers
   const actionStore = new ActionStore({ dir: `${dataRoot}/actions` });
   setActionStore(actionStore);
 
-  // Skill store + evaluator — seed strategies from Markdown on first run
-  const skillsDir = `${dataRoot}/skills`;
-  const skillStore = new SkillStore({ dir: skillsDir });
-  await skillStore.initialize();
-  setSkillStore(skillStore);
-  const defaultStrategiesDir = `${resolveDefaultsRoot()}/strategies`;
-  if (existsSync(defaultStrategiesDir)) {
-    const { readdirSync, readFileSync } = await import('node:fs');
-    const { parseFromMarkdown } = await import('./skills/skill-serializer.js');
-    for (const file of readdirSync(defaultStrategiesDir).filter(
-      (f: string) => f.endsWith('.md') && f[0] === f[0].toLowerCase(),
-    )) {
-      try {
-        const md = readFileSync(`${defaultStrategiesDir}/${file}`, 'utf-8');
-        const skill = parseFromMarkdown(md);
-        skill.source = 'built-in';
-        skill.createdBy = 'yojin';
-        const dest = `${skillsDir}/${skill.id}.json`;
-        if (!existsSync(dest)) {
-          skillStore.save(skill);
-          log.info(`Seeded strategy from ${file}: ${skill.name}`);
-        }
-      } catch (err) {
-        log.debug(`Failed to seed strategy from ${file}`, { error: err });
-      }
+  // Strategy store + evaluator — seed strategies from Markdown on first run
+  const strategiesDir = `${dataRoot}/strategies`;
+  const strategyStore = new StrategyStore({ dir: strategiesDir });
+  await strategyStore.initialize();
+  setStrategyStore(strategyStore);
+  // Strategy sources — sync from GitHub repos on first run
+  const strategySourceStore = new StrategySourceStore(`${dataRoot}/config/strategy-sources.json`);
+  await strategySourceStore.initialize();
+  setStrategySourceStore(strategySourceStore);
+  setStrategyStoreForSources(strategyStore);
+
+  const unsyncedSources = strategySourceStore.getEnabled().filter((s) => !s.lastSyncedAt);
+  if (unsyncedSources.length > 0) {
+    try {
+      const { added } = await syncStrategies(unsyncedSources, strategyStore, strategySourceStore);
+      if (added > 0) log.info(`Seeded ${added} strategies from ${unsyncedSources.length} source(s)`);
+    } catch (err) {
+      log.warn('Failed to sync strategies from sources', { error: err });
     }
   }
 
-  const skillEvaluator = new SkillEvaluator(skillStore);
+  const strategyEvaluator = new StrategyEvaluator(strategyStore);
 
-  for (const tool of createSkillTools({ skillStore, skillEvaluator })) {
+  for (const tool of createStrategyTools({ strategyStore, strategyEvaluator })) {
     toolRegistry.register(tool);
   }
 
@@ -757,9 +760,10 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     signalIngestor,
     assessmentStore,
     assessmentWorkflowStartMs,
+    summaryStore,
     actionStore,
-    skillStore,
-    skillEvaluator,
+    strategyStore,
+    strategyEvaluator,
     watchlistStore,
     watchlistEnrichment,
     brain: {

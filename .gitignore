@@ -25,6 +25,7 @@ Thumbs.db
 # Internal docs — architecture plans, specs, design docs
 plans/
 docs/superpowers/
+.superpowers/
 
 # TypeScript build info
 *.tsbuildinfo
@@ -32,6 +33,9 @@ docs/superpowers/
 # Web app build output
 apps/web/dist/
 storybook-static/
+
+# Desktop app build output (Swift Package Manager)
+apps/desktop/.build/
 
 # Plans
 plans/

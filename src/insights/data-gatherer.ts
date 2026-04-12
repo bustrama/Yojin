@@ -771,11 +771,32 @@ export interface SingleBriefOptions {
   signalsSince?: string;
 }
 
+/** Enriched result from buildSingleBriefEnriched — includes the raw Entity + signals for downstream use. */
+export interface EnrichedBriefResult {
+  brief: DataBrief;
+  /** Raw Jintel Entity used to build the brief (null if Jintel unavailable). */
+  entity: Entity | null;
+  /** Curated signals for this ticker (filtered, deduplicated). */
+  signals: Signal[];
+}
+
 /**
  * Build a DataBrief for a single ticker. Used by the micro research pipeline
  * to avoid the overhead of gathering briefs for all positions.
  */
 export async function buildSingleBrief(symbol: string, options: SingleBriefOptions): Promise<DataBrief | null> {
+  const result = await buildSingleBriefEnriched(symbol, options);
+  return result?.brief ?? null;
+}
+
+/**
+ * Build a DataBrief AND return the raw Jintel Entity + signals used to build it.
+ * The Entity is needed for per-asset strategy evaluation in the micro flow.
+ */
+export async function buildSingleBriefEnriched(
+  symbol: string,
+  options: SingleBriefOptions,
+): Promise<EnrichedBriefResult | null> {
   const { snapshotStore, signalArchive, getJintelClient, memoryStores, profileStore } = options;
   const jintelClient = getJintelClient?.();
 
@@ -822,14 +843,15 @@ export async function buildSingleBrief(symbol: string, options: SingleBriefOptio
   const profileBrief = profile && profile.entryCount > 0 ? profile : null;
 
   // Extract quote from enrichment entity's market sub-graph
-  const entity = enrichmentMap.get(ticker);
+  const entity = enrichmentMap.get(ticker) ?? null;
   const quote = entity?.market?.quote;
   if (quote && pos.currentPrice === 0) {
     pos.currentPrice = quote.price;
     pos.marketValue = pos.quantity * quote.price;
   }
 
-  return buildBrief(pos, signals, quote, entity, memMap.get(ticker) ?? [], profileBrief);
+  const brief = buildBrief(pos, signals, quote, entity ?? undefined, memMap.get(ticker) ?? [], profileBrief);
+  return { brief, entity, signals };
 }
 
 function formatLargeNumber(n: number): string {

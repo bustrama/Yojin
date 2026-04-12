@@ -3,9 +3,8 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { startChat } from './chat.js';
 import { setupToken } from './setup-token.js';
@@ -32,7 +31,11 @@ import {
 } from '../api/graphql/resolvers/onboarding.js';
 import { setPortfolioChangedCallback } from '../api/graphql/resolvers/portfolio.js';
 import { onAppDataCleared } from '../api/graphql/resolvers/profile.js';
-import { setSchedulerStatusProvider, setTriggerMicroAnalysis } from '../api/graphql/resolvers/scheduler.js';
+import {
+  setSchedulerStatusProvider,
+  setTriggerMicroAnalysis,
+  setTriggerStrategyEvaluation,
+} from '../api/graphql/resolvers/scheduler.js';
 import { setWatchlistChangedCallback } from '../api/graphql/resolvers/watchlist.js';
 import { buildContext } from '../composition.js';
 import { AgentRuntime } from '../core/agent-runtime.js';
@@ -42,7 +45,7 @@ import { Gateway } from '../gateway/server.js';
 import { MicroInsightStore } from '../insights/micro-insight-store.js';
 import { createJintelPriceProvider } from '../jintel/price-provider.js';
 import { createReflectionEngine } from '../memory/adapter.js';
-import { resolveDataRoot } from '../paths.js';
+import { resolveDataRoot, resolvePackageRoot, resolvePackageVersion } from '../paths.js';
 import { Scheduler } from '../scheduler.js';
 import { JsonlSessionStore } from '../sessions/jsonl-store.js';
 import { SignalClustering } from '../signals/clustering.js';
@@ -52,8 +55,7 @@ import { CurationConfigSchema } from '../signals/curation/types.js';
 import { QualityAgent } from '../signals/quality-agent.js';
 import { runSecretCommand } from '../trust/vault/cli.js';
 
-const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../package.json');
-const { version: PKG_VERSION } = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version: string };
+const PKG_VERSION = resolvePackageVersion();
 
 export async function runMain(args: string[]): Promise<void> {
   // `--port <n>` overrides YOJIN_PORT for the current run. We propagate via
@@ -300,7 +302,8 @@ async function startGateway(): Promise<void> {
     orchestrator,
     dataRoot,
     reflectionEngine: services.reflectionEngine,
-    skillEvaluator: services.skillEvaluator,
+    strategyEvaluator: services.strategyEvaluator,
+    summaryStore: services.summaryStore,
     actionStore: services.actionStore,
     snapshotStore: services.snapshotStore,
     snapStore: services.snapStore,
@@ -354,6 +357,7 @@ async function startGateway(): Promise<void> {
       scheduler.triggerMicroFlow(throttled.map((a) => a.symbol));
     }
   });
+  setTriggerStrategyEvaluation(() => scheduler.evaluateStrategies());
 
   const gateway = new Gateway(services.config, agentRuntime, {
     snapshotStore: services.snapshotStore,
@@ -393,8 +397,7 @@ async function startGateway(): Promise<void> {
  * which serves the bundle from the gateway on :3000.
  */
 function startFrontend(): Promise<void> {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const webAppDir = resolve(here, '../../../apps/web');
+  const webAppDir = resolve(resolvePackageRoot(), 'apps/web');
   const webPackageJson = join(webAppDir, 'package.json');
   const isMonorepoCheckout = existsSync(webPackageJson) && existsSync(join(webAppDir, 'vite.config.ts'));
 

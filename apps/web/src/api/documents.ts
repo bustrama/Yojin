@@ -1108,10 +1108,10 @@ export const INSIGHT_REPORTS_QUERY = gql`
 // Queries — Snap (Strategist brief)
 // ---------------------------------------------------------------------------
 
-// Snap.actionItems is intentionally NOT fetched. The Actions card reads from
-// the `actions(status: PENDING)` query, which owns the actionable bullet list.
-// Keeping snap.actionItems out of this query avoids duplicate information on
-// the dashboard and shrinks the payload.
+// Snap.actionItems is intentionally NOT fetched. The Summaries card reads from
+// the `summaries` query, which owns the summary bullet list. Keeping
+// snap.actionItems out of this query avoids duplicate information on the
+// dashboard and shrinks the payload.
 export const SNAP_QUERY = gql`
   query Snap {
     snap {
@@ -1425,12 +1425,12 @@ export const ACTIVITY_LOG_QUERY = gql`
 `;
 
 // ---------------------------------------------------------------------------
-// Queries — Skills
+// Queries — Strategies
 // ---------------------------------------------------------------------------
 
-export const SKILLS_QUERY = gql`
-  query Skills($category: SkillCategory, $style: String, $active: Boolean, $query: String) {
-    skills(category: $category, style: $style, active: $active, query: $query) {
+export const STRATEGIES_QUERY = gql`
+  query Strategies($category: StrategyCategory, $style: String, $active: Boolean, $query: String) {
+    strategies(category: $category, style: $style, active: $active, query: $query) {
       id
       name
       description
@@ -1453,9 +1453,9 @@ export const SKILLS_QUERY = gql`
   }
 `;
 
-export const SKILL_QUERY = gql`
-  query Skill($id: ID!) {
-    skill(id: $id) {
+export const STRATEGY_QUERY = gql`
+  query Strategy($id: ID!) {
+    strategy(id: $id) {
       id
       name
       description
@@ -1478,52 +1478,52 @@ export const SKILL_QUERY = gql`
   }
 `;
 
-export const EXPORT_SKILL_QUERY = gql`
-  query ExportSkill($id: ID!) {
-    exportSkill(id: $id)
+export const EXPORT_STRATEGY_QUERY = gql`
+  query ExportStrategy($id: ID!) {
+    exportStrategy(id: $id)
   }
 `;
 
 // ---------------------------------------------------------------------------
-// Mutations — Skills
+// Mutations — Strategies
 // ---------------------------------------------------------------------------
 
-export const TOGGLE_SKILL_MUTATION = gql`
-  mutation ToggleSkill($id: ID!, $active: Boolean!) {
-    toggleSkill(id: $id, active: $active) {
+export const TOGGLE_STRATEGY_MUTATION = gql`
+  mutation ToggleStrategy($id: ID!, $active: Boolean!) {
+    toggleStrategy(id: $id, active: $active) {
       id
       active
     }
   }
 `;
 
-export const CREATE_SKILL_MUTATION = gql`
-  mutation CreateSkill($input: CreateSkillInput!) {
-    createSkill(input: $input) {
+export const CREATE_STRATEGY_MUTATION = gql`
+  mutation CreateStrategy($input: CreateStrategyInput!) {
+    createStrategy(input: $input) {
       id
       name
     }
   }
 `;
 
-export const UPDATE_SKILL_MUTATION = gql`
-  mutation UpdateSkill($id: ID!, $input: UpdateSkillInput!) {
-    updateSkill(id: $id, input: $input) {
+export const UPDATE_STRATEGY_MUTATION = gql`
+  mutation UpdateStrategy($id: ID!, $input: UpdateStrategyInput!) {
+    updateStrategy(id: $id, input: $input) {
       id
       name
     }
   }
 `;
 
-export const DELETE_SKILL_MUTATION = gql`
-  mutation DeleteSkill($id: ID!) {
-    deleteSkill(id: $id)
+export const DELETE_STRATEGY_MUTATION = gql`
+  mutation DeleteStrategy($id: ID!) {
+    deleteStrategy(id: $id)
   }
 `;
 
-export const IMPORT_SKILL_MUTATION = gql`
-  mutation ImportSkill($markdown: String!) {
-    importSkill(markdown: $markdown) {
+export const IMPORT_STRATEGY_MUTATION = gql`
+  mutation ImportStrategy($markdown: String!) {
+    importStrategy(markdown: $markdown) {
       id
       name
       description
@@ -1536,32 +1536,82 @@ export const IMPORT_SKILL_MUTATION = gql`
 `;
 
 // ---------------------------------------------------------------------------
-// Actions — the TLDR/priority surface. Ranked by severity and gated by the
+// Summaries — the TLDR/priority surface. Ranked by severity and gated by the
 // micro-runner's supersede logic; new critical items auto-evict weaker ones
 // for the same ticker. See src/insights/micro-runner.ts.
 // ---------------------------------------------------------------------------
 
+// Summaries are neutral intel observations (macro + micro flows). Read-only;
+// no approval lifecycle — the opinionated layer lives in `Action` below.
+export const SUMMARY_FIELDS = gql`
+  fragment SummaryFields on Summary {
+    id
+    ticker
+    what
+    flow
+    severity
+    severityLabel
+    sourceSignalIds
+    contentHash
+    createdAt
+  }
+`;
+
+export const SUMMARIES_QUERY = gql`
+  query Summaries($ticker: String, $flow: SummaryFlow, $since: String, $limit: Int) {
+    summaries(ticker: $ticker, flow: $flow, since: $since, limit: $limit) {
+      ...SummaryFields
+    }
+  }
+  ${SUMMARY_FIELDS}
+`;
+
+export const SUMMARY_QUERY = gql`
+  query Summary($id: ID!) {
+    summary(id: $id) {
+      ...SummaryFields
+    }
+  }
+  ${SUMMARY_FIELDS}
+`;
+
+// Actions are BUY/SELL/REVIEW outcomes produced by Strategy/Strategy triggers.
+// PENDING → APPROVED | REJECTED | EXPIRED lifecycle, with user approval.
 export const ACTION_FIELDS = gql`
   fragment ActionFields on Action {
     id
-    signalId
-    skillId
+    strategyId
+    strategyName
+    triggerId
+    triggerType
+    verdict
     what
     why
-    source
+    tickers
     riskContext
     severity
+    severityLabel
     status
     expiresAt
     createdAt
     resolvedAt
     resolvedBy
+    dismissedAt
   }
 `;
 
 export const ACTIONS_QUERY = gql`
-  query Actions($status: ActionStatus, $since: String, $limit: Int) {
-    actions(status: $status, since: $since, limit: $limit) {
+  query Actions($status: ActionStatus, $since: String, $limit: Int, $dismissed: Boolean) {
+    actions(status: $status, since: $since, limit: $limit, dismissed: $dismissed) {
+      ...ActionFields
+    }
+  }
+  ${ACTION_FIELDS}
+`;
+
+export const ACTION_QUERY = gql`
+  query Action($id: ID!) {
+    action(id: $id) {
       ...ActionFields
     }
   }
@@ -1584,4 +1634,71 @@ export const REJECT_ACTION_MUTATION = gql`
     }
   }
   ${ACTION_FIELDS}
+`;
+
+export const DISMISS_ACTION_MUTATION = gql`
+  mutation DismissAction($id: ID!) {
+    dismissAction(id: $id) {
+      ...ActionFields
+    }
+  }
+  ${ACTION_FIELDS}
+`;
+
+export const STRATEGY_SOURCE_FIELDS = gql`
+  fragment StrategySourceFields on StrategySource {
+    id
+    owner
+    repo
+    path
+    ref
+    enabled
+    lastSyncedAt
+    label
+    isDefault
+  }
+`;
+
+export const STRATEGY_SOURCES_QUERY = gql`
+  query StrategySources {
+    strategySources {
+      ...StrategySourceFields
+    }
+  }
+  ${STRATEGY_SOURCE_FIELDS}
+`;
+
+export const ADD_STRATEGY_SOURCE_MUTATION = gql`
+  mutation AddStrategySource($url: String!) {
+    addStrategySource(url: $url) {
+      ...StrategySourceFields
+    }
+  }
+  ${STRATEGY_SOURCE_FIELDS}
+`;
+
+export const REMOVE_STRATEGY_SOURCE_MUTATION = gql`
+  mutation RemoveStrategySource($id: ID!) {
+    removeStrategySource(id: $id)
+  }
+`;
+
+export const TOGGLE_STRATEGY_SOURCE_MUTATION = gql`
+  mutation ToggleStrategySource($id: ID!, $enabled: Boolean!) {
+    toggleStrategySource(id: $id, enabled: $enabled) {
+      id
+      enabled
+    }
+  }
+`;
+
+export const SYNC_STRATEGIES_MUTATION = gql`
+  mutation SyncStrategies {
+    syncStrategies {
+      added
+      skipped
+      failed
+      errors
+    }
+  }
 `;

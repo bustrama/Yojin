@@ -1,14 +1,15 @@
 /**
- * Action data model — first-class output type for the signal/intel pipeline.
+ * Action data model — BUY/SELL/REVIEW outcomes produced by Strategies/Strategies.
  *
- * An Action represents an observation or proposed step (e.g. "Review AAPL position")
- * that requires human approval before execution. Actions flow through
- * PENDING -> APPROVED | REJECTED | EXPIRED.
+ * An Action is opinionated: a Strategy trigger fires, an LLM assesses it, and
+ * the result is a concrete recommendation (verdict + headline + reasoning) that
+ * flows through PENDING -> APPROVED | REJECTED | EXPIRED.
  *
- * Storage: file-driven JSONL in data/actions/ (date-partitioned, append-only).
- * GraphQL: Action, ActionStatus types in schema.ts.
+ * Actions are ALWAYS produced by a Strategy/Strategy — never by neutral intel
+ * pipelines. If a record has no strategyId, it is not an Action.
  *
- * All types are Zod schemas — the single source of truth for validation and inference.
+ * Storage: append-only JSONL in data/actions/ (date-partitioned).
+ * GraphQL: Action, ActionVerdict, ActionStatus types in schema.ts.
  */
 
 import { z } from 'zod';
@@ -19,6 +20,10 @@ import { DateTimeField, IdField } from '../types/base.js';
 // Enums
 // ---------------------------------------------------------------------------
 
+/** Concrete recommendation emitted by the Strategist LLM. */
+export const ActionVerdictSchema = z.enum(['BUY', 'SELL', 'TRIM', 'HOLD', 'REVIEW']);
+export type ActionVerdict = z.infer<typeof ActionVerdictSchema>;
+
 export const ActionStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED']);
 export type ActionStatus = z.infer<typeof ActionStatusSchema>;
 
@@ -28,20 +33,47 @@ export type ActionStatus = z.infer<typeof ActionStatusSchema>;
 
 export const ActionSchema = z.object({
   id: IdField,
-  signalId: z.string().optional(), // originating signal, if any
-  skillId: z.string().optional(), // originating skill, if any
-  what: z.string().min(1), // plain English: "Review AAPL — bearish divergence detected"
-  why: z.string().min(1), // reasoning trace
-  source: z.string().min(1), // skill name or "rule: ..." or "agent: strategist"
-  riskContext: z.string().optional(), // guard checks summary
-  // 0–1 severity score — acts as priority. Used to rank actions and to gate
-  // low-impact micro updates. Producers that don't score actions can omit this
-  // (absent = 0 for comparison purposes).
+  /** Originating strategy — required. Actions without a strategy are not Actions. */
+  strategyId: IdField,
+  /** Human-readable strategy name, e.g. "Momentum Breakout". */
+  strategyName: z.string().min(1),
+  /** Dedup/supersede key: "${strategyId}-${triggerType}-${ticker}". */
+  triggerId: IdField,
+  triggerType: z.string().min(1),
+  /** Concrete verdict parsed from LLM headline (BUY/SELL/TRIM/HOLD/REVIEW). */
+  verdict: ActionVerdictSchema,
+  /** Headline, e.g. "BUY AAPL — golden cross + expanding volume". */
+  what: z.string().min(1),
+  /** Reasoning trace from the LLM (why this action, risks, sizing). */
+  why: z.string().min(1),
+  /** Related tickers — typically one for per-asset evaluations. */
+  tickers: z.array(z.string().min(1)).default([]),
+  /** Formatted trigger context (key=value lines) for audit/debug. */
+  riskContext: z.string().optional(),
+  /** Optional 0–1 severity; higher = higher priority in the ranker. */
   severity: z.number().min(0).max(1).optional(),
   status: ActionStatusSchema.default('PENDING'),
-  expiresAt: DateTimeField, // auto-reject after this
+  expiresAt: DateTimeField,
   createdAt: DateTimeField,
   resolvedAt: DateTimeField.optional(),
   resolvedBy: z.string().optional(), // 'user' | 'timeout' | 'superseded'
+  dismissedAt: DateTimeField.optional(),
 });
 export type Action = z.infer<typeof ActionSchema>;
+
+/**
+ * Parse a verdict from an LLM headline like:
+ *   "BUY AAPL — golden cross"
+ *   "SELL TSLA — breakdown"
+ *   "REVIEW portfolio — concentration drift"
+ * Falls back to REVIEW when no verdict keyword is present.
+ */
+export function parseVerdictFromHeadline(headline: string): ActionVerdict {
+  const head = headline.trim().toUpperCase();
+  // Check word-boundary so "BUYBACK" doesn't match BUY
+  const match = head.match(/^(BUY|SELL|TRIM|HOLD|REVIEW)\b/);
+  if (match) {
+    return match[1] as ActionVerdict;
+  }
+  return 'REVIEW';
+}

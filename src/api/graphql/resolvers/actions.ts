@@ -1,11 +1,20 @@
 /**
- * Action resolvers — query and mutate actions with approval workflow.
+ * Action resolvers — query and mutate Actions (BUY/SELL/REVIEW outcomes
+ * produced by Strategy/Strategy triggers). Actions have an approval lifecycle:
+ * PENDING -> APPROVED | REJECTED | EXPIRED.
  *
  * Module-level state: setActionStore is called once during server startup.
  */
 
 import type { ActionStore } from '../../../actions/action-store.js';
-import type { Action, ActionStatus } from '../../../actions/types.js';
+import type { Action, ActionStatus, ActionVerdict } from '../../../actions/types.js';
+
+function deriveSeverityLabel(severity: number | undefined): string {
+  if (severity == null) return 'MEDIUM';
+  if (severity >= 0.7) return 'CRITICAL';
+  if (severity >= 0.4) return 'HIGH';
+  return 'MEDIUM';
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -23,35 +32,45 @@ export function setActionStore(s: ActionStore): void {
 
 interface ActionGql {
   id: string;
-  signalId: string | null;
-  skillId: string | null;
+  strategyId: string;
+  strategyName: string;
+  triggerId: string;
+  triggerType: string;
+  verdict: ActionVerdict;
   what: string;
   why: string;
-  source: string;
+  tickers: string[];
   riskContext: string | null;
   severity: number | null;
-  status: string;
+  severityLabel: string;
+  status: ActionStatus;
   expiresAt: string;
   createdAt: string;
   resolvedAt: string | null;
   resolvedBy: string | null;
+  dismissedAt: string | null;
 }
 
 function toGql(action: Action): ActionGql {
   return {
     id: action.id,
-    signalId: action.signalId ?? null,
-    skillId: action.skillId ?? null,
+    strategyId: action.strategyId,
+    strategyName: action.strategyName,
+    triggerId: action.triggerId,
+    triggerType: action.triggerType,
+    verdict: action.verdict,
     what: action.what,
     why: action.why,
-    source: action.source,
+    tickers: action.tickers ?? [],
     riskContext: action.riskContext ?? null,
     severity: action.severity ?? null,
+    severityLabel: deriveSeverityLabel(action.severity),
     status: action.status,
     expiresAt: action.expiresAt,
     createdAt: action.createdAt,
     resolvedAt: action.resolvedAt ?? null,
     resolvedBy: action.resolvedBy ?? null,
+    dismissedAt: action.dismissedAt ?? null,
   };
 }
 
@@ -61,7 +80,7 @@ function toGql(action: Action): ActionGql {
 
 export async function actionsResolver(
   _parent: unknown,
-  args: { status?: ActionStatus; since?: string; limit?: number },
+  args: { status?: ActionStatus; since?: string; limit?: number; dismissed?: boolean },
 ): Promise<ActionGql[]> {
   if (!store) return [];
 
@@ -69,6 +88,7 @@ export async function actionsResolver(
     status: args.status,
     since: args.since,
     limit: args.limit ?? 50,
+    dismissed: args.dismissed,
   });
 
   return actions.map(toGql);
@@ -104,5 +124,12 @@ export async function rejectActionMutation(_parent: unknown, args: { id: string 
     throw new Error(result.error);
   }
 
+  return toGql(result.data);
+}
+
+export async function dismissActionMutation(_parent: unknown, args: { id: string }): Promise<ActionGql> {
+  if (!store) throw new Error('Action store not initialized');
+  const result = await store.dismiss(args.id);
+  if (!result.success) throw new Error(result.error);
   return toGql(result.data);
 }

@@ -1107,41 +1107,90 @@ export interface CurationWorkflowStatusQueryResult {
 }
 
 // ---------------------------------------------------------------------------
-// Actions
+// Summaries — neutral intel observations from macro + micro insight pipelines.
+// Read-only: no approval lifecycle. Action-style records live in `Action`.
 // ---------------------------------------------------------------------------
 
+export type SummaryFlow = 'MACRO' | 'MICRO';
+
+export interface Summary {
+  id: string;
+  ticker: string;
+  what: string;
+  flow: SummaryFlow;
+  severity: number | null;
+  severityLabel: string;
+  sourceSignalIds: string[];
+  contentHash: string;
+  createdAt: string;
+}
+
+export interface SummariesQueryResult {
+  summaries: Summary[];
+}
+export interface SummariesQueryVariables {
+  ticker?: string;
+  flow?: SummaryFlow;
+  since?: string;
+  limit?: number;
+}
+
+export interface SummaryQueryResult {
+  summary: Summary | null;
+}
+export interface SummaryQueryVariables {
+  id: string;
+}
+
+// ---------------------------------------------------------------------------
+// Actions — BUY/SELL/REVIEW outcomes produced by Strategy/Strategy triggers.
+// Opinionated layer with a PENDING → APPROVED | REJECTED | EXPIRED lifecycle.
+// ---------------------------------------------------------------------------
+
+export type ActionVerdict = 'BUY' | 'SELL' | 'TRIM' | 'HOLD' | 'REVIEW';
 export type ActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
 
 export interface Action {
   id: string;
-  signalId: string | null;
-  skillId: string | null;
+  strategyId: string;
+  strategyName: string;
+  triggerId: string;
+  triggerType: string;
+  verdict: ActionVerdict;
   what: string;
   why: string;
-  source: string;
+  tickers: string[];
   riskContext: string | null;
   severity: number | null;
+  severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
   createdAt: string;
   resolvedAt: string | null;
   resolvedBy: string | null;
-}
-
-export interface ActionsQueryVariables {
-  status?: ActionStatus;
-  since?: string;
-  limit?: number;
+  dismissedAt: string | null;
 }
 
 export interface ActionsQueryResult {
   actions: Action[];
 }
+export interface ActionsQueryVariables {
+  status?: ActionStatus;
+  since?: string;
+  limit?: number;
+  dismissed?: boolean;
+}
+
+export interface ActionQueryResult {
+  action: Action | null;
+}
+export interface ActionQueryVariables {
+  id: string;
+}
 
 export interface ApproveActionVariables {
   id: string;
 }
-
 export interface ApproveActionMutationResult {
   approveAction: Action;
 }
@@ -1149,9 +1198,15 @@ export interface ApproveActionMutationResult {
 export interface RejectActionVariables {
   id: string;
 }
-
 export interface RejectActionMutationResult {
   rejectAction: Action;
+}
+
+export interface DismissActionVariables {
+  id: string;
+}
+export interface DismissActionMutationResult {
+  dismissAction: Action;
 }
 
 // ---------------------------------------------------------------------------
@@ -1277,22 +1332,22 @@ export interface DetectCodexTokenResult {
 }
 
 // ---------------------------------------------------------------------------
-// Skills
+// Strategies
 // ---------------------------------------------------------------------------
 
-export type SkillCategory = 'RISK' | 'PORTFOLIO' | 'MARKET' | 'RESEARCH';
+export type StrategyCategory = 'RISK' | 'PORTFOLIO' | 'MARKET' | 'RESEARCH';
 
-export interface SkillTrigger {
+export interface StrategyTrigger {
   type: string;
   description: string;
   params?: string | null;
 }
 
-export interface Skill {
+export interface Strategy {
   id: string;
   name: string;
   description: string;
-  category: SkillCategory;
+  category: StrategyCategory;
   style: string;
   requires: string[];
   active: boolean;
@@ -1300,52 +1355,95 @@ export interface Skill {
   createdBy: string;
   createdAt: string;
   content: string;
-  triggers: SkillTrigger[];
+  triggers: StrategyTrigger[];
   maxPositionSize?: number | null;
   tickers: string[];
 }
 
-export interface SkillsQueryResult {
-  skills: Skill[];
+export interface StrategiesQueryResult {
+  strategies: Strategy[];
 }
 
-export interface SkillsQueryVariables {
-  category?: SkillCategory;
+export interface StrategiesQueryVariables {
+  category?: StrategyCategory;
   style?: string;
   active?: boolean;
   query?: string;
 }
 
-export interface SkillQueryResult {
-  skill: Skill | null;
+export interface StrategyQueryResult {
+  strategy: Strategy | null;
 }
 
-export interface ExportSkillQueryResult {
-  exportSkill: string;
+export interface ExportStrategyQueryResult {
+  exportStrategy: string;
 }
 
-export interface ToggleSkillMutationResult {
-  toggleSkill: { id: string; active: boolean };
+export interface ToggleStrategyMutationResult {
+  toggleStrategy: { id: string; active: boolean };
 }
 
-export interface CreateSkillMutationResult {
-  createSkill: { id: string; name: string };
+export interface CreateStrategyMutationResult {
+  createStrategy: { id: string; name: string };
 }
 
-export interface UpdateSkillMutationResult {
-  updateSkill: { id: string; name: string };
+export interface UpdateStrategyMutationResult {
+  updateStrategy: { id: string; name: string };
 }
 
-export interface DeleteSkillMutationResult {
-  deleteSkill: boolean;
+export interface DeleteStrategyMutationResult {
+  deleteStrategy: boolean;
 }
 
-export interface ImportSkillMutationResult {
-  importSkill: Skill;
+export interface ImportStrategyMutationResult {
+  importStrategy: Strategy;
 }
 
-export interface ImportSkillVariables {
+export interface ImportStrategyVariables {
   markdown: string;
+}
+
+export interface StrategySource {
+  id: string;
+  owner: string;
+  repo: string;
+  path: string;
+  ref: string;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+  label: string | null;
+  isDefault: boolean;
+}
+
+export interface StrategySyncResult {
+  added: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
+export interface StrategySourcesQueryResult {
+  strategySources: StrategySource[];
+}
+
+export interface AddStrategySourceResult {
+  addStrategySource: StrategySource;
+}
+
+export interface AddStrategySourceVariables {
+  url: string;
+}
+
+export interface RemoveStrategySourceResult {
+  removeStrategySource: boolean;
+}
+
+export interface ToggleStrategySourceResult {
+  toggleStrategySource: StrategySource;
+}
+
+export interface SyncStrategiesResult {
+  syncStrategies: StrategySyncResult;
 }
 
 // ---------------------------------------------------------------------------

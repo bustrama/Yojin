@@ -43,7 +43,12 @@ describe('NotificationBus', () => {
     bus.on('action.created', h1);
     bus.on('action.created', h2);
 
-    const event: NotificationEvent = { type: 'action.created', actionId: 'act-1' };
+    const event: NotificationEvent = {
+      type: 'action.created',
+      actionId: 'act-1',
+      verdict: 'BUY',
+      ticker: 'AAPL',
+    };
     bus.publish(event);
 
     expect(h1).toHaveBeenCalledWith(event);

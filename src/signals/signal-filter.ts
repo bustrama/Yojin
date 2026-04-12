@@ -81,7 +81,7 @@ export function filterSignals(signals: Signal[], options: FilterSignalsOptions =
  * Used to determine if a signal should appear as an ALERT or INSIGHT.
  */
 export function classifyOutputType(signal: Signal): SignalOutputType {
-  if (signal.outputType === 'ALERT' || signal.outputType === 'ACTION') return signal.outputType;
+  if (signal.outputType === 'ALERT' || signal.outputType === 'SUMMARY') return signal.outputType;
   if (signal.sentiment === 'BEARISH' && signal.confidence > 0.7) return 'ALERT';
   if (signal.type === 'FILINGS') return 'ALERT';
   if (signal.type === 'TRADING_LOGIC_TRIGGER') return 'ALERT';

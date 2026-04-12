@@ -18,7 +18,7 @@ import type { OnboardingStatusQueryResult } from '../../api/types';
 const NOTIFICATION_TYPES = [
   { key: 'snap.ready', label: 'Snap briefs', description: 'Periodic attention summaries' },
   { key: 'insight.ready', label: 'Daily insights', description: 'Full portfolio analysis reports' },
-  { key: 'action.created', label: 'Action alerts', description: 'Skill-triggered trade recommendations' },
+  { key: 'action.created', label: 'Strategy actions', description: 'BUY/SELL recommendations from your strategies' },
   { key: 'approval.requested', label: 'Approval requests', description: 'Actions requiring your approval' },
 ];
 
