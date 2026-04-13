@@ -132,20 +132,25 @@ ${sections.join('\n\n---\n\n')}`;
     if (!fired) return [];
 
     const mergedContext: Record<string, unknown> = { ticker };
-    const firedTypes: string[] = [];
+    const conditionResults: Record<string, unknown>[] = [];
+    let primaryType: string | undefined;
     for (const result of fired) {
-      Object.assign(mergedContext, result);
-      if (result['_triggerType']) {
-        firedTypes.push(result['_triggerType'] as string);
-        delete mergedContext['_triggerType'];
-      }
+      const { _triggerType, ...rest } = result as Record<string, unknown> & { _triggerType?: string };
+      if (!primaryType && _triggerType) primaryType = _triggerType;
+      conditionResults.push(rest);
+    }
+    // For single-condition groups, flatten for backward compat
+    if (conditionResults.length === 1) {
+      Object.assign(mergedContext, conditionResults[0]);
+    } else {
+      mergedContext.conditions = conditionResults;
     }
 
     const evaluation: StrategyEvaluation = {
       strategyId: strategy.id,
       strategyName: strategy.name,
       triggerId: `${strategy.id}-group${groupIndex}-${ticker}`,
-      triggerType: firedTypes.join('+') as TriggerType,
+      triggerType: (primaryType ?? group.conditions[0].type) as TriggerType,
       triggerDescription: group.conditions.map((c) => c.description).join(' AND '),
       context: mergedContext,
       strategyContent: strategy.content,
@@ -176,7 +181,7 @@ ${sections.join('\n\n---\n\n')}`;
   // ---------------------------------------------------------------------------
 
   private snapshotCurrentValues(ctx: PortfolioContext, tickers?: string[]): void {
-    const tickersToSnapshot = tickers ?? Object.keys(ctx.indicators);
+    const tickersToSnapshot = tickers ?? [...new Set([...Object.keys(ctx.indicators), ...Object.keys(ctx.metrics)])];
     for (const ticker of tickersToSnapshot) {
       const values: Record<string, number> = {};
       const indicators = ctx.indicators[ticker];
@@ -229,7 +234,19 @@ ${sections.join('\n\n---\n\n')}`;
           change = ctx.priceChanges[ticker];
         }
 
+        const direction = params['direction'] as string | undefined;
         if (change === undefined) return null;
+        if (direction === 'drop') {
+          const mag = Math.abs(threshold);
+          if (change <= -mag) return { change, threshold: -mag, direction };
+          return null;
+        }
+        if (direction === 'rise') {
+          const mag = Math.abs(threshold);
+          if (change >= mag) return { change, threshold: mag, direction };
+          return null;
+        }
+        // Fallback: infer from sign of threshold (backward compat)
         if (threshold < 0 && change <= threshold) return { change, threshold };
         if (threshold > 0 && change >= threshold) return { change, threshold };
         return null;

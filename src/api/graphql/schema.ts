@@ -1345,7 +1345,7 @@ export const typeDefs = /* GraphQL */ `
     summary(id: ID!): Summary
     actions(status: ActionStatus, since: String, limit: Int, dismissed: Boolean): [Action!]!
     action(id: ID!): Action
-    strategies(category: StrategyCategory, active: Boolean, style: String, query: String): [Strategy!]!
+    strategies(category: StrategyCategory, active: Boolean, style: StrategyStyle, query: String): [Strategy!]!
     strategy(id: ID!): Strategy
     exportStrategy(id: ID!): String!
     strategySources: [StrategySource!]!

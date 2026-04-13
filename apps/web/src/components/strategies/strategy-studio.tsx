@@ -29,7 +29,13 @@ const EMPTY_FORM: StrategyFormData = {
   style: '',
   requires: [],
   content: '',
-  triggerGroups: [{ label: '', conditions: [{ type: 'PRICE_MOVE', description: '', params: {} }] }],
+  triggerGroups: [
+    {
+      id: crypto.randomUUID(),
+      label: '',
+      conditions: [{ id: crypto.randomUUID(), type: 'PRICE_MOVE', description: '', params: {} }],
+    },
+  ],
   tickers: [],
   maxPositionSize: undefined,
 };
@@ -56,8 +62,10 @@ function strategyToFormData(strategy: Strategy): StrategyFormData {
     requires: [...strategy.requires],
     content: strategy.content,
     triggerGroups: strategy.triggerGroups.map((g) => ({
+      id: crypto.randomUUID(),
       label: g.label ?? '',
       conditions: g.conditions.map((t) => ({
+        id: crypto.randomUUID(),
         type: t.type,
         description: t.description,
         params: parseParams(t.params),
@@ -164,8 +172,9 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
               if (proposed.triggerGroups) {
                 proposed.triggerGroups = proposed.triggerGroups.map((g) => ({
                   ...g,
+                  id: crypto.randomUUID(),
                   label: g.label ?? '',
-                  conditions: g.conditions.map((c) => ({ ...c, params: c.params ?? {} })),
+                  conditions: g.conditions.map((c) => ({ ...c, id: crypto.randomUUID(), params: c.params ?? {} })),
                 }));
               }
               // GraphQL returns uppercase capabilities; normalize for form

@@ -5,7 +5,7 @@
 import { DataCapabilitySchema, deriveCapabilities } from '../../../strategies/capabilities.js';
 import { parseFromMarkdown, serializeToMarkdown, slugify } from '../../../strategies/strategy-serializer.js';
 import type { StrategyStore } from '../../../strategies/strategy-store.js';
-import { StrategyStyleSchema } from '../../../strategies/types.js';
+import { StrategyStyleSchema, TriggerTypeSchema } from '../../../strategies/types.js';
 import type { Strategy, StrategyCategory, StrategyStyle } from '../../../strategies/types.js';
 
 // ---------------------------------------------------------------------------
@@ -52,7 +52,8 @@ export function resolveStrategies(
     strategies = strategies.filter((s) => s.active === args.active);
   }
   if (args.style) {
-    strategies = strategies.filter((s) => s.style === args.style);
+    const internalStyle = GQL_TO_STYLE[args.style] ?? args.style.toLowerCase();
+    strategies = strategies.filter((s) => s.style === internalStyle);
   }
   if (args.query) {
     const q = args.query.toLowerCase();
@@ -125,16 +126,20 @@ interface UpdateStrategyInput {
 
 function mapTriggersFromInput(triggers: StrategyTriggerInput[]): Strategy['triggerGroups'][number]['conditions'] {
   return triggers.map((t, i) => {
+    const typeParsed = TriggerTypeSchema.safeParse(t.type);
+    if (!typeParsed.success) {
+      throw new Error(`Invalid trigger type at index ${i}: ${t.type}`);
+    }
     let params: Record<string, unknown> | undefined;
     if (t.params) {
       try {
         params = JSON.parse(t.params) as Record<string, unknown>;
       } catch {
-        throw new Error(`Trigger ${i + 1}: invalid JSON in params`);
+        throw new Error(`Invalid trigger params JSON at index ${i}`);
       }
     }
     return {
-      type: t.type as Strategy['triggerGroups'][number]['conditions'][number]['type'],
+      type: typeParsed.data,
       description: t.description,
       ...(params ? { params } : {}),
     };

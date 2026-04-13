@@ -8,8 +8,9 @@ import { TriggerParamFields } from './trigger-param-fields.js';
 import type { TriggerParams } from './trigger-param-fields.js';
 
 export interface TriggerGroupFormData {
+  id: string;
   label: string;
-  conditions: { type: string; description: string; params: TriggerParams }[];
+  conditions: { id: string; type: string; description: string; params: TriggerParams }[];
 }
 
 export interface StrategyFormData {
@@ -106,6 +107,11 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
     !data.content.trim() ||
     data.triggerGroups.every((g) => g.conditions.every((c) => !c.description.trim()));
 
+  const hasPartialGroups = data.triggerGroups.some((g) => {
+    const filled = g.conditions.filter((c) => c.description.trim());
+    return filled.length > 0 && filled.length < g.conditions.length;
+  });
+
   function update(patch: Partial<StrategyFormData>) {
     onChange({ ...data, ...patch });
   }
@@ -126,7 +132,10 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
   function addCondition(groupIndex: number) {
     const updated = data.triggerGroups.map((g, gi) =>
       gi === groupIndex
-        ? { ...g, conditions: [...g.conditions, { type: 'PRICE_MOVE', description: '', params: {} }] }
+        ? {
+            ...g,
+            conditions: [...g.conditions, { id: crypto.randomUUID(), type: 'PRICE_MOVE', description: '', params: {} }],
+          }
         : g,
     );
     update({ triggerGroups: updated });
@@ -140,7 +149,13 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
       triggerGroups:
         updated.length > 0
           ? updated
-          : [{ label: '', conditions: [{ type: 'PRICE_MOVE', description: '', params: {} }] }],
+          : [
+              {
+                id: crypto.randomUUID(),
+                label: '',
+                conditions: [{ id: crypto.randomUUID(), type: 'PRICE_MOVE', description: '', params: {} }],
+              },
+            ],
     });
   }
 
@@ -153,7 +168,11 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
     update({
       triggerGroups: [
         ...data.triggerGroups,
-        { label: '', conditions: [{ type: 'PRICE_MOVE', description: '', params: {} }] },
+        {
+          id: crypto.randomUUID(),
+          label: '',
+          conditions: [{ id: crypto.randomUUID(), type: 'PRICE_MOVE', description: '', params: {} }],
+        },
       ],
     });
   }
@@ -271,7 +290,7 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
           </div>
           <div className="space-y-3">
             {data.triggerGroups.map((group, gi) => (
-              <div key={gi}>
+              <div key={group.id}>
                 {gi > 0 && (
                   <div className="flex items-center gap-2 py-1">
                     <div className="flex-1 border-t border-border" />
@@ -288,7 +307,7 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
                     className={cn(inputClass, 'text-xs')}
                   />
                   {group.conditions.map((condition, ci) => (
-                    <div key={ci}>
+                    <div key={condition.id}>
                       {ci > 0 && <div className="text-center text-xs font-medium text-text-muted py-0.5">AND</div>}
                       <div className="bg-bg-card rounded-lg p-3 space-y-2">
                         <div className="flex items-center gap-2">
@@ -466,6 +485,9 @@ export function StrategyFormPanel({ data, onChange, editId, onSaved }: StrategyF
 
       {/* Error bar */}
       {error && <div className="bg-error/10 border-t border-error/30 px-4 py-3 text-error text-sm">{error}</div>}
+      {hasPartialGroups && !error && (
+        <p className="text-xs text-warning px-4">Empty conditions will be removed on save.</p>
+      )}
     </div>
   );
 }

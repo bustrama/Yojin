@@ -99,9 +99,10 @@ function formatStrategyProposal(data: StrategyProposalData): string {
 
   lines.push('', 'Trigger Groups:');
   for (const g of data.triggerGroups) {
+    const indent = g.label ? '    ' : '  ';
     if (g.label) lines.push(`  ${g.label}:`);
     for (const c of g.conditions) {
-      lines.push(`  ${c.type}: ${c.description}`);
+      lines.push(`${indent}${c.type}: ${c.description}`);
     }
   }
 

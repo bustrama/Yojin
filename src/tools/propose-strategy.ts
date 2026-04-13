@@ -15,6 +15,7 @@ import { z } from 'zod';
 import type { StrategyProposalData } from './display-data.js';
 import type { ToolDefinition, ToolResult } from '../core/types.js';
 import { deriveCapabilities } from '../strategies/capabilities.js';
+import type { TriggerGroup } from '../strategies/types.js';
 import { StrategyCategorySchema, StrategyStyleSchema } from '../strategies/types.js';
 
 // ---------------------------------------------------------------------------
@@ -165,11 +166,12 @@ const ProposeStrategyParamsSchema = z.object({
 // Normalizer — catches LLM mistakes that slip past the typed schema
 // ---------------------------------------------------------------------------
 
+// Order matters: more specific patterns must come first.
 /** Keyword-to-indicator mapping for auto-correction. */
 const INDICATOR_KEYWORDS: [RegExp, string][] = [
   [/\bmacd\b.*\bhistogram\b|\bhistogram\b.*\bmacd\b/i, 'MACD'],
   [/\bmacd\b.*\bsignal\b|\bsignal\b.*\bmacd\b/i, 'MACD_SIGNAL'],
-  [/\bmacd\b/i, 'MACD_LINE'],
+  [/\bmacd\b/i, 'MACD'],
   [/\bbollinger\b.*\blower\b|\blower\b.*\bbollinger\b/i, 'BB_LOWER'],
   [/\bbollinger\b.*\bupper\b|\bupper\b.*\bbollinger\b/i, 'BB_UPPER'],
   [/\bbollinger\b.*\bmiddle\b|\bmiddle\b.*\bbollinger\b/i, 'BB_MIDDLE'],
@@ -254,22 +256,13 @@ export function createProposeStrategyTool(): ToolDefinition {
           params: 'params' in c && c.params ? (c.params as Record<string, unknown>) : undefined,
         })),
       }));
-      const requires = deriveCapabilities(
-        cardTriggerGroups.map((g) => ({
-          label: g.label,
-          conditions: g.conditions.map((c) => ({
-            type: c.type as 'CUSTOM',
-            description: c.description,
-            params: c.params,
-          })),
-        })),
-      );
+      const requires = deriveCapabilities(cardTriggerGroups as TriggerGroup[]);
 
       const cardData: StrategyProposalData = {
         name: data.name,
         description: data.description,
         category: data.category,
-        style: data.style,
+        style: data.style.toUpperCase(),
         requires,
         content: data.content,
         triggerGroups: cardTriggerGroups,
@@ -283,7 +276,7 @@ export function createProposeStrategyTool(): ToolDefinition {
 
       return {
         content:
-          `Proposing strategy "${data.name}" (${data.category}, ${data.style}).\n` +
+          `Proposing strategy "${data.name}" (${data.category}, ${data.style.toUpperCase()}).\n` +
           `Triggers: ${triggerSummary}.\n` +
           `${data.tickers.length > 0 ? `Tickers: ${data.tickers.join(', ')}.` : 'Applies to all portfolio tickers.'}`,
         displayCard: { type: 'strategy-proposal', data: cardData },

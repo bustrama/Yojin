@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { TriggerGroup } from './types.js';
+
 export const DataCapabilitySchema = z.enum([
   'market_data',
   'technicals',
@@ -41,8 +43,6 @@ export interface CapabilityCheckResult {
 // ---------------------------------------------------------------------------
 // Auto-derive capabilities from trigger groups
 // ---------------------------------------------------------------------------
-
-import type { TriggerGroup } from './types.js';
 
 const TRIGGER_TYPE_CAPABILITIES: Record<string, DataCapability[]> = {
   PRICE_MOVE: ['market_data'],

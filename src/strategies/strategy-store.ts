@@ -65,7 +65,11 @@ export class StrategyStore {
     delete migrated['triggers'];
 
     const filePath = join(this.dir, file);
-    writeFileSync(filePath, JSON.stringify(migrated, null, 2), 'utf-8');
+    try {
+      writeFileSync(filePath, JSON.stringify(migrated, null, 2), 'utf-8');
+    } catch (err) {
+      logger.warn(`Failed to persist migration for ${file}`, { error: err });
+    }
 
     return migrated;
   }

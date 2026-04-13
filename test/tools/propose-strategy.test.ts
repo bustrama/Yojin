@@ -38,7 +38,7 @@ describe('propose-strategy tool', () => {
     expect(data).toMatchObject({
       name: 'Mean Reversion on RSI',
       category: 'MARKET',
-      style: 'swing',
+      style: 'SWING',
       requires: ['technicals'],
       tickers: ['AAPL', 'MSFT'],
       maxPositionSize: 0.05,

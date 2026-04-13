@@ -24,8 +24,9 @@ function formatStrategyProposalPlain(d: StrategyProposalData, escape: (s: string
   }
   lines.push('', 'Trigger Groups:');
   for (const g of d.triggerGroups) {
+    const indent = g.label ? '    ' : '  ';
     if (g.label) lines.push(`  ${escape(g.label)}:`);
-    for (const c of g.conditions) lines.push(`  ${escape(c.type)}: ${escape(c.description)}`);
+    for (const c of g.conditions) lines.push(`${indent}${escape(c.type)}: ${escape(c.description)}`);
   }
   return lines.join('\n');
 }
@@ -47,9 +48,10 @@ function formatStrategyProposalTelegram(d: StrategyProposalData): string {
   }
   lines.push('', '<b>Trigger Groups:</b>');
   for (const g of d.triggerGroups) {
+    const indent = g.label ? '    ' : '  ';
     if (g.label) lines.push(`  <b>${esc(g.label)}:</b>`);
     for (const c of g.conditions) {
-      lines.push(`  \u2022 <code>${esc(c.type)}</code>: ${esc(c.description)}`);
+      lines.push(`${indent}\u2022 <code>${esc(c.type)}</code>: ${esc(c.description)}`);
     }
   }
   return lines.join('\n');
