@@ -58,6 +58,13 @@ const STYLES = [
   { value: 'INCOME', label: 'Income' },
   { value: 'GROWTH', label: 'Growth' },
   { value: 'DEFENSIVE', label: 'Defensive' },
+  { value: 'CARRY', label: 'Carry' },
+  { value: 'EVENT_DRIVEN', label: 'Event Driven' },
+  { value: 'QUANT', label: 'Quant' },
+  { value: 'RISK', label: 'Risk' },
+  { value: 'SENTIMENT', label: 'Sentiment' },
+  { value: 'STATISTICAL_ARB', label: 'Statistical Arb' },
+  { value: 'TECHNICAL', label: 'Technical' },
   { value: 'GENERAL', label: 'General' },
 ];
 

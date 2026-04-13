@@ -31,6 +31,13 @@ export const StrategyStyleSchema = z.enum([
   'income',
   'growth',
   'defensive',
+  'carry',
+  'event_driven',
+  'quant',
+  'risk',
+  'sentiment',
+  'statistical_arb',
+  'technical',
   'general',
 ]);
 export type StrategyStyle = z.infer<typeof StrategyStyleSchema>;

@@ -1158,6 +1158,13 @@ export const typeDefs = /* GraphQL */ `
     INCOME
     GROWTH
     DEFENSIVE
+    CARRY
+    EVENT_DRIVEN
+    QUANT
+    RISK
+    SENTIMENT
+    STATISTICAL_ARB
+    TECHNICAL
     GENERAL
   }
 
