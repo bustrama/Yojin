@@ -613,12 +613,12 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       content: story.topComments?.length
         ? `${story.topComments[0].text.slice(0, 400)}${story.topComments[0].text.length > 400 ? '…' : ''}`
         : `${story.points} pts | ${story.numComments} comments`,
-      link: story.url ?? story.hnUrl ?? undefined,
+      link: story.hnUrl ?? story.url ?? undefined,
       publishedAt: story.date ?? now,
       type: SignalType.NEWS,
       tickers,
       confidence: Math.min(0.85, 0.5 + story.points / 200),
-      metadata: { hnUrl: story.hnUrl, points: story.points, numComments: story.numComments },
+      metadata: { hnUrl: story.hnUrl, articleUrl: story.url, points: story.points, numComments: story.numComments },
     });
   }
 
