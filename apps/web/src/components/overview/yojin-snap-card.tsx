@@ -228,7 +228,7 @@ export function YojinSnapCard() {
                     <span className="text-sm leading-relaxed text-text-secondary">{item.what}</span>
                     {item.sourceSignals.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {item.sourceSignals.map((sig) => (
+                        {dedupSourceSignals(item.sourceSignals).map((sig) => (
                           <SourceChip key={sig.id} signal={sig} />
                         ))}
                       </div>
@@ -251,6 +251,17 @@ export function YojinSnapCard() {
       </Modal>
     </DashboardCard>
   );
+}
+
+/** Dedup source signals by display label so identical chips aren't repeated. */
+function dedupSourceSignals(signals: SummarySourceSignal[]): SummarySourceSignal[] {
+  const seen = new Set<string>();
+  return signals.filter((sig) => {
+    const label = sig.sourceName || sig.title;
+    if (seen.has(label)) return false;
+    seen.add(label);
+    return true;
+  });
 }
 
 function SourceChip({ signal }: { signal: SummarySourceSignal }) {
