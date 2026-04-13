@@ -23,7 +23,7 @@ export default function ActiveRulesView() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<StrategyCategory | 'ALL'>('ALL');
 
-  const strategies = result.data?.strategies ?? [];
+  const strategies = useMemo(() => result.data?.strategies ?? [], [result.data?.strategies]);
 
   const filtered = useMemo(() => {
     let list = strategies;
