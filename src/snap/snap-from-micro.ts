@@ -16,21 +16,28 @@ import { createSubsystemLogger } from '../logging/logger.js';
 
 const logger = createSubsystemLogger('snap-from-micro');
 
-const SYSTEM_PROMPT = `You synthesize per-asset research into a short portfolio snap.
+const SYSTEM_PROMPT = `You maintain a living portfolio snap — a TLDR of what the user needs to pay attention to across their holdings.
+
+You will receive per-asset research notes (possibly only a subset of the portfolio that was just refreshed) and the PREVIOUS SNAP if one exists. Your job is to UPDATE the snap — merge new intel in, drop what's gone stale, keep what's still relevant. You don't see the full portfolio every cycle, so preserve previous context about assets not in the current batch.
 
 Output:
-- intelSummary: 1-2 sentences MAX. The single most important portfolio-level theme right now. Not a list. Not per-ticker — that's the Actions card's job.
-- actionItems: UP TO 3 bullets. Only the items the user would regret missing. Fewer is better than more. If nothing rises above the noise, return an empty array.
+- intelSummary: 3-5 sentences. A portfolio-wide TLDR covering the most important themes, catalysts, and risks RIGHT NOW. Cover multiple holdings — this is the user's dashboard briefing, not a single-stock blurb. Synthesize cross-portfolio themes (sector rotation, macro headwinds, correlated moves) alongside the most material per-asset catalysts.
+- actionItems: UP TO 5 bullets. Concrete items the user would regret missing — earnings dates, analyst actions, regulatory deadlines, unusual moves, risk events. Each bullet should name the ticker and the event.
+
+Update rules:
+- When a PREVIOUS SNAP is provided, treat it as the current state. Merge new info in, replace stale items with fresher intel, keep items that are still the most impactful. Don't rebuild from scratch.
+- Replace a bullet ONLY if new information is materially more relevant (higher exposure × severity). If nothing above the noise floor changed, return the previous snap unchanged.
+- When no previous snap exists, build one fresh from the asset notes provided.
 
 Ranking: impact = weight × severity. Weight is provided per asset — use it to rank, not to mention. NEVER write weight percentages (e.g. "BTC (37.3%)", "17.5% weight"). A routine update on a large position doesn't make the cut, but a material catalyst on it does. A small position surfaces only on exceptional events (regulatory, fraud, bankruptcy risk).
 
-Rules:
-- Lead with real events/catalysts (earnings, analyst actions, regulatory, corporate, macro) — these drive price action. Technicals = supporting context, not headlines. Say "Truist cuts JPM target to $323" not "JPM RSI 38.5".
-- Weigh materiality vs asset size. Focus on events that could meaningfully move the stock. A 134-person layoff at JPM or a small contract at a $3T co is noise.
-- Do NOT repeat per-ticker observations that the Actions card already surfaces. The snap is PORTFOLIO-level synthesis (themes, correlations, regime shifts), not a catalogue of per-asset events.
+Quality:
+- Lead with real events/catalysts (earnings, analyst actions, regulatory, corporate, macro) — these drive price action. Technicals = supporting context, not headlines.
+- Weigh materiality vs asset size. A 134-person layoff at JPM or a small contract at a $3T co is noise.
+- Cover the portfolio broadly — mention multiple tickers when they have material developments.
 - Lower-quality/promotional sources weigh lower. Well-corroborated high-quality intel weighs higher.
 - Skip broken-data assets ($0 prices, no signals). Don't mention data issues.
-- Information-dense. No filler. Brevity over completeness.
+- Information-dense. No filler.
 
 Respond in JSON: { "intelSummary": "...", "actionItems": ["..."] }`;
 
@@ -85,16 +92,29 @@ export async function snapFromMicro(
       const exp = exposureMap.get(mi.symbol.toUpperCase());
       const weightStr = exp ? ` | ${(exp.weight * 100).toFixed(1)}% of portfolio` : '';
       const severityStr = typeof mi.severity === 'number' ? ` | severity ${mi.severity.toFixed(2)}` : '';
-      return (
-        `${mi.symbol} (${mi.rating}, ${(mi.conviction * 100).toFixed(0)}% conviction${weightStr}${severityStr}): ${mi.assetSnap}` +
-        (mi.assetActions.length > 0 ? `\n  Observations: ${mi.assetActions.join('; ')}` : '')
-      );
+      const lines = [
+        `${mi.symbol} (${mi.rating}, ${(mi.conviction * 100).toFixed(0)}% conviction${weightStr}${severityStr}):`,
+        `  Thesis: ${mi.thesis}`,
+      ];
+      if (mi.keyDevelopments.length > 0) {
+        lines.push(`  Key developments: ${mi.keyDevelopments.join('; ')}`);
+      }
+      if (mi.risks.length > 0) {
+        lines.push(`  Risks: ${mi.risks.join('; ')}`);
+      }
+      if (mi.opportunities.length > 0) {
+        lines.push(`  Opportunities: ${mi.opportunities.join('; ')}`);
+      }
+      if (mi.assetActions.length > 0) {
+        lines.push(`  Observations: ${mi.assetActions.join('; ')}`);
+      }
+      return lines.join('\n');
     })
-    .join('\n');
+    .join('\n\n');
 
   try {
-    // Build the user message — include previous snap so the LLM can make deliberate updates
-    let userMessage = `Synthesize these ${insights.length} asset research notes:\n\n${assetSummaries}`;
+    // Build the user message — always include previous snap so the LLM updates in place
+    let userMessage = `Asset research notes (${insights.length} assets refreshed):\n\n${assetSummaries}`;
 
     if (previousSnap && (previousSnap.intelSummary || previousSnap.actionItems.length > 0)) {
       const prevActions =
@@ -103,17 +123,17 @@ export async function snapFromMicro(
         `\n\n---\nPREVIOUS SNAP (generated ${previousSnap.generatedAt}):\n` +
         `Summary: ${previousSnap.intelSummary || '(none)'}\n` +
         `Actions:\n${prevActions}\n\n` +
-        `UPDATE the snap in place — don't rebuild it from scratch. Keep bullets that are still the most impactful. ` +
-        `Replace a bullet ONLY if new information is materially more relevant (higher exposure × severity). ` +
-        `If nothing above the noise floor changed, it is perfectly fine to return the previous snap unchanged. ` +
-        `The goal is a stable, short brief that evolves with events — NOT a fresh synthesis every cycle.`;
+        `Update this snap with the new research notes above. ` +
+        `The research notes may only cover a subset of the portfolio — preserve previous context about assets not covered above.`;
+    } else {
+      userMessage += `\n\nNo previous snap exists — build a fresh one from these notes.`;
     }
 
     const result = await providerRouter.completeWithTools({
       model: 'sonnet',
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
-      maxTokens: 512,
+      maxTokens: 1024,
     });
 
     const text = result.content
@@ -146,14 +166,16 @@ export async function snapFromMicro(
       contentHash,
     };
   } catch (err) {
-    logger.warn('Snap synthesis failed — falling back to top asset snap', { error: String(err) });
+    logger.warn('Snap synthesis failed — falling back to top asset snaps', { error: String(err) });
 
-    // Fallback: use the highest-conviction asset's snap
-    const top = insights[0];
-    if (!top) return null;
+    // Fallback: stitch together top assets' snaps into a multi-asset summary
+    const topInsights = sortedInsights.slice(0, 5).filter((mi) => mi.assetSnap.length > 0);
+    if (topInsights.length === 0) return null;
 
-    const intelSummary = top.assetSnap;
-    const actionItems = top.assetActions.slice(0, 5).map((text) => ({ text, signalIds: top.topSignalIds }));
+    const intelSummary = topInsights.map((mi) => `${mi.symbol}: ${mi.assetSnap}`).join(' ');
+    const actionItems = topInsights
+      .flatMap((mi) => mi.assetActions.map((text) => ({ text, signalIds: mi.topSignalIds })))
+      .slice(0, 5);
     const contentHash = computeSnapContentHash({ intelSummary, actionItems });
 
     return {

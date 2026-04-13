@@ -53,3 +53,6 @@ data/*
 
 .claude/worktrees/
 .env.docker
+
+# Reference / scratch code
+tttt/

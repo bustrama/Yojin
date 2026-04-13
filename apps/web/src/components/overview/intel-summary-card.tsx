@@ -104,8 +104,10 @@ export default function IntelSummaryCard() {
 }
 
 function splitSentences(text: string): string[] {
+  // Split on sentence boundaries: period/!/? followed by space + capital letter,
+  // but NOT after common abbreviations (U.S., U.K., Dr., Mr., Mrs., etc.)
   return text
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<![A-Z])(?<=[.!?])\s+(?=[A-Z])/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
