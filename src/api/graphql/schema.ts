@@ -620,6 +620,7 @@ export const typeDefs = /* GraphQL */ `
     tickers: [String!]!
     riskContext: String
     severity: Float
+    confidence: Float!
     severityLabel: String!
     status: ActionStatus!
     expiresAt: String!

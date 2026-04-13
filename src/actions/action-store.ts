@@ -19,8 +19,8 @@
 import { appendFile, mkdir, readFile, readdir, rename, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import type { Action, ActionStatus } from './types.js';
-import { ActionSchema } from './types.js';
+import type { Action, ActionStatus, ActionVerdict } from './types.js';
+import { ActionSchema, effectiveScore } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 
 const logger = createSubsystemLogger('action-store');
@@ -139,6 +139,24 @@ export class ActionStore {
     }
 
     await this.supersedePendingByTriggerId(parsed.data.triggerId);
+
+    const kept = await this.resolveTickerConflicts(parsed.data);
+    if (!kept) {
+      const now = new Date().toISOString();
+      const expired: Action = {
+        ...parsed.data,
+        status: 'EXPIRED',
+        resolvedAt: now,
+        resolvedBy: 'conflict',
+      };
+      await this.appendAction(expired);
+      logger.info('Action conflict-expired on create (lower effective score)', {
+        id: parsed.data.id,
+        verdict: parsed.data.verdict,
+      });
+      return { success: true, data: expired };
+    }
+
     await this.appendAction(parsed.data);
     logger.info('Action created', {
       id: parsed.data.id,
@@ -287,6 +305,50 @@ export class ActionStore {
         triggerId,
       });
     }
+  }
+
+  /**
+   * Cross-strategy ticker conflict resolution. When a new action targets the
+   * same ticker as an existing PENDING action, the one with the higher effective
+   * score wins. Returns true if the new action should be kept, false if it lost.
+   */
+  private async resolveTickerConflicts(newAction: Action): Promise<boolean> {
+    if (newAction.tickers.length === 0) return true;
+
+    const newTickers = new Set(newAction.tickers);
+    const newScore = effectiveScore(newAction.confidence, newAction.verdict as ActionVerdict);
+    const all = await this.queryAll();
+    const now = new Date().toISOString();
+
+    for (const existing of all) {
+      if (existing.id === newAction.id) continue;
+      if (existing.status !== 'PENDING') continue;
+      if (existing.dismissedAt) continue;
+      if (existing.expiresAt <= now) continue;
+
+      const overlaps = existing.tickers.some((t) => newTickers.has(t));
+      if (!overlaps) continue;
+
+      const existingScore = effectiveScore(existing.confidence, existing.verdict as ActionVerdict);
+
+      if (newScore >= existingScore) {
+        const expired: Action = {
+          ...existing,
+          status: 'EXPIRED',
+          resolvedAt: now,
+          resolvedBy: 'conflict',
+        };
+        await this.appendAction(expired);
+        logger.debug('Existing action conflict-expired by new action', {
+          existingId: existing.id,
+          newId: newAction.id,
+        });
+      } else {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private async resolve(

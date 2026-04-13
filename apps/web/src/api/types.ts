@@ -1193,6 +1193,7 @@ export interface Action {
   tickers: string[];
   riskContext: string | null;
   severity: number | null;
+  confidence: number;
   severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
