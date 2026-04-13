@@ -29,7 +29,7 @@ const EMPTY_FORM: StrategyFormData = {
   style: '',
   requires: [],
   content: '',
-  triggers: [{ type: 'PRICE_MOVE', description: '', params: {} }],
+  triggerGroups: [{ label: '', conditions: [{ type: 'PRICE_MOVE', description: '', params: {} }] }],
   tickers: [],
   maxPositionSize: undefined,
 };
@@ -55,10 +55,13 @@ function strategyToFormData(strategy: Strategy): StrategyFormData {
     // Keep uppercase (matches form CAPABILITIES); GraphQL resolver handles case conversion
     requires: [...strategy.requires],
     content: strategy.content,
-    triggers: strategy.triggers.map((t) => ({
-      type: t.type,
-      description: t.description,
-      params: parseParams(t.params),
+    triggerGroups: strategy.triggerGroups.map((g) => ({
+      label: g.label ?? '',
+      conditions: g.conditions.map((t) => ({
+        type: t.type,
+        description: t.description,
+        params: parseParams(t.params),
+      })),
     })),
     tickers: [...strategy.tickers],
     maxPositionSize: strategy.maxPositionSize ?? undefined,
@@ -157,9 +160,13 @@ export function StrategyStudio({ open, onClose, strategy, editMode }: StrategySt
           if (card.tool === 'propose-strategy') {
             try {
               const proposed = JSON.parse(card.params) as Partial<StrategyFormData>;
-              // Ensure trigger.params is always an object (server may send undefined)
-              if (proposed.triggers) {
-                proposed.triggers = proposed.triggers.map((t) => ({ ...t, params: t.params ?? {} }));
+              // Ensure condition.params is always an object (server may send undefined)
+              if (proposed.triggerGroups) {
+                proposed.triggerGroups = proposed.triggerGroups.map((g) => ({
+                  ...g,
+                  label: g.label ?? '',
+                  conditions: g.conditions.map((c) => ({ ...c, params: c.params ?? {} })),
+                }));
               }
               // GraphQL returns uppercase capabilities; normalize for form
               if (proposed.requires) {

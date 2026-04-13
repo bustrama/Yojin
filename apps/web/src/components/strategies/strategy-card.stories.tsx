@@ -29,7 +29,7 @@ const baseStrategy: Strategy = {
   createdBy: 'Yojin',
   createdAt: 'Jan 3, 2026',
   content: '',
-  triggers: [{ type: 'DRAWDOWN', description: 'Position drawdown exceeds -10%' }],
+  triggerGroups: [{ label: null, conditions: [{ type: 'DRAWDOWN', description: 'Position drawdown exceeds -10%' }] }],
   tickers: [],
 };
 

@@ -36,13 +36,38 @@ export class StrategyStore {
     for (const file of files) {
       try {
         const raw = readFileSync(join(this.dir, file), 'utf-8');
-        const strategy = StrategySchema.parse(JSON.parse(raw));
+        const parsed = JSON.parse(raw);
+        const migrated = this.migrateIfNeeded(parsed, file);
+        const strategy = StrategySchema.parse(migrated);
         this.strategies.set(strategy.id, strategy);
       } catch (err) {
         logger.warn(`Failed to load strategy from ${file}`, { error: err });
       }
     }
     logger.info(`Loaded ${this.strategies.size} strategies`);
+  }
+
+  /**
+   * Migrate old { triggers: [...] } format to { triggerGroups: [...] }.
+   * Each old trigger becomes its own single-condition group (preserving OR semantics).
+   */
+  private migrateIfNeeded(raw: Record<string, unknown>, file: string): Record<string, unknown> {
+    if (raw['triggerGroups']) return raw;
+    const oldTriggers = raw['triggers'];
+    if (!Array.isArray(oldTriggers)) return raw;
+
+    logger.info(`Migrating strategy ${file} from triggers to triggerGroups`);
+    const migrated = { ...raw };
+    migrated['triggerGroups'] = oldTriggers.map((t: unknown) => ({
+      label: '',
+      conditions: [t],
+    }));
+    delete migrated['triggers'];
+
+    const filePath = join(this.dir, file);
+    writeFileSync(filePath, JSON.stringify(migrated, null, 2), 'utf-8');
+
+    return migrated;
   }
 
   /** Get all strategies. */

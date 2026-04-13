@@ -1374,6 +1374,11 @@ export interface StrategyTrigger {
   params?: string | null;
 }
 
+export interface TriggerGroup {
+  label?: string | null;
+  conditions: StrategyTrigger[];
+}
+
 export interface Strategy {
   id: string;
   name: string;
@@ -1386,7 +1391,7 @@ export interface Strategy {
   createdBy: string;
   createdAt: string;
   content: string;
-  triggers: StrategyTrigger[];
+  triggerGroups: TriggerGroup[];
   maxPositionSize?: number | null;
   tickers: string[];
 }

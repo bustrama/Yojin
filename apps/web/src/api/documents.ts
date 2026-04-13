@@ -1464,10 +1464,13 @@ export const STRATEGIES_QUERY = gql`
       createdBy
       createdAt
       content
-      triggers {
-        type
-        description
-        params
+      triggerGroups {
+        label
+        conditions {
+          type
+          description
+          params
+        }
       }
       maxPositionSize
       tickers
@@ -1489,10 +1492,13 @@ export const STRATEGY_QUERY = gql`
       createdBy
       createdAt
       content
-      triggers {
-        type
-        description
-        params
+      triggerGroups {
+        label
+        conditions {
+          type
+          description
+          params
+        }
       }
       maxPositionSize
       tickers
