@@ -63,6 +63,13 @@ interface FeedDetailModalProps {
   data: FeedDetailData | null;
 }
 
+const triggerStrengthVariant: Record<TriggerStrength, BadgeVariant> = {
+  WEAK: 'neutral',
+  MODERATE: 'info',
+  STRONG: 'warning',
+  EXTREME: 'error',
+};
+
 const sentimentBadge: Record<string, { label: string; variant: BadgeVariant }> = {
   bullish: { label: 'Bullish', variant: 'success' },
   bearish: { label: 'Bearish', variant: 'error' },
@@ -150,18 +157,7 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
           </Badge>
         )}
         {data.triggerStrength && (
-          <Badge
-            variant={
-              data.triggerStrength === 'EXTREME'
-                ? 'error'
-                : data.triggerStrength === 'STRONG'
-                  ? 'warning'
-                  : data.triggerStrength === 'MODERATE'
-                    ? 'info'
-                    : 'neutral'
-            }
-            outline
-          >
+          <Badge variant={triggerStrengthVariant[data.triggerStrength]} outline>
             {data.triggerStrength.charAt(0) + data.triggerStrength.slice(1).toLowerCase()} Strength
           </Badge>
         )}

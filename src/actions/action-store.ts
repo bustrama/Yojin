@@ -45,6 +45,8 @@ export class ActionStore {
   private readonly dir: string;
   private dirCreated = false;
   private migrationDone = false;
+  /** Per-triggerId mutex to serialize supersede+append in create(). */
+  private readonly triggerLocks = new Map<string, Promise<void>>();
 
   constructor(options: ActionStoreOptions) {
     this.dir = options.dir;
@@ -141,10 +143,27 @@ export class ActionStore {
       return { success: false, error: `Invalid action: ${parsed.error.message}` };
     }
 
-    const allActions = await this.queryAll();
-    await this.supersedePendingByTriggerId(parsed.data.triggerId, allActions);
+    // Serialize per triggerId so concurrent creates can't both observe the same
+    // snapshot and each append a PENDING record (read-modify-write race).
+    const { triggerId } = parsed.data;
+    const prev = this.triggerLocks.get(triggerId) ?? Promise.resolve();
+    const settled = prev.then(async () => {
+      const allActions = await this.queryAll();
+      await this.supersedePendingByTriggerId(triggerId, allActions);
+      await this.appendAction(parsed.data);
+    });
+    // Store a swallowed-error version so a rejected promise doesn't block the next caller.
+    const queued = settled.catch(() => {});
+    this.triggerLocks.set(triggerId, queued);
+    try {
+      await settled;
+    } finally {
+      // Clean up only if no subsequent create has chained onto this key.
+      if (this.triggerLocks.get(triggerId) === queued) {
+        this.triggerLocks.delete(triggerId);
+      }
+    }
 
-    await this.appendAction(parsed.data);
     logger.info('Action created', {
       id: parsed.data.id,
       strategyId: parsed.data.strategyId,

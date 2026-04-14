@@ -220,30 +220,29 @@ describe('computeTriggerStrength — CONCENTRATION_DRIFT', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeTriggerStrength — ALLOCATION_DRIFT (ETF-style)', () => {
-  it('returns WEAK for small delta relative to tolerance', () => {
-    // delta=0.001, toleranceBps=500 → tolerance=0.05, ratio=0.001/0.05=0.02 → WEAK
-    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: 0.001, toleranceBps: 500 })).toBe('WEAK');
+  it('returns WEAK for small overshoot past tolerance', () => {
+    // delta=0.055, toleranceBps=500 → tolerance=0.05, overshoot=|0.055-0.05|/0.05=0.1 → WEAK
+    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: 0.055, toleranceBps: 500 })).toBe('WEAK');
   });
 
-  it('returns MODERATE for delta around tolerance', () => {
-    // delta=0.055, toleranceBps=500 → tolerance=0.05, ratio=0.055/0.05=1.1 → STRONG...
-    // Let me recalculate: delta=0.03, toleranceBps=500 → 0.03/0.05=0.6 → MODERATE
-    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: 0.03, toleranceBps: 500 })).toBe('MODERATE');
+  it('returns MODERATE for moderate overshoot', () => {
+    // delta=0.065, toleranceBps=500 → overshoot=|0.065-0.05|/0.05=0.3 → MODERATE
+    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: 0.065, toleranceBps: 500 })).toBe('MODERATE');
   });
 
   it('returns STRONG when delta significantly exceeds tolerance', () => {
-    // delta=0.065, toleranceBps=500 → 0.065/0.05=1.3 → STRONG
-    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: 0.065, toleranceBps: 500 })).toBe('STRONG');
+    // delta=0.10, toleranceBps=500 → overshoot=|0.10-0.05|/0.05=1.0 → STRONG
+    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: 0.1, toleranceBps: 500 })).toBe('STRONG');
   });
 
   it('returns EXTREME for large delta', () => {
-    // delta=0.15, toleranceBps=500 → 0.15/0.05=3.0 → EXTREME
+    // delta=0.15, toleranceBps=500 → overshoot=|0.15-0.05|/0.05=2.0 → EXTREME
     expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: 0.15, toleranceBps: 500 })).toBe('EXTREME');
   });
 
   it('uses absolute value of delta', () => {
-    // delta=-0.065, toleranceBps=500 → same as positive → STRONG
-    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: -0.065, toleranceBps: 500 })).toBe('STRONG');
+    // delta=-0.10, toleranceBps=500 → same as positive → STRONG
+    expect(computeTriggerStrength('ALLOCATION_DRIFT', { delta: -0.1, toleranceBps: 500 })).toBe('STRONG');
   });
 
   it('returns MODERATE when toleranceBps is zero', () => {

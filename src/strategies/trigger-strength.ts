@@ -66,7 +66,7 @@ export function computeTriggerStrength(
         const delta = Math.abs(Number(context['delta'] ?? 0));
         const tolerance = Number(context['toleranceBps'] ?? 500) / 10_000;
         if (!Number.isFinite(delta) || !Number.isFinite(tolerance) || tolerance === 0) return 'MODERATE';
-        return ratioToStrength(delta / tolerance);
+        return ratioToStrength(Math.abs(delta - tolerance) / tolerance);
       }
       // Strategy-level: drift vs driftThreshold
       const drift = Math.abs(Number(context['drift'] ?? 0));
