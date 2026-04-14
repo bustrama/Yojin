@@ -1384,6 +1384,7 @@ export const INTEL_FEED_QUERY = gql`
         link
         sources {
           name
+          type
           reliability
         }
         content
