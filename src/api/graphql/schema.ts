@@ -609,6 +609,13 @@ export const typeDefs = /* GraphQL */ `
     EXPIRED
   }
 
+  enum TriggerStrength {
+    WEAK
+    MODERATE
+    STRONG
+    EXTREME
+  }
+
   type Action {
     id: ID!
     strategyId: ID!
@@ -621,7 +628,7 @@ export const typeDefs = /* GraphQL */ `
     tickers: [String!]!
     riskContext: String
     severity: Float
-    confidence: Float!
+    triggerStrength: TriggerStrength!
     severityLabel: String!
     status: ActionStatus!
     expiresAt: String!

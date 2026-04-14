@@ -131,6 +131,8 @@ describe('strategy evaluation integration', () => {
       expect(results[0].context['threshold']).toBe(30);
       expect(results[0].triggerType).toBe('INDICATOR_THRESHOLD');
       expect(results[0].strategyId).toBe('test-rsi-oversold');
+      // RSI: |25-30|/|30| = 0.167 → WEAK
+      expect(results[0].triggerStrength).toBe('WEAK');
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -182,6 +184,8 @@ describe('strategy evaluation integration', () => {
       expect(results[0].context['threshold']).toBe(-0.15);
       expect(results[0].triggerType).toBe('DRAWDOWN');
       expect(results[0].strategyId).toBe('test-drawdown');
+      // Drawdown: |(-0.2)-(-0.15)|/|-0.15| = 0.333 → MODERATE
+      expect(results[0].triggerStrength).toBe('MODERATE');
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -233,11 +237,15 @@ describe('strategy evaluation integration', () => {
       expect(aaplResult.context['weight']).toBeCloseTo(0.6);
       expect(aaplResult.context['maxWeight']).toBe(0.12);
       expect(aaplResult.triggerType).toBe('CONCENTRATION_DRIFT');
+      // AAPL: (0.6-0.12)/0.12 = 4.0 → EXTREME
+      expect(aaplResult.triggerStrength).toBe('EXTREME');
 
       const googResult = results.find((r) => r.context['ticker'] === 'GOOG')!;
       expect(googResult.context['weight']).toBeCloseTo(0.4);
       expect(googResult.context['maxWeight']).toBe(0.12);
       expect(googResult.strategyId).toBe('test-concentration');
+      // GOOG: (0.4-0.12)/0.12 = 2.33 → EXTREME
+      expect(googResult.triggerStrength).toBe('EXTREME');
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -309,6 +317,8 @@ describe('strategy evaluation integration', () => {
       expect(results[0].context['ticker']).toBe('AAPL');
       expect(results[0].triggerType).toBe('PRICE_MOVE');
       expect(results[0].context['threshold']).toBe(0.1);
+      // PRICE_MOVE: |0.15-0.10|/|0.10| = 0.5 → MODERATE
+      expect(results[0].triggerStrength).toBe('MODERATE');
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -469,6 +479,8 @@ describe('strategy evaluation integration', () => {
       expect(results[0].context['ticker']).toBe('HIGH');
       expect(results[0].context['metric']).toBe('SUE');
       expect(results[0].triggerType).toBe('METRIC_THRESHOLD');
+      // METRIC_THRESHOLD: |3-2|/|2| = 0.5 → MODERATE
+      expect(results[0].triggerStrength).toBe('MODERATE');
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -524,6 +536,8 @@ describe('strategy evaluation integration', () => {
       expect(results[0].context['ticker']).toBe('AAPL');
       expect(results[0].context['signalId']).toBe('s1');
       expect(results[0].triggerType).toBe('SIGNAL_PRESENT');
+      // SIGNAL_PRESENT always returns STRONG
+      expect(results[0].triggerStrength).toBe('STRONG');
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -618,6 +632,60 @@ describe('strategy evaluation integration', () => {
       expect(evaluator.evaluate(ctx)).toHaveLength(0);
     } finally {
       await rm(dir, { recursive: true });
+    }
+  });
+
+  it('deduplicates across OR groups — keeps strongest per ticker', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'strat-dedup-'));
+    try {
+      const store = new StrategyStore({ dir });
+
+      const strategy = makeStrategy({
+        id: 'dedup-test',
+        tickers: ['AAPL'],
+        triggerGroups: [
+          {
+            label: 'Weak entry',
+            conditions: [
+              {
+                type: 'INDICATOR_THRESHOLD',
+                description: 'RSI below 30',
+                params: { indicator: 'RSI', threshold: 30, direction: 'below' },
+              },
+            ],
+          },
+          {
+            label: 'Strong entry',
+            conditions: [{ type: 'DRAWDOWN', description: 'Drawdown > 10%', params: { threshold: -0.1 } }],
+          },
+        ],
+      });
+      await writeFile(join(dir, `${strategy.id}.json`), JSON.stringify(strategy));
+      await store.initialize();
+
+      const evaluator = new StrategyEvaluator(store);
+      const ctx = {
+        weights: { AAPL: 0.5 },
+        prices: { AAPL: 150 },
+        priceChanges: { AAPL: -0.02 },
+        indicators: { AAPL: { RSI: 29 } },
+        earningsDays: {},
+        portfolioDrawdown: -0.15,
+        positionDrawdowns: { AAPL: -0.3 },
+        metrics: {},
+        signals: {},
+      };
+
+      const results = evaluator.evaluate(ctx);
+      // Both groups fire for AAPL, but only the strongest should be kept
+      expect(results).toHaveLength(1);
+      // RSI: |29-30|/|30| = 0.033 → WEAK
+      // Drawdown: |(-0.30)-(-0.10)|/|-0.10| = 2.0 → EXTREME
+      // EXTREME > WEAK, so drawdown group wins
+      expect(results[0].triggerType).toBe('DRAWDOWN');
+      expect(results[0].triggerStrength).toBe('EXTREME');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

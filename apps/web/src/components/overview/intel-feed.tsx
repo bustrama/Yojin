@@ -63,6 +63,7 @@ interface IntelFeedItem {
   data?: DataRow[];
   isAction?: boolean;
   verdict?: 'BUY' | 'SELL' | 'TRIM' | 'HOLD' | 'REVIEW';
+  triggerStrength?: string;
   strategyName?: string;
   riskContext?: string;
   expiresAt?: string;
@@ -637,6 +638,7 @@ function IntelFeedContent({
       link: null,
       isAction: true,
       verdict: action.verdict,
+      triggerStrength: action.triggerStrength,
       strategyName: action.strategyName,
       riskContext: action.riskContext ?? undefined,
       expiresAt: action.expiresAt,
@@ -883,6 +885,7 @@ function IntelFeedContent({
         const row = item.data?.find((r) => r.label === 'Confidence');
         return row ? Math.round(parseFloat(row.value)) : undefined;
       })(),
+      triggerStrength: item.triggerStrength,
       keyPoints: item.isAction ? [] : item.description ? [item.description] : [],
       analysis: item.isAction ? item.description || '' : item.description || item.title,
       relatedTickers: item.tickers,

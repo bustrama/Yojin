@@ -10,6 +10,9 @@
  * flows (e.g. macro refining a micro-fired trigger) update the Action instead
  * of being silently skipped.
  *
+ * No cross-strategy conflict resolution: multiple strategies can produce
+ * competing PENDING actions for the same ticker. The user decides which to act on.
+ *
  * Storage layout:
  *   data/actions/
  *     2026-04-11.jsonl
@@ -19,8 +22,8 @@
 import { appendFile, mkdir, readFile, readdir, rename, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import type { Action, ActionStatus, ActionVerdict } from './types.js';
-import { ActionSchema, effectiveScore } from './types.js';
+import type { Action, ActionStatus } from './types.js';
+import { ActionSchema } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 
 const logger = createSubsystemLogger('action-store');
@@ -138,25 +141,7 @@ export class ActionStore {
       return { success: false, error: `Invalid action: ${parsed.error.message}` };
     }
 
-    const allActions = await this.queryAll();
-    await this.supersedePendingByTriggerId(parsed.data.triggerId, allActions);
-
-    const kept = await this.resolveTickerConflicts(parsed.data, allActions);
-    if (!kept) {
-      const now = new Date().toISOString();
-      const expired: Action = {
-        ...parsed.data,
-        status: 'EXPIRED',
-        resolvedAt: now,
-        resolvedBy: 'conflict',
-      };
-      await this.appendAction(expired);
-      logger.info('Action conflict-expired on create (lower effective score)', {
-        id: parsed.data.id,
-        verdict: parsed.data.verdict,
-      });
-      return { success: true, data: expired };
-    }
+    await this.supersedePendingByTriggerId(parsed.data.triggerId);
 
     await this.appendAction(parsed.data);
     logger.info('Action created', {
@@ -284,8 +269,8 @@ export class ActionStore {
    * appending a fresh Action to ensure the triggerId dedup guarantees that
    * at most one PENDING record exists per triggerId at a time.
    */
-  private async supersedePendingByTriggerId(triggerId: string, all?: Action[]): Promise<void> {
-    const actions = all ?? (await this.queryAll());
+  private async supersedePendingByTriggerId(triggerId: string): Promise<void> {
+    const actions = await this.queryAll();
     const now = new Date().toISOString();
 
     for (const existing of actions) {
@@ -306,60 +291,6 @@ export class ActionStore {
         triggerId,
       });
     }
-  }
-
-  /**
-   * Cross-strategy ticker conflict resolution. When a new action targets the
-   * same ticker as an existing PENDING action, the one with the higher effective
-   * score wins. Returns true if the new action should be kept, false if it lost.
-   */
-  private async resolveTickerConflicts(newAction: Action, all?: Action[]): Promise<boolean> {
-    if (newAction.tickers.length === 0) return true;
-
-    const newTickers = new Set(newAction.tickers);
-    const newScore = effectiveScore(newAction.confidence, newAction.verdict as ActionVerdict);
-    const actions = all ?? (await this.queryAll());
-    const now = new Date().toISOString();
-
-    // Collect all overlapping pending actions first (skip same-triggerId — handled by supersede)
-    const overlapping: Action[] = [];
-    for (const existing of actions) {
-      if (existing.id === newAction.id) continue;
-      if (existing.triggerId === newAction.triggerId) continue;
-      if (existing.status !== 'PENDING') continue;
-      if (existing.dismissedAt) continue;
-      if (existing.expiresAt <= now) continue;
-
-      const overlaps = existing.tickers.some((t) => newTickers.has(t));
-      if (!overlaps) continue;
-
-      overlapping.push(existing);
-    }
-
-    // Check if new action beats ALL overlapping actions before mutating
-    for (const existing of overlapping) {
-      const existingScore = effectiveScore(existing.confidence, existing.verdict as ActionVerdict);
-      if (newScore < existingScore) {
-        return false;
-      }
-    }
-
-    // New action wins — expire all overlapping actions
-    for (const existing of overlapping) {
-      const expired: Action = {
-        ...existing,
-        status: 'EXPIRED',
-        resolvedAt: now,
-        resolvedBy: 'conflict',
-      };
-      await this.appendAction(expired);
-      logger.debug('Existing action conflict-expired by new action', {
-        existingId: existing.id,
-        newId: newAction.id,
-      });
-    }
-
-    return true;
   }
 
   private async resolve(

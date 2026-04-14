@@ -41,6 +41,7 @@ export interface FeedDetailData {
   impact?: 'high' | 'medium' | 'low';
   urgency?: 'high' | 'medium' | 'low';
   confidence?: number;
+  triggerStrength?: string;
   keyPoints: string[];
   analysis: string;
   recommendation?: string;
@@ -145,6 +146,22 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
         {data.confidence !== undefined && (
           <Badge variant="neutral" outline>
             {data.confidence}% Confidence
+          </Badge>
+        )}
+        {data.triggerStrength && (
+          <Badge
+            variant={
+              data.triggerStrength === 'EXTREME'
+                ? 'error'
+                : data.triggerStrength === 'STRONG'
+                  ? 'warning'
+                  : data.triggerStrength === 'MODERATE'
+                    ? 'info'
+                    : 'neutral'
+            }
+            outline
+          >
+            {data.triggerStrength.charAt(0) + data.triggerStrength.slice(1).toLowerCase()} Strength
           </Badge>
         )}
       </div>
