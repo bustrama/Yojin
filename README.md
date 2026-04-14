@@ -43,9 +43,22 @@ npx playwright install chromium
 
 Chat, insights, and manual portfolio entry work without it.
 
-### Desktop App (macOS)
+### Desktop tray app (in development — macOS + Windows)
 
-A native menu bar app that lives in your toolbar. Click the Yojin icon to start/stop the server and open the dashboard.
+A cross-platform tray app that lives in the menu bar (macOS) or system tray (Windows). Click the Yojin icon to open the dashboard; the Node backend runs as a sidecar inside the app shell, so end users get a download-and-run experience with no terminal usage.
+
+Status: scaffolded under `apps/desktop/` (Tauri 2 + Rust shell). Not yet shipping signed installers — see `apps/desktop/README.md` for the open work (icons, Node sidecar bundling, code signing).
+
+```bash
+# from the monorepo root, after `pnpm build`
+pnpm --filter @yojin/desktop dev
+```
+
+Requires the Rust toolchain (`rustup`) installed locally during development.
+
+#### Legacy Swift menu-bar app (macOS only)
+
+The previous macOS-only Swift menu-bar app still ships from `apps/desktop/` while the Tauri app stabilises:
 
 ```bash
 cd apps/desktop
@@ -53,13 +66,7 @@ cd apps/desktop
 ./scripts/install.sh    # Installs to /Applications + auto-start on login
 ```
 
-Once installed, the Yojin hand icon appears in your menu bar with:
-- **Status indicator** — green dot when running, grey when stopped
-- **Open Dashboard** — opens the web UI in your browser
-- **Start / Stop** — toggle the server
-- Auto-starts on login via LaunchAgent
-
-To uninstall (from `apps/desktop`): `./scripts/uninstall.sh`
+Once installed, the Yojin hand icon appears in your menu bar with start/stop/open controls and auto-starts on login via LaunchAgent. To uninstall: `./scripts/uninstall.sh`. New work should target the Tauri app above; the Swift app will be retired once the Tauri build ships signed installers.
 
 ### Docker (recommended for long-running)
 
