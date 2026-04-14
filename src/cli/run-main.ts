@@ -423,12 +423,9 @@ function startFrontend(): Promise<void> {
   }
 
   return new Promise((resolve, reject) => {
-    // On Windows, pnpm is a .cmd shim that can only be located via the shell.
-    // On POSIX the binary is directly executable — skip the shell to avoid
-    // unnecessary process layers and shell-quoting surprises.
     const child = spawn('pnpm', ['--filter', '@yojin/web', 'dev'], {
       stdio: 'inherit',
-      shell: process.platform === 'win32',
+      shell: true,
     });
     child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Frontend exited with code ${code}`))));
     child.on('error', reject);
