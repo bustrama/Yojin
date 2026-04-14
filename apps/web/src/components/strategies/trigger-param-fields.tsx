@@ -27,6 +27,8 @@ const PRICE_DIRECTION_OPTIONS = [
 const DIRECTION_OPTIONS = [
   { value: 'above', label: 'Above' },
   { value: 'below', label: 'Below' },
+  { value: 'crosses_above', label: 'Crosses Above' },
+  { value: 'crosses_below', label: 'Crosses Below' },
 ];
 
 // Keys must match those produced by mapIndicators() in
@@ -34,8 +36,8 @@ const DIRECTION_OPTIONS = [
 // ctx.indicators[ticker][indicator] directly.
 const INDICATOR_OPTIONS = [
   // Oscillators
-  { value: 'RSI', label: 'RSI' },
-  { value: 'MFI', label: 'MFI' },
+  { value: 'RSI', label: 'RSI (14)' },
+  { value: 'MFI', label: 'MFI (14)' },
   { value: 'WILLIAMS_R', label: 'Williams %R' },
   { value: 'STOCH_K', label: 'Stochastic %K' },
   { value: 'STOCH_D', label: 'Stochastic %D' },
@@ -44,14 +46,14 @@ const INDICATOR_OPTIONS = [
   { value: 'MACD_LINE', label: 'MACD Line' },
   { value: 'MACD_SIGNAL', label: 'MACD Signal' },
   // Moving averages
-  { value: 'EMA', label: 'EMA(10)' },
-  { value: 'EMA_50', label: 'EMA(50)' },
-  { value: 'EMA_200', label: 'EMA(200)' },
-  { value: 'SMA_20', label: 'SMA(20)' },
-  { value: 'SMA', label: 'SMA(50)' },
-  { value: 'SMA_200', label: 'SMA(200)' },
+  { value: 'EMA', label: 'EMA (10)' },
+  { value: 'EMA_50', label: 'EMA (50)' },
+  { value: 'EMA_200', label: 'EMA (200)' },
+  { value: 'SMA_20', label: 'SMA (20)' },
+  { value: 'SMA', label: 'SMA (50)' },
+  { value: 'SMA_200', label: 'SMA (200)' },
   { value: 'WMA_52', label: '52-WMA' },
-  { value: 'VWMA', label: 'VWMA' },
+  { value: 'VWMA', label: 'VWMA (20)' },
   { value: 'VWAP', label: 'VWAP' },
   // Bollinger Bands
   { value: 'BB_UPPER', label: 'Bollinger Upper' },
@@ -59,7 +61,7 @@ const INDICATOR_OPTIONS = [
   { value: 'BB_LOWER', label: 'Bollinger Lower' },
   { value: 'BB_WIDTH', label: 'Bollinger Band Width' },
   // Volatility & trend
-  { value: 'ATR', label: 'ATR' },
+  { value: 'ATR', label: 'ATR (14)' },
   { value: 'ADX', label: 'ADX' },
   { value: 'PSAR', label: 'Parabolic SAR' },
   // Volume
@@ -120,8 +122,8 @@ export function NumberInput({
           type="number"
           value={value ?? ''}
           onChange={(e) => {
-            const raw = e.target.value;
-            onChange(raw === '' ? undefined : Number(raw));
+            const v = e.currentTarget.valueAsNumber;
+            onChange(e.target.value === '' ? undefined : Number.isNaN(v) ? value : v);
           }}
           placeholder={placeholder}
           min={min}
