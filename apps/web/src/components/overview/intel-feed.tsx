@@ -277,7 +277,7 @@ function IntelFeedCard({
                 {item.verdict}
               </span>
             )}
-            <p className="line-clamp-3 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
+            <p className="line-clamp-2 text-sm font-medium leading-snug text-text-primary">{item.title}</p>
           </div>
           {selectMode ? (
             <div

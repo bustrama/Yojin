@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { KnownPlatform, Position } from '../../api';
 import { isKnownPlatform, useEditPosition, useRemovePosition } from '../../api';
 import { cn } from '../../lib/utils';
-import { formatPrice } from '../../lib/format';
+import { formatSharePrice } from '../../lib/format';
 import { useAssetDetailModal } from '../../lib/asset-detail-modal-context';
 import Button from '../common/button';
 import EmptyState from '../common/empty-state';
@@ -251,10 +251,10 @@ export default function PositionTable({ positions, onAdd }: { positions: Positio
                     {formatQuantity(pos.quantity)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-text-secondary">
-                    {formatPrice(pos.costBasis)}
+                    {formatSharePrice(pos.costBasis)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums font-medium text-text-primary">
-                    {formatPrice(pos.currentPrice)}
+                    {formatSharePrice(pos.currentPrice)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums font-medium text-text-primary">
                     {formatCurrency(pos.marketValue)}

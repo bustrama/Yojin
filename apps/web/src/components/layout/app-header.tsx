@@ -4,7 +4,7 @@ import WorldClock from './world-clock';
 
 const segmentLabels: Record<string, string> = {
   '': 'Overview',
-  chat: 'Chat',
+  chat: 'Research',
   portfolio: 'Portfolio',
   insights: 'Insights',
   watchlist: 'Watchlist',

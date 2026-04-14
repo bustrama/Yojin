@@ -164,11 +164,7 @@ function InsightsContent() {
   const initialType = searchParams.get('type') ?? 'ALL';
   const initialSearch = searchParams.get('search') ?? '';
   const tabParam = searchParams.get('tab') as ViewTab | null;
-  const initialTab: ViewTab = VALID_TABS.includes(tabParam as ViewTab)
-    ? (tabParam as ViewTab)
-    : urlHighlight
-      ? 'all'
-      : 'position';
+  const initialTab: ViewTab = VALID_TABS.includes(tabParam as ViewTab) ? (tabParam as ViewTab) : 'all';
 
   const [viewTab, setViewTab] = useState<ViewTab>(initialTab);
   const [highlightId, setHighlightId] = useState(urlHighlight);
@@ -180,7 +176,6 @@ function InsightsContent() {
   const [minConfidence, setMinConfidence] = useState(0);
   const [dateRangeLabel, setDateRangeLabel] = useState('');
   const [since, setSince] = useState<string | undefined>(undefined);
-  const [sourceFilter, setSourceFilter] = useState('');
 
   const setDateRange = useCallback((days: string) => {
     setDateRangeLabel(days);
@@ -292,18 +287,6 @@ function InsightsContent() {
     () => collectInsightSignalIds(insightQueryResult.data?.latestInsightReport),
     [insightQueryResult.data],
   );
-  const insightSignalImpact = useMemo(() => {
-    const map = new Map<string, string>();
-    const r = insightQueryResult.data?.latestInsightReport;
-    if (!r) return map;
-    for (const pos of r.positions) {
-      for (const sig of pos.keySignals) {
-        map.set(sig.signalId, sig.impact);
-      }
-    }
-    return map;
-  }, [insightQueryResult.data]);
-
   // By Position view: all portfolio positions with their curated signals.
   // Shows ALL positions (from portfolio + insight report), not just those with signals.
   const signalsByTicker = useMemo(() => {
@@ -373,22 +356,9 @@ function InsightsContent() {
     if (since) {
       items = items.filter((cs) => cs.signal.publishedAt >= since);
     }
-    if (sourceFilter) {
-      items = items.filter((cs) => cs.signal.sources.some((src) => src.id === sourceFilter));
-    }
     // Sort newest first by publishedAt
     return [...items].sort((a, b) => b.signal.publishedAt.localeCompare(a.signal.publishedAt));
-  }, [allCuratedSignals, tickerFilter, typeFilter, search, minConfidence, since, sourceFilter]);
-
-  const sources = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const cs of allCuratedSignals) {
-      for (const src of cs.signal.sources) {
-        if (!map.has(src.id)) map.set(src.id, src.name);
-      }
-    }
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [allCuratedSignals]);
+  }, [allCuratedSignals, tickerFilter, typeFilter, search, minConfidence, since]);
 
   const totalSignals = allCuratedSignals.length;
   const usedInAnalysis = allCuratedSignals.filter((cs) => insightSignalIds.has(cs.signal.id)).length;
@@ -407,7 +377,7 @@ function InsightsContent() {
   }, [viewTab, loading, totalSignals, signalsByTicker.length, filteredSignals.length, usedInAnalysis]);
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden max-w-5xl mx-auto w-full">
       {/* Header */}
       <header className="px-6 pt-6 pb-4">
         <div className="flex items-center justify-between">
@@ -445,20 +415,6 @@ function InsightsContent() {
               onChange={(e) => setTickerFilter(e.target.value)}
               className="h-8 rounded-lg border border-border bg-bg-secondary px-3 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none w-36"
             />
-            {sources.length > 1 && (
-              <select
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-                className="h-8 rounded-lg border border-border bg-bg-secondary px-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
-              >
-                <option value="">All sources</option>
-                {sources.map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex gap-1">
@@ -579,7 +535,6 @@ function InsightsContent() {
                   curated={cs}
                   highlighted={cs.signal.id === highlightId}
                   usedInInsight={insightSignalIds.has(cs.signal.id)}
-                  insightImpact={insightSignalImpact.get(cs.signal.id)}
                   onFilterByTicker={navigateToSignals}
                   onViewAnalysis={navigateToAnalysis}
                 />
@@ -997,23 +952,16 @@ function SignalRow({
   curated,
   highlighted,
   usedInInsight,
-  insightImpact,
   onFilterByTicker,
   onViewAnalysis,
 }: {
   curated: CuratedSignal;
   highlighted: boolean;
   usedInInsight: boolean;
-  insightImpact?: string;
   onFilterByTicker: (ticker: string) => void;
   onViewAnalysis: () => void;
 }) {
   const signal = curated.signal;
-  const topScore =
-    curated.scores.length > 0
-      ? curated.scores.reduce((best, s) => (s.compositeScore > best.compositeScore ? s : best), curated.scores[0])
-      : null;
-  const relevancePct = topScore ? Math.round(topScore.compositeScore * 100) : 0;
 
   const [expanded, setExpanded] = useState(highlighted);
   const variant = typeVariant[signal.type] ?? 'neutral';
@@ -1061,41 +1009,7 @@ function SignalRow({
                   {t}
                 </button>
               ))}
-              {topScore && (
-                <span
-                  className={cn(
-                    'text-xs font-medium px-1.5 py-0.5 rounded',
-                    relevancePct >= 60
-                      ? 'bg-success/10 text-success'
-                      : relevancePct >= 30
-                        ? 'bg-warning/10 text-warning'
-                        : 'bg-bg-tertiary text-text-muted',
-                  )}
-                >
-                  {relevancePct}% relevant
-                </span>
-              )}
               <span className="text-xs text-text-muted">{timeAgo}</span>
-              <span className="text-xs text-text-muted">
-                · {signal.sources.map((s) => s.name).join(', ')}
-                {signal.sourceCount > 1 && ` (${signal.sourceCount})`}
-              </span>
-              {usedInInsight && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onViewAnalysis();
-                  }}
-                  className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer"
-                >
-                  <Badge variant="accent" size="xs">
-                    {insightImpact === 'POSITIVE' && '↑ '}
-                    {insightImpact === 'NEGATIVE' && '↓ '}
-                    IN ANALYSIS
-                  </Badge>
-                </button>
-              )}
             </div>
             <p className="text-sm font-medium text-text-primary truncate">{signal.title}</p>
           </div>

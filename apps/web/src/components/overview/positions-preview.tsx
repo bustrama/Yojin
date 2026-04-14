@@ -15,7 +15,7 @@ import { useAddPositionModal } from '../../lib/add-position-modal-context';
 import { useAssetDetailModal } from '../../lib/asset-detail-modal-context';
 import { useMarketStatus, getMarketElapsedMinutes } from '../../hooks/use-market-status';
 import type { Position } from '../../api/types';
-import { formatPrice } from '../../lib/format';
+import { formatSharePrice } from '../../lib/format';
 import { isStablecoin } from '../../lib/stablecoins';
 import { groupSummariesByTicker, severityBulletColor } from '../../lib/summaries-by-ticker';
 
@@ -331,8 +331,8 @@ export default function PositionsPreview() {
             <tr className="border-b border-border">
               <th className={TH}>Asset</th>
               <th className={cn(TH, 'w-[80px]')} />
-              <th className={cn(TH, 'text-right')}>Price $</th>
-              <th className={cn(TH, 'text-right')}>Change %</th>
+              <th className={cn(TH, 'text-right')}>Price</th>
+              <th className={cn(TH, 'text-right pr-5')}>Change</th>
             </tr>
           </thead>
           <tbody>
@@ -407,12 +407,12 @@ export default function PositionsPreview() {
                     )}
                   </td>
 
-                  {/* Price $ */}
+                  {/* Price */}
                   <td className="whitespace-nowrap px-3 py-2 text-right text-xs font-medium tabular-nums text-text-primary">
-                    {formatPrice(pos.currentPrice)}
+                    {formatSharePrice(pos.currentPrice)}
                   </td>
 
-                  {/* Change % + extended-hours percent + hover tooltip for $ values */}
+                  {/* Change + extended-hours percent + hover tooltip for $ values */}
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     <div
                       className={cn(
@@ -527,8 +527,8 @@ function MockPositions() {
           <tr className="border-b border-border">
             <th className={TH}>Asset</th>
             <th className={cn(TH, 'w-[80px]')} />
-            <th className={cn(TH, 'text-right')}>Price $</th>
-            <th className={cn(TH, 'text-right')}>Change %</th>
+            <th className={cn(TH, 'text-right')}>Price</th>
+            <th className={cn(TH, 'text-right pr-5')}>Change</th>
           </tr>
         </thead>
         <tbody>
