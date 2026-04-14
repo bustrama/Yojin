@@ -1,37 +1,96 @@
 name: Desktop Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create/update (e.g. desktop-v0.1.0)'
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14
+            rust-targets: aarch64-apple-darwin
+            tauri-args: --target aarch64-apple-darwin
+          - platform: macos-13
+            rust-targets: x86_64-apple-darwin
+            tauri-args: --target x86_64-apple-darwin
+          - platform: windows-latest
+            rust-targets: x86_64-pc-windows-msvc
+            tauri-args: ''
+
+    runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Build universal binary
-        working-directory: apps/desktop
-        run: |
-          swift build -c release --arch arm64 --arch x86_64
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
 
-      - name: Assemble .app bundle
-        working-directory: apps/desktop
-        run: ./scripts/build.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
-      - name: Create DMG
-        working-directory: apps/desktop
-        run: ./scripts/create-dmg.sh
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
 
-      - name: Upload DMG to release
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build backend + web dashboard
+        run: pnpm --filter @yojin/desktop deps:build
+
+      - name: Bundle Node runtime
+        run: pnpm --filter @yojin/desktop bundle:node
+        shell: bash
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          gh release upload "$RELEASE_TAG" \
-            apps/desktop/.build/Yojin.dmg \
-            --clobber
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "value=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=$REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Tauri bundle + upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ steps.tag.outputs.value }}
+          releaseName: 'Yojin Desktop ${{ steps.tag.outputs.value }}'
+          releaseBody: |
+            Unsigned builds — Gatekeeper/SmartScreen will warn on first launch.
+
+            **macOS**: right-click the app → "Open" → "Open" in the confirmation dialog.
+            **Windows**: SmartScreen popup → "More info" → "Run anyway".
+
+            Code signing is on the roadmap once Apple Developer ID + Windows OV/EV certs are provisioned.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.tauri-args }}
