@@ -29,15 +29,45 @@ const DIRECTION_OPTIONS = [
   { value: 'below', label: 'Below' },
 ];
 
+// Keys must match those produced by mapIndicators() in
+// src/strategies/portfolio-context-builder.ts — the evaluator looks up
+// ctx.indicators[ticker][indicator] directly.
 const INDICATOR_OPTIONS = [
+  // Oscillators
   { value: 'RSI', label: 'RSI' },
-  { value: 'MACD', label: 'MACD' },
-  { value: 'BB', label: 'Bollinger Bands' },
-  { value: 'EMA', label: 'EMA' },
-  { value: 'SMA', label: 'SMA' },
-  { value: 'ATR', label: 'ATR' },
-  { value: 'VWMA', label: 'VWMA' },
   { value: 'MFI', label: 'MFI' },
+  { value: 'WILLIAMS_R', label: 'Williams %R' },
+  { value: 'STOCH_K', label: 'Stochastic %K' },
+  { value: 'STOCH_D', label: 'Stochastic %D' },
+  // MACD (histogram as the primary crossable value)
+  { value: 'MACD', label: 'MACD Histogram' },
+  { value: 'MACD_LINE', label: 'MACD Line' },
+  { value: 'MACD_SIGNAL', label: 'MACD Signal' },
+  // Moving averages
+  { value: 'EMA', label: 'EMA(10)' },
+  { value: 'EMA_50', label: 'EMA(50)' },
+  { value: 'EMA_200', label: 'EMA(200)' },
+  { value: 'SMA_20', label: 'SMA(20)' },
+  { value: 'SMA', label: 'SMA(50)' },
+  { value: 'SMA_200', label: 'SMA(200)' },
+  { value: 'WMA_52', label: '52-WMA' },
+  { value: 'VWMA', label: 'VWMA' },
+  { value: 'VWAP', label: 'VWAP' },
+  // Bollinger Bands
+  { value: 'BB_UPPER', label: 'Bollinger Upper' },
+  { value: 'BB_MIDDLE', label: 'Bollinger Middle' },
+  { value: 'BB_LOWER', label: 'Bollinger Lower' },
+  { value: 'BB_WIDTH', label: 'Bollinger Band Width' },
+  // Volatility & trend
+  { value: 'ATR', label: 'ATR' },
+  { value: 'ADX', label: 'ADX' },
+  { value: 'PSAR', label: 'Parabolic SAR' },
+  // Volume
+  { value: 'OBV', label: 'OBV' },
+  // Crossover flags (1 = active, 0 = inactive) — use threshold 1 / direction "above"
+  { value: 'GOLDEN_CROSS', label: 'Golden Cross (flag)' },
+  { value: 'DEATH_CROSS', label: 'Death Cross (flag)' },
+  { value: 'EMA_CROSS', label: 'EMA Cross (flag)' },
 ];
 
 const METRIC_OPTIONS = [
