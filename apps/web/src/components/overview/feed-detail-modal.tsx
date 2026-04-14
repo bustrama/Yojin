@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import Modal from '../common/modal';
 import Badge from '../common/badge';
 import type { BadgeVariant } from '../common/badge';
+import type { TriggerStrength } from '../../api/types';
 import { timeUntil } from '../../lib/utils';
 
 /** Lightweight markdown → HTML for LLM-generated analysis text. */
@@ -41,6 +42,7 @@ export interface FeedDetailData {
   impact?: 'high' | 'medium' | 'low';
   urgency?: 'high' | 'medium' | 'low';
   confidence?: number;
+  triggerStrength?: TriggerStrength;
   keyPoints: string[];
   analysis: string;
   recommendation?: string;
@@ -60,6 +62,13 @@ interface FeedDetailModalProps {
   onClose: () => void;
   data: FeedDetailData | null;
 }
+
+const TRIGGER_STRENGTH_VARIANT: Record<TriggerStrength, BadgeVariant> = {
+  WEAK: 'neutral',
+  MODERATE: 'info',
+  STRONG: 'warning',
+  EXTREME: 'error',
+};
 
 const sentimentBadge: Record<string, { label: string; variant: BadgeVariant }> = {
   bullish: { label: 'Bullish', variant: 'success' },
@@ -145,6 +154,11 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
         {data.confidence !== undefined && (
           <Badge variant="neutral" outline>
             {data.confidence}% Confidence
+          </Badge>
+        )}
+        {data.triggerStrength && (
+          <Badge variant={TRIGGER_STRENGTH_VARIANT[data.triggerStrength]} outline>
+            {data.triggerStrength.charAt(0) + data.triggerStrength.slice(1).toLowerCase()} Strength
           </Badge>
         )}
       </div>

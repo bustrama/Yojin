@@ -23,7 +23,7 @@ import type { Entity, JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
 import type { ActionStore } from './actions/action-store.js';
-import { parseConfidenceFromResponse, parseVerdictFromHeadline } from './actions/types.js';
+import { parseVerdictFromHeadline } from './actions/types.js';
 import type { Orchestrator } from './agents/orchestrator.js';
 import { emitProgress } from './agents/orchestrator.js';
 import type { ProviderRouter } from './ai-providers/router.js';
@@ -1253,7 +1253,6 @@ export class Scheduler {
       // LLM reasoning: ask the Strategist to analyze this trigger and recommend action
       let headline = '';
       let reasoning = '';
-      let confidence = 0.5;
       if (this.providerRouter) {
         logger.info('Requesting LLM reasoning for strategy trigger', { strategyId: evaluation.strategyId, ticker });
         try {
@@ -1263,7 +1262,6 @@ export class Scheduler {
 
 Your response MUST start with a one-line headline in this exact format:
 ACTION: <BUY|SELL|TRIM|HOLD|REVIEW> <TICKER> — <one-sentence reason>
-CONFIDENCE: <0.0-1.0 how confident you are in this recommendation>
 
 Then provide your analysis:
 1. Why this trigger matters right now
@@ -1297,15 +1295,10 @@ Provide your ACTION headline and analysis.`,
             const actionMatch = lines[0]?.match(/^ACTION:\s*(.+)/i);
             if (actionMatch) {
               headline = actionMatch[1].trim();
-              reasoning = lines
-                .slice(1)
-                .filter((l) => !/^CONFIDENCE:\s/i.test(l))
-                .join('\n')
-                .trim();
+              reasoning = lines.slice(1).join('\n').trim();
             } else {
               reasoning = fullText;
             }
-            confidence = parseConfidenceFromResponse(fullText);
             logger.info('LLM reasoning generated for strategy trigger', {
               strategyId: evaluation.strategyId,
               ticker,
@@ -1342,7 +1335,7 @@ Provide your ACTION headline and analysis.`,
         why: reasoning,
         tickers: ticker ? [ticker] : [],
         riskContext: contextParts.join('\n'),
-        confidence,
+        triggerStrength: evaluation.triggerStrength,
         status: 'PENDING',
         expiresAt,
         createdAt: now,

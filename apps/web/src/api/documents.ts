@@ -1629,7 +1629,7 @@ export const ACTION_FIELDS = gql`
     tickers
     riskContext
     severity
-    confidence
+    triggerStrength
     severityLabel
     status
     expiresAt

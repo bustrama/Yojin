@@ -8,6 +8,7 @@
 
 import type { ActionStore } from '../../../actions/action-store.js';
 import type { Action, ActionStatus, ActionVerdict } from '../../../actions/types.js';
+import type { TriggerStrength } from '../../../strategies/trigger-strength.js';
 
 function deriveSeverityLabel(severity: number | undefined): string {
   if (severity == null) return 'MEDIUM';
@@ -42,7 +43,7 @@ interface ActionGql {
   tickers: string[];
   riskContext: string | null;
   severity: number | null;
-  confidence: number;
+  triggerStrength: TriggerStrength;
   severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
@@ -65,7 +66,7 @@ function toGql(action: Action): ActionGql {
     tickers: action.tickers ?? [],
     riskContext: action.riskContext ?? null,
     severity: action.severity ?? null,
-    confidence: action.confidence,
+    triggerStrength: action.triggerStrength,
     severityLabel: deriveSeverityLabel(action.severity),
     status: action.status,
     expiresAt: action.expiresAt,

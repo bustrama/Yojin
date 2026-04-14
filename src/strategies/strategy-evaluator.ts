@@ -8,6 +8,8 @@
 
 import { SUPPORTED_LOOKBACK_MONTHS } from './portfolio-context-builder.js';
 import type { StrategyStore } from './strategy-store.js';
+import { aggregateGroupStrength, computeTriggerStrength, pickStrongestGroup } from './trigger-strength.js';
+import type { TriggerStrength } from './trigger-strength.js';
 import type { Strategy, StrategyEvaluation, StrategyTrigger, TriggerGroup, TriggerType } from './types.js';
 import type { AssetClass } from '../api/graphql/types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
@@ -109,6 +111,7 @@ export class StrategyEvaluator {
 
       return `## Strategy: ${ev.strategyName}
 Trigger: ${ev.triggerType}
+Trigger Strength: ${ev.triggerStrength}
 Context:
 ${ctx}
 
@@ -146,12 +149,31 @@ ${sections.join('\n\n---\n\n')}`;
     ctx: PortfolioContext,
     isMicro = false,
   ): StrategyEvaluation[] {
-    return strategy.triggerGroups.flatMap((group, groupIndex) => {
+    const allEvaluations = strategy.triggerGroups.flatMap((group, groupIndex) => {
       if (isMicro && this.groupHasMacroOnlyTrigger(group)) return [];
       if (isMicro && this.groupHasLookbackPriceMove(group)) return [];
-
       return tickers.flatMap((ticker) => this.evaluateGroup(strategy, group, groupIndex, ticker, ctx));
     });
+
+    // Dedup across OR groups: keep only the strongest evaluation per ticker
+    const byTicker = new Map<string, StrategyEvaluation[]>();
+    for (const ev of allEvaluations) {
+      const ticker = ev.context.ticker as string;
+      const bucket = byTicker.get(ticker);
+      if (bucket) {
+        bucket.push(ev);
+      } else {
+        byTicker.set(ticker, [ev]);
+      }
+    }
+
+    const deduped: StrategyEvaluation[] = [];
+    for (const evaluations of byTicker.values()) {
+      const best = pickStrongestGroup(evaluations);
+      if (best) deduped.push(best);
+    }
+
+    return deduped;
   }
 
   private groupHasMacroOnlyTrigger(group: TriggerGroup): boolean {
@@ -169,8 +191,8 @@ ${sections.join('\n\n---\n\n')}`;
     ticker: string,
     ctx: PortfolioContext,
   ): StrategyEvaluation[] {
-    const fired = this.checkAllConditions(group.conditions, ticker, ctx, strategy);
-    if (!fired) return [];
+    const check = this.checkAllConditions(group.conditions, ticker, ctx, strategy);
+    if (!check) return [];
 
     const mergedContext: Record<string, unknown> = {
       ticker,
@@ -178,7 +200,7 @@ ${sections.join('\n\n---\n\n')}`;
     };
     const conditionResults: Record<string, unknown>[] = [];
     let primaryType: string | undefined;
-    for (const result of fired) {
+    for (const result of check.results) {
       const { _triggerType, ...rest } = result as Record<string, unknown> & { _triggerType?: string };
       if (!primaryType && _triggerType) primaryType = _triggerType;
       conditionResults.push(rest);
@@ -199,9 +221,12 @@ ${sections.join('\n\n---\n\n')}`;
       context: mergedContext,
       strategyContent: strategy.content,
       evaluatedAt: new Date().toISOString(),
+      triggerStrength: check.triggerStrength,
     };
 
-    logger.info(`Strategy trigger fired: ${strategy.name} [group${groupIndex}] for ${ticker}`);
+    logger.info(
+      `Strategy trigger fired: ${strategy.name} [group${groupIndex}] for ${ticker} (${check.triggerStrength})`,
+    );
 
     return [evaluation];
   }
@@ -211,14 +236,16 @@ ${sections.join('\n\n---\n\n')}`;
     ticker: string,
     ctx: PortfolioContext,
     strategy: Strategy,
-  ): Record<string, unknown>[] | null {
+  ): { results: Record<string, unknown>[]; triggerStrength: TriggerStrength } | null {
     const results: Record<string, unknown>[] = [];
+    const strengths: TriggerStrength[] = [];
     for (const condition of conditions) {
       const fired = this.checkTrigger(condition, ticker, ctx, strategy);
       if (!fired) return null;
       results.push({ ...fired, _triggerType: condition.type });
+      strengths.push(computeTriggerStrength(condition.type, fired));
     }
-    return results;
+    return { results, triggerStrength: aggregateGroupStrength(strengths) };
   }
 
   // ---------------------------------------------------------------------------

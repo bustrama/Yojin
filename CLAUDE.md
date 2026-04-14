@@ -56,12 +56,12 @@ pnpm setup            # First-time setup wizard
 
 ## Naming Conventions
 
-| Convention | Example | Usage |
-|------------|---------|-------|
-| camelCase | `getUserData` | Functions, variables, properties |
-| PascalCase | `UserData` | Classes, components, interfaces |
-| SCREAMING_SNAKE_CASE | `MAX_RETRIES` | True constants |
-| kebab-case | `user-data.ts` | File names, URLs |
+| Convention           | Example        | Usage                            |
+|----------------------|----------------|----------------------------------|
+| camelCase            | `getUserData`  | Functions, variables, properties |
+| PascalCase           | `UserData`     | Classes, components, interfaces  |
+| SCREAMING_SNAKE_CASE | `MAX_RETRIES`  | True constants                   |
+| kebab-case           | `user-data.ts` | File names, URLs                 |
 
 ## Frontend Design
 

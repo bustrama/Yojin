@@ -9,6 +9,8 @@ import { z } from 'zod';
 
 import { DataCapabilitySchema } from './capabilities.js';
 import type { DataCapability } from './capabilities.js';
+import { TriggerStrengthSchema } from './trigger-strength.js';
+import type { TriggerStrength } from './trigger-strength.js';
 import { AssetClassSchema } from '../api/graphql/types.js';
 import { DateTimeField, IdField } from '../types/base.js';
 
@@ -132,8 +134,9 @@ export const StrategyEvaluationSchema = z.object({
   /** The Markdown content to inject into the Strategist prompt. */
   strategyContent: z.string().min(1),
   evaluatedAt: DateTimeField,
+  triggerStrength: TriggerStrengthSchema.default('MODERATE'),
 });
 export type StrategyEvaluation = z.infer<typeof StrategyEvaluationSchema>;
 
-export { DataCapabilitySchema };
-export type { DataCapability };
+export { DataCapabilitySchema, TriggerStrengthSchema };
+export type { DataCapability, TriggerStrength };
