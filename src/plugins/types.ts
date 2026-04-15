@@ -8,6 +8,7 @@
 
 import type { ZodSchema } from 'zod';
 
+import type { ImageMediaType } from '../core/types.js';
 import type { DisplayCardData } from '../tools/display-data.js';
 
 // ---------------------------------------------------------------------------
@@ -119,6 +120,10 @@ export interface IncomingMessage {
   text: string;
   timestamp: string;
   raw?: unknown;
+  /** Optional base64-encoded image attached to the incoming message (e.g. portfolio screenshot). */
+  imageBase64?: string;
+  /** MIME type of the attached image; required when imageBase64 is set. */
+  imageMediaType?: ImageMediaType;
   /**
    * Channel-provided callback for streaming agent events (typing, text deltas, tool use).
    * When set, the Gateway skips the post-completion `sendMessage` call — the channel

@@ -123,6 +123,37 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
             }
           }
         },
+        onPhotoMessage: async (chatId, userId, userName, caption, imageBase64, imageMediaType) => {
+          if (activeChatId !== undefined && activeChatId !== chatId) {
+            logger.warn('Telegram chat ID changed — notifications will go to new chat', {
+              previous: activeChatId,
+              current: chatId,
+            });
+          }
+          activeChatId = chatId;
+
+          const onAgentEvent = createAgentEventHandler(chatId);
+
+          const incoming: IncomingMessage = {
+            channelId: 'telegram',
+            threadId: String(chatId),
+            userId: String(userId),
+            userName,
+            text: caption,
+            timestamp: new Date().toISOString(),
+            imageBase64,
+            imageMediaType,
+            onAgentEvent,
+          };
+
+          for (const handler of messageHandlers) {
+            try {
+              await handler(incoming);
+            } catch (err) {
+              logger.error('Message handler error', { error: err });
+            }
+          }
+        },
         onApprovalCallback: (requestId, approved) => {
           deps.approvalGate?.resolve(requestId, approved);
         },
@@ -363,7 +394,7 @@ export function buildTelegramChannel(deps: TelegramChannelDeps = {}): ChannelPlu
     supportsThreading: false,
     supportsReactions: false,
     supportsTyping: true,
-    supportsFiles: false,
+    supportsFiles: true,
     supportsEditing: false,
     maxMessageLength: 4096,
   };

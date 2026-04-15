@@ -3,8 +3,10 @@ import { App, type SlackEventMiddlewareArgs } from '@slack/bolt';
 import type { ActionStore } from '../../../src/actions/action-store.js';
 import type { Action } from '../../../src/actions/types.js';
 import { isNotificationEnabled } from '../../../src/api/graphql/resolvers/channels.js';
+import { normalizeMimeToMedia } from '../../../src/channels/image-media-type.js';
 import { QUICK_ACTIONS } from '../../../src/channels/quick-actions.js';
 import type { NotificationBus } from '../../../src/core/notification-bus.js';
+import type { ImageMediaType } from '../../../src/core/types.js';
 import { formatTriggerStrength } from '../../../src/formatting/index.js';
 import type { InsightStore } from '../../../src/insights/insight-store.js';
 import type { InsightReport } from '../../../src/insights/types.js';
@@ -108,8 +110,42 @@ function buildQuickActionsBlocks(): SlackBlock[] {
 export function buildSlackChannel(deps: SlackChannelDeps = {}): ChannelPlugin {
   let app: App;
   let defaultChannelId: string | undefined;
+  let botToken: string | undefined;
   const messageHandlers: MessageHandler[] = [];
   const unsubscribers: Array<() => void> = [];
+
+  async function downloadSlackImage(
+    files: unknown,
+  ): Promise<{ imageBase64: string; imageMediaType: ImageMediaType } | undefined> {
+    if (!botToken || !Array.isArray(files)) return undefined;
+    const imageFile = files.find(
+      (f): f is { url_private?: string; url_private_download?: string; mimetype?: string } =>
+        typeof f === 'object' &&
+        f !== null &&
+        typeof (f as { mimetype?: unknown }).mimetype === 'string' &&
+        (f as { mimetype: string }).mimetype.startsWith('image/'),
+    );
+    if (!imageFile) return undefined;
+
+    const url = imageFile.url_private_download ?? imageFile.url_private;
+    if (!url) return undefined;
+
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${botToken}` } });
+      if (!res.ok) {
+        logger.warn('Failed to download Slack image', { status: res.status });
+        return undefined;
+      }
+      const buffer = Buffer.from(await res.arrayBuffer());
+      return {
+        imageBase64: buffer.toString('base64'),
+        imageMediaType: normalizeMimeToMedia(imageFile.mimetype),
+      };
+    } catch (err) {
+      logger.warn('Error downloading Slack image', { error: err });
+      return undefined;
+    }
+  }
 
   const messagingAdapter: ChannelMessagingAdapter = {
     async sendMessage(msg: OutgoingMessage): Promise<void> {
@@ -146,7 +182,7 @@ export function buildSlackChannel(deps: SlackChannelDeps = {}): ChannelPlugin {
   const setupAdapter: ChannelSetupAdapter = {
     async setup(config: Record<string, unknown>): Promise<void> {
       const options = config.options as Record<string, string> | undefined;
-      const botToken = options?.botToken ?? process.env.SLACK_BOT_TOKEN;
+      botToken = options?.botToken ?? process.env.SLACK_BOT_TOKEN;
       const appToken = options?.appToken ?? process.env.SLACK_APP_TOKEN;
       const signingSecret = options?.signingSecret ?? process.env.SLACK_SIGNING_SECRET;
 
@@ -158,18 +194,24 @@ export function buildSlackChannel(deps: SlackChannelDeps = {}): ChannelPlugin {
       });
 
       app.message(async ({ message }: SlackEventMiddlewareArgs<'message'>) => {
-        if (message.subtype) return;
+        if (message.subtype && message.subtype !== 'file_share') return;
 
         const channelId = message.channel;
         if (!defaultChannelId) defaultChannelId = channelId;
+
+        const rawText = ('text' in message ? message.text : '') as string;
+        const files = 'files' in message ? message.files : undefined;
+        const image = await downloadSlackImage(files);
 
         const incoming: IncomingMessage = {
           channelId,
           threadId: ('thread_ts' in message ? message.thread_ts : message.ts) as string,
           userId: ('user' in message ? message.user : 'unknown') as string,
-          text: ('text' in message ? message.text : '') as string,
+          text: rawText || (image ? '(attached image)' : ''),
           timestamp: message.ts,
           raw: message,
+          imageBase64: image?.imageBase64,
+          imageMediaType: image?.imageMediaType,
         };
 
         for (const handler of messageHandlers) {

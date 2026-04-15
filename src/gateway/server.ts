@@ -102,6 +102,7 @@ export class Gateway {
     this.log.info(`Message from ${msg.userId} on ${channelId}`, {
       threadId: msg.threadId,
       textLength: msg.text.length,
+      hasImage: !!msg.imageBase64,
     });
 
     try {
@@ -122,6 +123,8 @@ export class Gateway {
         channelId,
         userId: msg.userId,
         threadId: msg.threadId,
+        imageBase64: msg.imageBase64,
+        imageMediaType: msg.imageMediaType,
         onEvent: wrappedOnEvent,
       });
 
