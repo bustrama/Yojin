@@ -1,7 +1,9 @@
 import { apiThrottler } from '@grammyjs/transformer-throttler';
 import { Bot, InlineKeyboard } from 'grammy';
 
+import { inferMediaTypeFromPath } from '../../../src/channels/image-media-type.js';
 import { QUICK_ACTIONS } from '../../../src/channels/quick-actions.js';
+import type { ImageMediaType } from '../../../src/core/types.js';
 import { createSubsystemLogger } from '../../../src/logging/logger.js';
 
 const logger = createSubsystemLogger('telegram-bot');
@@ -53,6 +55,14 @@ export function buildQuickActionsKeyboard(): InlineKeyboard {
 export interface BotDeps {
   token: string;
   onTextMessage: (chatId: number, userId: number, userName: string, text: string) => Promise<void>;
+  onPhotoMessage?: (
+    chatId: number,
+    userId: number,
+    userName: string,
+    caption: string,
+    imageBase64: string,
+    imageMediaType: ImageMediaType,
+  ) => Promise<void>;
   onApprovalCallback?: (requestId: string, approved: boolean) => void;
   onActionCallback?: (actionId: string, approved: boolean) => Promise<void>;
   onApprovalDetails?: (requestId: string) => Promise<string>;
@@ -138,6 +148,42 @@ export function createBot(deps: BotDeps): Bot {
     } catch (err) {
       logger.error('Error handling message', { chatId: ctx.chat.id, error: err });
       await ctx.reply('Sorry, something went wrong.');
+    }
+  });
+
+  bot.on('message:photo', async (ctx) => {
+    if (!deps.onPhotoMessage) return;
+    try {
+      const photos = ctx.message.photo;
+      const largest = photos[photos.length - 1];
+      if (!largest) return;
+
+      const file = await ctx.api.getFile(largest.file_id);
+      if (!file.file_path) {
+        logger.error('Telegram photo has no file_path', { fileId: largest.file_id });
+        await ctx.reply("Sorry, I couldn't download that image.");
+        return;
+      }
+
+      const url = `https://api.telegram.org/file/bot${deps.token}/${file.file_path}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        logger.error('Failed to download Telegram photo', { status: res.status });
+        await ctx.reply("Sorry, I couldn't download that image.");
+        return;
+      }
+
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const imageBase64 = buffer.toString('base64');
+      const imageMediaType = inferMediaTypeFromPath(file.file_path);
+      const caption = ctx.message.caption?.trim() || '(attached image)';
+      const userName = ctx.from?.first_name ?? String(ctx.from?.id ?? '');
+      const userId = ctx.from?.id ?? 0;
+
+      await deps.onPhotoMessage(ctx.chat.id, userId, userName, caption, imageBase64, imageMediaType);
+    } catch (err) {
+      logger.error('Error handling photo', { chatId: ctx.chat.id, error: err });
+      await ctx.reply("Sorry, I couldn't process that image.");
     }
   });
 

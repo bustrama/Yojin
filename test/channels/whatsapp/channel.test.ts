@@ -118,7 +118,7 @@ describe('buildWhatsAppChannel', () => {
         supportsThreading: false,
         supportsReactions: false,
         supportsTyping: true,
-        supportsFiles: false,
+        supportsFiles: true,
         supportsEditing: false,
         maxMessageLength: 65536,
       });

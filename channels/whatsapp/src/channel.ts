@@ -1,15 +1,17 @@
 import { access, chmod, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { WAMessage, WASocket } from '@whiskeysockets/baileys';
+import { type WAMessage, type WASocket, downloadMediaMessage } from '@whiskeysockets/baileys';
 
 import { chunkMessage, formatAction, formatInsight, formatSnap, toWhatsApp } from './formatting.js';
 import { createWhatsAppSession } from './session.js';
 import type { WhatsAppSession } from './session.js';
 import type { ActionStore } from '../../../src/actions/action-store.js';
 import { isNotificationEnabled } from '../../../src/api/graphql/resolvers/channels.js';
+import { normalizeMimeToMedia } from '../../../src/channels/image-media-type.js';
 import { QUICK_ACTIONS } from '../../../src/channels/quick-actions.js';
 import type { NotificationBus } from '../../../src/core/notification-bus.js';
+import type { ImageMediaType } from '../../../src/core/types.js';
 import type { InsightStore } from '../../../src/insights/insight-store.js';
 import { createSubsystemLogger } from '../../../src/logging/logger.js';
 import type {
@@ -109,6 +111,7 @@ interface SelfChatSocket {
   sendMessage(text: string): Promise<string | undefined>;
   sendPresenceUpdate(type: 'composing' | 'paused' | 'available'): Promise<void>;
   onSelfChatMessage(handler: (msg: WAMessage) => void): () => void;
+  downloadImage(msg: WAMessage): Promise<Buffer | undefined>;
 }
 
 function createSelfChatProxy(
@@ -149,6 +152,18 @@ function createSelfChatProxy(
       return () => {
         sock.ev.off('messages.upsert', listener);
       };
+    },
+
+    async downloadImage(msg: WAMessage): Promise<Buffer | undefined> {
+      const jid = msg.key.remoteJid;
+      if (!jid || !selfJids.has(jid)) return undefined;
+      if (!msg.message?.imageMessage) return undefined;
+      try {
+        return await downloadMediaMessage(msg, 'buffer', {});
+      } catch (err) {
+        logger.warn('Failed to download WhatsApp image', { error: err });
+        return undefined;
+      }
     },
   };
 }
@@ -321,28 +336,49 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
   function wireMessageHandler(selfChat: SelfChatSocket): () => void {
     return selfChat.onSelfChatMessage(async (msg) => {
       try {
-        const text = msg.message?.conversation ?? msg.message?.extendedTextMessage?.text;
-        if (!text || !selfJid) return;
+        if (!selfJid) return;
 
-        const approvalMatch = text.match(/^(APPROVE|REJECT)\s+(\S+)/i);
-        if (approvalMatch?.[1] && approvalMatch[2] && deps.approvalGate) {
+        const imageMessage = msg.message?.imageMessage;
+        const text = msg.message?.conversation ?? msg.message?.extendedTextMessage?.text;
+
+        let imageBase64: string | undefined;
+        let imageMediaType: ImageMediaType | undefined;
+        let effectiveText = text;
+
+        if (imageMessage) {
+          const buffer = await selfChat.downloadImage(msg);
+          if (!buffer) {
+            await sendToSelf("Sorry, I couldn't download that image.");
+            return;
+          }
+          imageBase64 = buffer.toString('base64');
+          imageMediaType = normalizeMimeToMedia(imageMessage.mimetype);
+          effectiveText = imageMessage.caption?.trim() || text || '(attached image)';
+        }
+
+        if (!effectiveText) return;
+
+        const approvalMatch = effectiveText.match(/^(APPROVE|REJECT)\s+(\S+)/i);
+        if (!imageBase64 && approvalMatch?.[1] && approvalMatch[2] && deps.approvalGate) {
           const approved = approvalMatch[1].toUpperCase() === 'APPROVE';
           deps.approvalGate.resolve(approvalMatch[2], approved);
           return;
         }
 
-        if (GREETING_RE.test(text)) {
+        if (!imageBase64 && GREETING_RE.test(effectiveText)) {
           await sendToSelf(buildQuickActionsMenu());
           return;
         }
 
-        const expandedPrompt = expandQuickActionKeyword(text);
+        const expandedPrompt = !imageBase64 ? expandQuickActionKeyword(effectiveText) : undefined;
         const incoming: IncomingMessage = {
           channelId: 'whatsapp',
           threadId: selfJid,
           userId: selfJid.replace(/@s\.whatsapp\.net$/, ''),
-          text: expandedPrompt ?? text,
+          text: expandedPrompt ?? effectiveText,
           timestamp: new Date().toISOString(),
+          imageBase64,
+          imageMediaType,
         };
 
         for (const handler of messageHandlers) {
@@ -426,7 +462,7 @@ export function buildWhatsAppChannel(deps: WhatsAppChannelDeps = {}): ChannelPlu
     supportsThreading: false,
     supportsReactions: false,
     supportsTyping: true,
-    supportsFiles: false,
+    supportsFiles: true,
     supportsEditing: false,
     maxMessageLength: 65536,
   };
