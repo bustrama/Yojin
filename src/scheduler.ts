@@ -564,7 +564,7 @@ export class Scheduler {
       // Adaptive per-asset enrichment shape:
       //  - LLM-ready → full enrichment bundle + LLM narration + trigger eval
       //  - LLM-throttled → baseline fields (+ strategy-derived fields if active) + trigger eval, no LLM
-      const MICRO_BASELINE_FIELDS: EnrichmentField[] = ['market', 'technicals', 'sentiment'];
+      const MICRO_BASELINE_FIELDS: EnrichmentField[] = ['market', 'technicals', 'sentiment', 'news'];
 
       const now = Date.now();
       const llmReadySet = new Set(
