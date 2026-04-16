@@ -44,6 +44,7 @@ export const DATA_SUBDIRS = [
   'summaries',
   'actions',
   'strategies',
+  'market-sentiment',
   'snap',
   'profiles', // Per-ticker persistent knowledge profiles
   'data', // General-purpose data storage for data source outputs and imports
