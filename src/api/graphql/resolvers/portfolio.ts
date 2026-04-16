@@ -149,13 +149,21 @@ export async function portfolioHistoryQuery(days?: number | null): Promise<Portf
   // Compute historical points (up to yesterday)
   const history = buildHistoryPoints(positions, filledPrices, startDates, startDate, yesterday);
 
-  // Append today's live-priced trailing point
+  // Append today's live-priced trailing point.
+  //
+  // periodPnl here = today's intraday price movement on the current positions
+  // (`totalDayChange`), not the day-over-day delta of unrealized PnL. The delta
+  // approach breaks whenever the position set or cost basis differs between
+  // yesterday's historical point and today's live snapshot — e.g. a position
+  // missing from Jintel priceHistory (skipped at history.ts:80) or freshly
+  // added today (posStart > yesterday) pops into the live point carrying its
+  // full unrealized PnL, producing a phantom bar unrelated to today's trading.
+  // totalDayChange is source-of-truth for "today" and matches the Portfolio
+  // Value card exactly.
   const liveSnapshot = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
   const prevPoint = history.length > 0 ? history[history.length - 1] : null;
-  const prevValue = prevPoint ? prevPoint.totalValue : 0;
-  const prevCost = prevPoint ? prevPoint.totalCost : 0;
-  const liveCostChange = liveSnapshot.totalCost - prevCost;
-  const livePnl = liveSnapshot.totalValue - prevValue - liveCostChange;
+  const livePnl = liveSnapshot.totalDayChange ?? 0;
+  const livePnlPercent = liveSnapshot.totalDayChangePercent ?? 0;
 
   const livePoint: PortfolioHistoryPoint = {
     timestamp: new Date().toISOString(),
@@ -164,7 +172,7 @@ export async function portfolioHistoryQuery(days?: number | null): Promise<Portf
     totalPnl: liveSnapshot.totalPnl,
     totalPnlPercent: liveSnapshot.totalPnlPercent,
     periodPnl: prevPoint ? livePnl : 0,
-    periodPnlPercent: prevValue > 0 ? (livePnl / prevValue) * 100 : 0,
+    periodPnlPercent: prevPoint ? livePnlPercent : 0,
   };
 
   // If yesterday's point exists, append today. Otherwise just return the live point.
