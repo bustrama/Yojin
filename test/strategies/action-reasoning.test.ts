@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseActionResponse, parseStructuredParams } from '../../src/strategies/action-reasoning.js';
+import { parseVerdictFromHeadline } from '../../src/actions/types.js';
+import {
+  formatAllocationBudget,
+  formatBuySizeGuidance,
+  parseActionResponse,
+  parseStructuredParams,
+} from '../../src/strategies/action-reasoning.js';
 import type { StrategyEvaluation } from '../../src/strategies/types.js';
 
-/** Minimal evaluation fixture for testing parse functions. */
 function makeEvaluation(overrides?: Partial<StrategyEvaluation>): StrategyEvaluation {
   return {
     strategyId: 'strat-001',
@@ -18,6 +23,54 @@ function makeEvaluation(overrides?: Partial<StrategyEvaluation>): StrategyEvalua
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// formatBuySizeGuidance / formatAllocationBudget
+// ---------------------------------------------------------------------------
+
+describe('formatBuySizeGuidance', () => {
+  it('renders target + actual when targetAllocation is present', () => {
+    const text = formatBuySizeGuidance({ targetAllocation: 0.05, actualAllocation: 0.021 });
+    expect(text).toBe('BUY to 5% of portfolio (now 2.1%)');
+  });
+
+  it('defaults actualAllocation to 0 when missing', () => {
+    const text = formatBuySizeGuidance({ targetAllocation: 0.1 });
+    expect(text).toBe('BUY to 10% of portfolio (now 0.0%)');
+  });
+
+  it('falls back to maxPositionSize as a soft cap when no target is set', () => {
+    const text = formatBuySizeGuidance({ maxPositionSize: 0.02 });
+    expect(text).toBe('BUY up to 2% of portfolio');
+  });
+
+  it('returns undefined when no allocation context is available', () => {
+    expect(formatBuySizeGuidance({})).toBeUndefined();
+    expect(formatBuySizeGuidance({ ticker: 'AAPL' })).toBeUndefined();
+  });
+
+  it('prefers targetAllocation over maxPositionSize when both are present', () => {
+    const text = formatBuySizeGuidance({
+      targetAllocation: 0.05,
+      actualAllocation: 0.02,
+      maxPositionSize: 0.1,
+    });
+    expect(text).toBe('BUY to 5% of portfolio (now 2.0%)');
+  });
+});
+
+describe('formatAllocationBudget', () => {
+  it('formats target/current/remaining when targetAllocation is set', () => {
+    const text = formatAllocationBudget({ targetAllocation: 0.05, actualAllocation: 0.02 });
+    expect(text).toContain('target 5% of portfolio');
+    expect(text).toContain('current 2.0%');
+    expect(text).toContain('remaining 3.0%');
+  });
+
+  it('returns empty string when no target is set', () => {
+    expect(formatAllocationBudget({})).toBe('');
+  });
+});
 
 // ---------------------------------------------------------------------------
 // parseStructuredParams
@@ -63,7 +116,6 @@ describe('parseStructuredParams', () => {
 
   it('skips non-numeric target/stop values gracefully', () => {
     const params = parseStructuredParams(['TARGET: around $260', 'STOP: depends on volatility']);
-    // "around" causes parseFloat to return NaN for the first capture group
     expect(params.targetPrice).toBeUndefined();
     expect(params.stopLoss).toBeUndefined();
   });
@@ -75,7 +127,6 @@ describe('parseStructuredParams', () => {
 
   it('rejects invalid conviction values', () => {
     const params = parseStructuredParams(['CONVICTION: Moderate to High']);
-    // "Moderate" doesn't match LOW|MEDIUM|HIGH
     expect(params.conviction).toBeUndefined();
   });
 
@@ -95,7 +146,6 @@ describe('parseStructuredParams', () => {
 
   it('handles zero or negative prices', () => {
     const params = parseStructuredParams(['TARGET: $0', 'STOP: $-10']);
-    // 0 is not > 0, -10 is not > 0
     expect(params.targetPrice).toBeUndefined();
     expect(params.stopLoss).toBeUndefined();
   });
@@ -140,63 +190,81 @@ describe('parseActionResponse', () => {
     expect(result.reasoning).toContain('RSI is already at 72');
   });
 
-  it('parses old-format response (no structured params)', () => {
-    const rawOutput = [
-      'ACTION: BUY TSLA — Extreme social sentiment surge warrants momentum long entry',
-      '',
-      '1. Why this trigger matters right now',
-      'Social sentiment surged 330%, driven by AI5 chip news.',
-      '',
-      '2. Key risks',
-      'RSI overbought at 72.',
-    ].join('\n');
-
-    const result = parseActionResponse(rawOutput, evaluation);
-
-    expect(result.headline).toBe('BUY TSLA — Extreme social sentiment surge warrants momentum long entry');
-    expect(result.entryRange).toBeUndefined();
-    expect(result.targetPrice).toBeUndefined();
-    expect(result.stopLoss).toBeUndefined();
-    expect(result.horizon).toBeUndefined();
-    expect(result.conviction).toBeUndefined();
-    expect(result.reasoning).toContain('Social sentiment surged 330%');
+  it('parses ACTION-only response without SIZE', () => {
+    const raw = 'ACTION: BUY AAPL — golden cross on 200-day MA\n\nAnalysis: momentum is strong.';
+    const result = parseActionResponse(raw, evaluation);
+    expect(result.parsedCleanly).toBe(true);
+    expect(result.headline).toBe('BUY AAPL — golden cross on 200-day MA');
+    expect(result.sizeGuidance).toBeUndefined();
+    expect(result.reasoning).toContain('Analysis');
   });
 
-  it('falls back to REVIEW headline when ACTION: prefix missing', () => {
-    const rawOutput = 'The stock looks interesting but I need more data.';
-    const result = parseActionResponse(rawOutput, evaluation);
-
-    expect(result.headline).toBe('REVIEW TSLA — Price moved +5.2%');
-    expect(result.reasoning).toBe(rawOutput);
+  it('parses ACTION + SIZE for SELL', () => {
+    const raw = 'ACTION: SELL TSLA — breakdown below support\nSIZE: SELL 50% of position\n\n1. Trend broken.';
+    const result = parseActionResponse(raw, evaluation);
+    expect(result.parsedCleanly).toBe(true);
+    expect(result.headline).toBe('SELL TSLA — breakdown below support');
+    expect(result.sizeGuidance).toBe('SELL 50% of position');
+    expect(result.reasoning).toContain('Trend broken');
   });
 
-  it('uses portfolio as ticker fallback when context has no ticker', () => {
-    const evalNoTicker = makeEvaluation({
-      context: { change: 0.052, threshold: 0.05 },
-    });
-    const rawOutput = 'Some unstructured response.';
-    const result = parseActionResponse(rawOutput, evalNoTicker);
-
-    expect(result.headline).toBe('REVIEW portfolio — Price moved +5.2%');
+  it('treats "N/A" SIZE as no sizing', () => {
+    const raw = 'ACTION: REVIEW NVDA — conflicting signals\nSIZE: N/A\n\nNeeds manual review.';
+    const result = parseActionResponse(raw, evaluation);
+    expect(result.parsedCleanly).toBe(true);
+    expect(result.sizeGuidance).toBeUndefined();
   });
 
-  it('handles response with params but no reasoning text', () => {
-    const rawOutput = [
-      'ACTION: SELL TSLA — Breakdown below support',
-      'ENTRY: at market',
-      'TARGET: $200',
-      'STOP: $260',
-      'HORIZON: 2-3 days',
-      'CONVICTION: MEDIUM',
-    ].join('\n');
+  it('falls back to REVIEW when ACTION line is missing', () => {
+    const raw = 'I think AAPL looks bullish but cannot commit.';
+    const result = parseActionResponse(raw, evaluation);
+    expect(result.parsedCleanly).toBe(false);
+    expect(result.headline).toContain('REVIEW');
+    expect(result.reasoning).toBe(raw);
+  });
 
-    const result = parseActionResponse(rawOutput, evaluation);
+  it('marks SELL without a SIZE line as parsedCleanly=false', () => {
+    const raw = 'ACTION: SELL TSLA — breakdown below support\n\nTrend broken.';
+    const result = parseActionResponse(raw, evaluation);
+    expect(result.parsedCleanly).toBe(false);
+    expect(result.sizeGuidance).toBeUndefined();
+    expect(result.headline).toBe('SELL TSLA — breakdown below support');
+  });
 
-    expect(result.headline).toBe('SELL TSLA — Breakdown below support');
-    expect(result.entryRange).toBe('at market');
-    expect(result.targetPrice).toBe(200);
-    expect(result.conviction).toBe('MEDIUM');
-    // All lines are param lines, so reasoning should be empty
-    expect(result.reasoning).toBe('');
+  it('marks SELL with SIZE: N/A as parsedCleanly=false', () => {
+    const raw = 'ACTION: SELL TSLA — breakdown below support\nSIZE: N/A\n\nTrend broken.';
+    const result = parseActionResponse(raw, evaluation);
+    expect(result.parsedCleanly).toBe(false);
+    expect(result.sizeGuidance).toBeUndefined();
+  });
+
+  it('tolerates a short preamble before the ACTION line', () => {
+    const raw = 'Based on the strategy rules:\nACTION: BUY AAPL — momentum intact\n\nAnalysis.';
+    const result = parseActionResponse(raw, evaluation);
+    expect(result.parsedCleanly).toBe(true);
+    expect(result.headline).toBe('BUY AAPL — momentum intact');
+    expect(result.reasoning).toContain('Analysis');
+  });
+});
+
+describe('parseVerdictFromHeadline', () => {
+  it('parses BUY/SELL/REVIEW at word boundary', () => {
+    expect(parseVerdictFromHeadline('BUY AAPL — golden cross')).toBe('BUY');
+    expect(parseVerdictFromHeadline('SELL TSLA — breakdown')).toBe('SELL');
+    expect(parseVerdictFromHeadline('REVIEW NVDA — mixed signals')).toBe('REVIEW');
+  });
+
+  it('maps legacy TRIM to SELL', () => {
+    expect(parseVerdictFromHeadline('TRIM AAPL — take profits')).toBe('SELL');
+  });
+
+  it('defaults unrecognized verbs to REVIEW (not BUY)', () => {
+    expect(parseVerdictFromHeadline('HOLD AAPL — waiting')).toBe('REVIEW');
+    expect(parseVerdictFromHeadline('WAIT AAPL — unclear')).toBe('REVIEW');
+    expect(parseVerdictFromHeadline('gibberish')).toBe('REVIEW');
+  });
+
+  it('requires a word boundary — does not match BUYBACK as BUY', () => {
+    expect(parseVerdictFromHeadline('BUYBACK announced')).toBe('REVIEW');
   });
 });

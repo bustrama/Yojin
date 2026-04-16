@@ -1,8 +1,6 @@
 /**
  * Shared LLM reasoning for strategy → action generation.
- *
- * Used by the Scheduler (production) and the strategy-debug CLI (eval).
- * Single source of truth for the system prompt, user message, and response parsing.
+ * Used by the Scheduler and the strategy-debug CLI.
  */
 
 import type { Entity } from '@yojinhq/jintel-client';
@@ -17,17 +15,20 @@ import type { Signal } from '../signals/types.js';
 
 const logger = createSubsystemLogger('action-reasoning');
 
-// ---------------------------------------------------------------------------
-// System prompt — single source of truth
-// ---------------------------------------------------------------------------
+const ACTION_SYSTEM_PROMPT = `You are a trading strategist. A strategy trigger has fired. Recommend a concrete action.
 
-export const ACTION_SYSTEM_PROMPT = `You are a trading strategist. A strategy trigger has fired. Recommend a concrete action.
-
-Your response MUST start with a one-line headline in this exact format:
-ACTION: <BUY|SELL> <TICKER> — <catalyst in 10 words or fewer>
+Your response MUST start with a headline in this exact format:
+ACTION: <BUY|SELL|REVIEW> <TICKER> — <catalyst in 10 words or fewer>
 
 The headline is the catalyst — the specific event or change that makes this actionable NOW.
 Do NOT restate trigger metrics in the headline (those are shown separately in the UI).
+
+If (and only if) the action is SELL, add a second line sizing it as a fraction of the current position:
+SIZE: SELL <N>% of position
+
+Do NOT emit a SIZE line for BUY or REVIEW. BUY sizing is derived from the strategy's allocation budget and rendered separately — you don't need to restate it. Never quote dollar amounts, share counts, or assume cash availability.
+
+Prefer BUY or SELL — commit to a direction when the data supports one. Use REVIEW only when the evidence is genuinely contradictory or insufficient to pick a side.
 
 Then provide trading parameters, one per line:
 ENTRY: <price or range, e.g. "$245-250" or "at market">
@@ -39,21 +40,19 @@ CONVICTION: <LOW|MEDIUM|HIGH>
 Then provide concise analysis (2-4 sentences per point):
 1. Why this trigger matters — reference specific news, data, or discussions
 2. Key risks before acting
+3. Timing or other notes (entry/exit levels if applicable)
 
-Every action is either BUY or SELL. The trigger fired — commit to a direction.
 Be direct and concise. No disclaimers.`;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface ActionReasoningResult {
+interface ActionReasoningResult {
   headline: string;
   verdict: ActionVerdict;
   reasoning: string;
+  sizeGuidance?: string;
   rawOutput: string;
-  /** Whether the LLM produced the result (vs static fallback). */
   fromLlm: boolean;
+  parsedCleanly: boolean;
+  error?: string;
   /** LLM-suggested entry range, e.g. "$245-250" or "at market". */
   entryRange?: string;
   /** LLM-suggested target exit price. */
@@ -66,11 +65,17 @@ export interface ActionReasoningResult {
   conviction?: ConvictionLevel;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+interface ActionEntityContext {
+  entity: Entity;
+  signals: Signal[];
+}
 
-/** Format allocation budget info for the LLM prompt when the strategy has a targetAllocation. */
+interface PositionSizing {
+  currentPrice: number;
+  suggestedQuantity: number;
+  suggestedValue: number;
+}
+
 export function formatAllocationBudget(context: Record<string, unknown>): string {
   const target = context.targetAllocation as number | undefined;
   if (target == null) return '';
@@ -79,23 +84,21 @@ export function formatAllocationBudget(context: Record<string, unknown>): string
   return `\nAllocation budget: target ${(target * 100).toFixed(0)}% of portfolio, current ${(actual * 100).toFixed(1)}%, remaining ${(remaining * 100).toFixed(1)}%\n`;
 }
 
-/** Optional rich context from Jintel entity + curated signals. */
-export interface ActionEntityContext {
-  entity: Entity;
-  signals: Signal[];
+/** Deterministic sizing text for BUY actions, derived from strategy allocation context. */
+export function formatBuySizeGuidance(context: Record<string, unknown>): string | undefined {
+  const target = context.targetAllocation as number | undefined;
+  if (target != null) {
+    const actual = (context.actualAllocation as number | undefined) ?? 0;
+    return `BUY to ${(target * 100).toFixed(0)}% of portfolio (now ${(actual * 100).toFixed(1)}%)`;
+  }
+  const maxPosition = context.maxPositionSize as number | undefined;
+  if (maxPosition != null) {
+    return `BUY up to ${(maxPosition * 100).toFixed(0)}% of portfolio`;
+  }
+  return undefined;
 }
 
-/** Position sizing computed deterministically from strategy allocation + portfolio state. */
-export interface PositionSizing {
-  currentPrice: number;
-  suggestedQuantity: number;
-  suggestedValue: number;
-}
-
-/**
- * Compute a deterministic position size from strategy allocation, portfolio value, and current price.
- * Returns null if there's not enough data to compute (no allocation target or no price).
- */
+/** Deterministic BUY-to-target sizing. Returns null when allocation data or price is missing. */
 export function computePositionSizing(
   context: Record<string, unknown>,
   currentPrice: number | undefined,
@@ -107,14 +110,13 @@ export function computePositionSizing(
   const actual = (context.actualAllocation as number | undefined) ?? 0;
   const maxPosition = context.maxPositionSize as number | undefined;
 
-  // Compute the remaining allocation budget
   let allocationFraction: number;
   if (target != null) {
     allocationFraction = Math.max(0, target - actual);
   } else if (maxPosition != null) {
     allocationFraction = Math.max(0, maxPosition - actual);
   } else {
-    return null; // No allocation constraints defined
+    return null;
   }
 
   const suggestedValue = allocationFraction * totalPortfolioValue;
@@ -126,8 +128,7 @@ export function computePositionSizing(
   return { currentPrice, suggestedQuantity, suggestedValue };
 }
 
-/** Format entity sub-graph data so the LLM can reference real headlines and discussions. */
-export function formatEntityBrief(ctx: ActionEntityContext): string {
+function formatEntityBrief(ctx: ActionEntityContext): string {
   const sections: string[] = [];
 
   const news = ctx.entity.news;
@@ -180,31 +181,27 @@ export function formatEntityBrief(ctx: ActionEntityContext): string {
   return sections.join('\n\n');
 }
 
-/** Build the user message sent to the LLM for a single evaluation. */
-export function buildUserMessage(
-  evaluation: StrategyEvaluation,
-  entityContext?: ActionEntityContext,
-  sizing?: PositionSizing | null,
-): string {
+function buildUserMessage(evaluation: StrategyEvaluation, entityContext?: ActionEntityContext): string {
   const ticker = (evaluation.context.ticker as string | undefined) ?? 'portfolio-wide';
   const contextParts = formatTriggerContext(evaluation.context);
 
   const entityBrief = entityContext ? formatEntityBrief(entityContext) : '';
-  const sizingInfo = sizing
-    ? `\nPosition sizing: ${sizing.suggestedQuantity} shares (~$${sizing.suggestedValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}) at $${sizing.currentPrice.toFixed(2)}/share`
-    : '';
 
   return `Strategy: ${evaluation.strategyName}
 Trigger: ${evaluation.triggerDescription}
 Ticker: ${ticker}
 Trigger data: ${contextParts.join(', ')}
-${formatAllocationBudget(evaluation.context)}${sizingInfo}
+${formatAllocationBudget(evaluation.context)}
 ${entityBrief ? `\nMarket context for ${ticker}:\n${entityBrief}\n` : ''}
 Strategy rules:
 ${evaluation.strategyContent}
 
 Provide your ACTION headline and analysis. Reference specific news, discussions, or data points — do not speculate about what might be causing the trigger.`;
 }
+
+// ---------------------------------------------------------------------------
+// Structured parameter parsing
+// ---------------------------------------------------------------------------
 
 /** Regex for structured parameter lines — used to filter them out of reasoning text. */
 const PARAM_LINE_RE = /^(ENTRY|TARGET|STOP|HORIZON|CONVICTION):/i;
@@ -266,33 +263,47 @@ export function parseStructuredParams(lines: string[]): StructuredParams {
   return result;
 }
 
-/** Parse the LLM response into headline + reasoning + structured params. */
+// ---------------------------------------------------------------------------
+// Response parsing
+// ---------------------------------------------------------------------------
+
+/** Parse headline + optional SIZE line + structured params + reasoning. */
 export function parseActionResponse(
   rawOutput: string,
   evaluation: StrategyEvaluation,
-): { headline: string; reasoning: string } & StructuredParams {
+): { headline: string; reasoning: string; sizeGuidance?: string; parsedCleanly: boolean } & StructuredParams {
   const ticker = (evaluation.context.ticker as string | undefined) ?? 'portfolio';
 
   const lines = rawOutput.split('\n').filter(Boolean);
-  const actionMatch = lines[0]?.match(/^ACTION:\s*(.+)/i);
+  const actionIdx = lines.findIndex((l) => /^ACTION:\s*.+/i.test(l));
 
-  const params = parseStructuredParams(lines);
+  if (actionIdx >= 0) {
+    const headline = lines[actionIdx].replace(/^ACTION:\s*/i, '').trim();
+    const sizeMatch = lines[actionIdx + 1]?.match(/^SIZE:\s*(.+)/i);
+    const rest = sizeMatch ? lines.slice(actionIdx + 2) : lines.slice(actionIdx + 1);
+    const sizeRaw = sizeMatch?.[1].trim();
+    const sizeGuidance = sizeRaw && sizeRaw.toUpperCase() !== 'N/A' ? sizeRaw : undefined;
 
-  // Filter out the structured parameter lines from reasoning
-  const reasoningLines = lines.slice(1).filter((l) => !PARAM_LINE_RE.test(l.trim()));
+    const verdict = parseVerdictFromHeadline(headline);
+    const parsedCleanly = verdict !== 'SELL' || sizeGuidance != null;
 
-  if (actionMatch) {
+    const params = parseStructuredParams(rest);
+    const reasoningLines = rest.filter((l) => !PARAM_LINE_RE.test(l.trim()));
+
     return {
-      headline: actionMatch[1].trim(),
+      headline,
       reasoning: reasoningLines.join('\n').trim(),
+      sizeGuidance,
+      parsedCleanly,
       ...params,
     };
   }
 
-  // Fallback when LLM didn't produce structured output
+  const params = parseStructuredParams(lines);
   return {
     headline: `REVIEW ${ticker} — ${evaluation.triggerDescription}`,
     reasoning: rawOutput,
+    parsedCleanly: false,
     ...params,
   };
 }
@@ -301,21 +312,23 @@ export function parseActionResponse(
 // Main reasoning function
 // ---------------------------------------------------------------------------
 
-/**
- * Generate an action recommendation for a single strategy evaluation.
- *
- * Calls the LLM with the standard strategist prompt and parses the response.
- * Falls back to a static REVIEW headline when the LLM is unavailable.
- */
+/** Run the strategist prompt for one evaluation. Falls back to a static REVIEW when the LLM is unavailable. */
 export async function generateActionReasoning(
   evaluation: StrategyEvaluation,
   providerRouter: ProviderRouter | null,
   entityContext?: ActionEntityContext,
-  sizing?: PositionSizing | null,
 ): Promise<ActionReasoningResult> {
   const ticker = (evaluation.context.ticker as string | undefined) ?? 'portfolio';
 
-  if (providerRouter) {
+  let error: string | undefined;
+
+  if (!providerRouter) {
+    error = 'LLM provider not configured';
+    logger.warn('LLM provider unavailable for action reasoning', {
+      strategyId: evaluation.strategyId,
+      ticker,
+    });
+  } else {
     logger.info('Requesting LLM reasoning for strategy trigger', {
       strategyId: evaluation.strategyId,
       ticker,
@@ -324,7 +337,7 @@ export async function generateActionReasoning(
       const llmResult = await providerRouter.completeWithTools({
         model: 'sonnet',
         system: ACTION_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: buildUserMessage(evaluation, entityContext, sizing) }],
+        messages: [{ role: 'user', content: buildUserMessage(evaluation, entityContext) }],
         maxTokens: 512,
       });
 
@@ -334,26 +347,45 @@ export async function generateActionReasoning(
         .join('');
 
       if (rawOutput) {
-        const { headline, reasoning, entryRange, targetPrice, stopLoss, horizon, conviction } = parseActionResponse(
-          rawOutput,
-          evaluation,
-        );
+        const {
+          headline,
+          reasoning,
+          sizeGuidance: llmSizeGuidance,
+          parsedCleanly,
+          entryRange,
+          targetPrice,
+          stopLoss,
+          horizon,
+          conviction,
+        } = parseActionResponse(rawOutput, evaluation);
         const finalHeadline = headline || `REVIEW ${ticker} — ${evaluation.triggerDescription}`;
         const finalReasoning = reasoning || evaluation.triggerDescription;
+        const verdict = parseVerdictFromHeadline(finalHeadline);
 
-        logger.info('LLM reasoning generated for strategy trigger', {
-          strategyId: evaluation.strategyId,
-          ticker,
-          headline: finalHeadline,
-          length: rawOutput.length,
-        });
+        // BUY sizing is deterministic; SELL sizing comes from the LLM; REVIEW has none.
+        const sizeGuidance =
+          verdict === 'BUY'
+            ? formatBuySizeGuidance(evaluation.context)
+            : verdict === 'SELL'
+              ? llmSizeGuidance
+              : undefined;
+
+        if (parsedCleanly) {
+          logger.info('LLM reasoning generated for strategy trigger', {
+            strategyId: evaluation.strategyId,
+            ticker,
+            headline: finalHeadline,
+          });
+        }
 
         return {
           headline: finalHeadline,
-          verdict: parseVerdictFromHeadline(finalHeadline),
+          verdict,
           reasoning: finalReasoning,
+          sizeGuidance,
           rawOutput,
           fromLlm: true,
+          parsedCleanly,
           entryRange,
           targetPrice,
           stopLoss,
@@ -361,15 +393,16 @@ export async function generateActionReasoning(
           conviction,
         };
       }
+      error = 'Empty LLM response';
     } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
       logger.warn('LLM reasoning failed for strategy trigger, using static content', {
         strategyId: evaluation.strategyId,
-        error: err instanceof Error ? err.message : String(err),
+        error,
       });
     }
   }
 
-  // Static fallback
   const headline = `REVIEW ${ticker} — ${evaluation.triggerDescription}`;
   return {
     headline,
@@ -377,5 +410,7 @@ export async function generateActionReasoning(
     reasoning: evaluation.triggerDescription,
     rawOutput: '',
     fromLlm: false,
+    parsedCleanly: false,
+    error,
   };
 }

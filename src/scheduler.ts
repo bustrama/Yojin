@@ -167,6 +167,9 @@ const MICRO_TRIGGER_MACRO_COOLDOWN_MS = MACRO_INTERVAL_MS;
 /** Default expiry window for summaries created from strategy triggers. */
 const ACTION_EXPIRY_HOURS = 24;
 
+/** Cooldown before re-creating an action the user already resolved (approved/rejected). */
+const RESOLUTION_COOLDOWN_MS = ACTION_EXPIRY_HOURS * 60 * 60 * 1000;
+
 /** Default micro research interval (5 minutes). */
 const DEFAULT_MICRO_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -207,6 +210,10 @@ export interface SchedulerStatus {
   pendingCount: number;
   throttledCount: number;
   assets: SchedulerAssetStatus[];
+  /** Last LLM error message (null when healthy). */
+  lastLlmError: string | null;
+  lastLlmErrorAt: string | null;
+  lastLlmSuccessAt: string | null;
 }
 
 export class Scheduler {
@@ -254,6 +261,11 @@ export class Scheduler {
 
   // Timestamp of last macro flow completion — used to gate micro→macro re-triggers
   private lastMacroCompletedAt = 0;
+
+  // LLM health tracking
+  private lastLlmError: string | null = null;
+  private lastLlmErrorAt: string | null = null;
+  private lastLlmSuccessAt: string | null = null;
 
   constructor(options: SchedulerOptions) {
     this.orchestrator = options.orchestrator;
@@ -641,6 +653,7 @@ export class Scheduler {
         const symbol = asset.symbol;
 
         if (result.status === 'rejected') {
+          if (readyForLlm) this.recordLlmError(result.reason);
           logger.error('Micro research failed', { symbol, error: String(result.reason) });
           continue;
         }
@@ -651,6 +664,8 @@ export class Scheduler {
         if (result.value.insight) {
           if (state) state.lastLlmAt = new Date().toISOString();
           microInsights.push(result.value.insight);
+          this.recordLlmSuccess();
+
           logger.info('Micro research complete', {
             symbol,
             rating: result.value.insight.rating,
@@ -769,8 +784,24 @@ export class Scheduler {
         if (!a.lastLlmAt) return false;
         return now - new Date(a.lastLlmAt).getTime() < this.microLlmIntervalMs;
       }).length,
+      lastLlmError: this.lastLlmError,
+      lastLlmErrorAt: this.lastLlmErrorAt,
+      lastLlmSuccessAt: this.lastLlmSuccessAt,
       assets,
     };
+  }
+
+  private recordLlmError(error: unknown): void {
+    const msg = error instanceof Error ? error.message : String(error);
+    this.lastLlmError = msg.length > 200 ? msg.slice(0, 200) : msg;
+    this.lastLlmErrorAt = new Date().toISOString();
+  }
+
+  private recordLlmSuccess(): void {
+    // Keep lastLlmError/lastLlmErrorAt intact — the banner's ISO comparison
+    // (lastLlmErrorAt > lastLlmSuccessAt) decides health. Clearing here would
+    // let a passing micro run silently hide a failing action-reasoning run.
+    this.lastLlmSuccessAt = new Date().toISOString();
   }
 
   /**
@@ -830,8 +861,10 @@ export class Scheduler {
       // 1. Signal assessment (RA + Strategist classify signals from archive)
       try {
         await this.orchestrator.execute('full-curation', {});
+        this.recordLlmSuccess();
         logger.info('Signal assessment complete');
       } catch (err) {
+        this.recordLlmError(err);
         logger.error('Signal assessment failed (continuing macro flow)', { error: err });
       }
 
@@ -1264,20 +1297,69 @@ export class Scheduler {
     const expiresAt = new Date(Date.now() + ACTION_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
     const now = new Date().toISOString();
 
-    // Compute total portfolio value for position sizing
+    const recentResolutions = await this.actionStore.getRecentResolutions(
+      evaluations.map((e) => ({ triggerId: e.triggerId, newStrength: e.triggerStrength })),
+      RESOLUTION_COOLDOWN_MS,
+    );
+
     const snapshot = await this.snapshotStore?.getLatest();
     const totalPortfolioValue = snapshot?.totalValue ?? 0;
 
     for (const evaluation of evaluations) {
       const ticker = evaluation.context.ticker as string | undefined;
+
+      // Skip if user already resolved this trigger (unless strength escalated)
+      const recentResolution = recentResolutions.get(evaluation.triggerId);
+      if (recentResolution) {
+        logger.debug('Skipping action — user already resolved this trigger', {
+          triggerId: evaluation.triggerId,
+          resolvedAs: recentResolution.status,
+          resolvedStrength: recentResolution.triggerStrength,
+          newStrength: evaluation.triggerStrength,
+          ticker,
+        });
+        continue;
+      }
+
       const entityContext = ticker ? entityByTicker?.get(ticker) : undefined;
       const currentPrice = entityContext?.entity.market?.quote?.price;
-      const sizing = computePositionSizing(evaluation.context, currentPrice, totalPortfolioValue);
 
-      const { headline, verdict, reasoning, entryRange, targetPrice, stopLoss, horizon, conviction } =
-        await generateActionReasoning(evaluation, this.providerRouter ?? null, entityContext, sizing);
+      const actionReasoning = await generateActionReasoning(evaluation, this.providerRouter ?? null, entityContext);
 
+      // Skip actions without clean LLM reasoning — no value in a bare REVIEW card
+      if (!actionReasoning.fromLlm || !actionReasoning.parsedCleanly) {
+        const reason = !actionReasoning.fromLlm
+          ? (actionReasoning.error ?? 'LLM provider unavailable for action reasoning')
+          : `Malformed action response: ${actionReasoning.rawOutput.split('\n')[0]?.slice(0, 120) ?? '<empty>'}`;
+        this.recordLlmError(reason);
+        logger.warn('Skipping action — LLM reasoning unavailable or unparseable', {
+          strategyId: evaluation.strategyId,
+          triggerId: evaluation.triggerId,
+          ticker,
+          fromLlm: actionReasoning.fromLlm,
+          parsedCleanly: actionReasoning.parsedCleanly,
+          reason,
+        });
+        continue;
+      }
+
+      this.recordLlmSuccess();
+      const {
+        headline,
+        verdict,
+        reasoning,
+        sizeGuidance,
+        entryRange,
+        targetPrice: tgtPrice,
+        stopLoss,
+        horizon,
+        conviction,
+      } = actionReasoning;
       const contextParts = formatTriggerContext(evaluation.context);
+
+      // Numeric sizing is BUY-only; SELL carries sizeGuidance text, REVIEW has none.
+      const sizing =
+        verdict === 'BUY' ? computePositionSizing(evaluation.context, currentPrice, totalPortfolioValue) : null;
 
       const result = await this.actionStore.create({
         id: randomUUID(),
@@ -1288,6 +1370,7 @@ export class Scheduler {
         verdict,
         what: headline,
         why: reasoning,
+        ...(sizeGuidance ? { sizeGuidance } : {}),
         tickers: ticker ? [ticker] : [],
         riskContext: contextParts.join('\n'),
         triggerStrength: evaluation.triggerStrength,
@@ -1295,7 +1378,7 @@ export class Scheduler {
         suggestedValue: sizing?.suggestedValue,
         currentPrice: sizing?.currentPrice,
         entryRange,
-        targetPrice,
+        targetPrice: tgtPrice,
         stopLoss,
         horizon,
         conviction,
@@ -1351,6 +1434,7 @@ export class Scheduler {
         message: reason,
       });
 
+      this.recordLlmSuccess();
       logger.info('Process-insights completed');
 
       // Notify channels that a new insight report is available
@@ -1380,6 +1464,7 @@ export class Scheduler {
         }
       }
     } catch (err) {
+      this.recordLlmError(err);
       logger.error('Process-insights failed', { error: err });
     }
   }

@@ -597,6 +597,7 @@ export const typeDefs = /* GraphQL */ `
   enum ActionVerdict {
     BUY
     SELL
+    REVIEW
   }
 
   enum ActionStatus {
@@ -628,6 +629,7 @@ export const typeDefs = /* GraphQL */ `
     verdict: ActionVerdict!
     what: String!
     why: String!
+    sizeGuidance: String
     tickers: [String!]!
     riskContext: String
     severity: Float
@@ -777,6 +779,9 @@ export const typeDefs = /* GraphQL */ `
     pendingCount: Int!
     throttledCount: Int!
     assets: [SchedulerAssetStatus!]!
+    lastLlmError: String
+    lastLlmErrorAt: String
+    lastLlmSuccessAt: String
   }
 
   enum ChannelStatus {

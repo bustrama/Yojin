@@ -898,6 +898,9 @@ export interface SchedulerStatus {
   pendingCount: number;
   throttledCount: number;
   assets: SchedulerAssetStatus[];
+  lastLlmError: string | null;
+  lastLlmErrorAt: string | null;
+  lastLlmSuccessAt: string | null;
 }
 
 export interface SchedulerStatusQueryResult {
@@ -1178,7 +1181,7 @@ export interface SummaryQueryVariables {
 // Opinionated layer with a PENDING → APPROVED | REJECTED | EXPIRED lifecycle.
 // ---------------------------------------------------------------------------
 
-export type ActionVerdict = 'BUY' | 'SELL';
+export type ActionVerdict = 'BUY' | 'SELL' | 'REVIEW';
 export type ActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
 export type TriggerStrength = 'WEAK' | 'MODERATE' | 'STRONG' | 'EXTREME';
 export type ConvictionLevel = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -1192,6 +1195,7 @@ export interface Action {
   verdict: ActionVerdict;
   what: string;
   why: string;
+  sizeGuidance: string | null;
   tickers: string[];
   riskContext: string | null;
   severity: number | null;

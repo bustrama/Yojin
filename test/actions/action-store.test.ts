@@ -308,3 +308,107 @@ describe('ActionStore.query', () => {
     expect(expired[0].status).toBe('EXPIRED');
   });
 });
+
+describe('ActionStore.getRecentResolutions', () => {
+  let dir: string;
+  let store: ActionStore;
+  const WINDOW = 24 * 60 * 60 * 1000; // 24h
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'action-store-recent-'));
+    store = new ActionStore({ dir });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('returns an empty map when the trigger has no resolution', async () => {
+    await store.create(
+      makeAction({ id: 'a-1', triggerId: 'rsi-PRICE-AAPL' }), // PENDING — never resolved
+    );
+    const result = await store.getRecentResolutions([{ triggerId: 'rsi-PRICE-AAPL', newStrength: 'MODERATE' }], WINDOW);
+    expect(result.size).toBe(0);
+  });
+
+  it('returns the resolved action when new strength does not escalate', async () => {
+    await store.create(makeAction({ id: 'a-1', triggerId: 'rsi-PRICE-AAPL' }));
+    // Approve it — stores an APPROVED record with resolvedAt=now and
+    // triggerStrength defaulted to MODERATE.
+    const approveRes = await store.approve('a-1');
+    expect(approveRes.success).toBe(true);
+
+    const result = await store.getRecentResolutions([{ triggerId: 'rsi-PRICE-AAPL', newStrength: 'MODERATE' }], WINDOW);
+    expect(result.size).toBe(1);
+    expect(result.get('rsi-PRICE-AAPL')?.status).toBe('APPROVED');
+  });
+
+  it('excludes the resolved action when new strength escalates past it', async () => {
+    await store.create(makeAction({ id: 'a-1', triggerId: 'rsi-PRICE-AAPL' }));
+    await store.approve('a-1'); // resolved at MODERATE (default)
+
+    const result = await store.getRecentResolutions([{ triggerId: 'rsi-PRICE-AAPL', newStrength: 'EXTREME' }], WINDOW);
+    expect(result.size).toBe(0);
+  });
+
+  it('ignores resolutions older than the cutoff window', async () => {
+    // Create + approve, then rewrite the resolvedAt to something > 24h ago.
+    await store.create(makeAction({ id: 'a-1', triggerId: 'rsi-PRICE-AAPL' }));
+    await store.approve('a-1');
+
+    // Simulate an old resolution by writing a fresh APPROVED entry for a
+    // second triggerId dated yesterday-48h.
+    const old = makeAction({ id: 'a-2', triggerId: 'rsi-PRICE-GOOG' });
+    await store.create({
+      ...old,
+      status: 'APPROVED',
+      resolvedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      resolvedBy: 'user',
+    });
+
+    const result = await store.getRecentResolutions(
+      [
+        { triggerId: 'rsi-PRICE-AAPL', newStrength: 'MODERATE' },
+        { triggerId: 'rsi-PRICE-GOOG', newStrength: 'MODERATE' },
+      ],
+      WINDOW,
+    );
+    expect(result.has('rsi-PRICE-AAPL')).toBe(true);
+    expect(result.has('rsi-PRICE-GOOG')).toBe(false);
+  });
+
+  it('finds resolutions whose createdAt file is older than the cooldown cutoff', async () => {
+    // Regression: files are partitioned by `createdAt`, but we filter by
+    // `resolvedAt`. An action created 2 days ago and resolved within the 24h
+    // cooldown window still lives in the 2-day-old file — file listing must
+    // include it.
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+
+    await store.create(
+      makeAction({
+        id: 'old-action',
+        triggerId: 'rsi-PRICE-AAPL',
+        createdAt: twoDaysAgo,
+        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    // Append the APPROVED record manually (store.approve uses `Date.now()` for
+    // resolvedAt; we want a specific timestamp inside the cooldown window).
+    await store.create({
+      ...makeAction({
+        id: 'old-action',
+        triggerId: 'rsi-PRICE-AAPL',
+        createdAt: twoDaysAgo,
+      }),
+      status: 'APPROVED',
+      resolvedAt: twelveHoursAgo,
+      resolvedBy: 'user',
+    });
+
+    const result = await store.getRecentResolutions([{ triggerId: 'rsi-PRICE-AAPL', newStrength: 'MODERATE' }], WINDOW);
+    expect(result.has('rsi-PRICE-AAPL')).toBe(true);
+    expect(result.get('rsi-PRICE-AAPL')?.resolvedAt).toBe(twelveHoursAgo);
+  });
+});
