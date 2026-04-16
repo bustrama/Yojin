@@ -129,8 +129,10 @@ export function createInsightTools(options: InsightToolsOptions): ToolDefinition
       // Safety net: filter out positions that aren't in the portfolio.
       // The LLM may create PositionInsight entries for watchlist tickers
       // that appeared in multi-ticker signals — drop them with a warning.
+      // Use the snapshot the pipeline analyzed (by snapshotId), not the latest,
+      // to avoid race conditions if the portfolio changes during the run.
       if (snapshotStore) {
-        const snapshot = await snapshotStore.getLatest();
+        const snapshot = (await snapshotStore.getById(params.snapshotId)) ?? (await snapshotStore.getLatest());
         if (snapshot) {
           const portfolioSymbols = new Set(snapshot.positions.map((p) => p.symbol.split('-')[0].toUpperCase()));
           const beforeCount = positions.length;
