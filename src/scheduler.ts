@@ -1302,7 +1302,6 @@ export class Scheduler {
       RESOLUTION_COOLDOWN_MS,
     );
 
-    // Compute total portfolio value for deterministic position sizing
     const snapshot = await this.snapshotStore?.getLatest();
     const totalPortfolioValue = snapshot?.totalValue ?? 0;
 
@@ -1324,14 +1323,8 @@ export class Scheduler {
 
       const entityContext = ticker ? entityByTicker?.get(ticker) : undefined;
       const currentPrice = entityContext?.entity.market?.quote?.price;
-      const sizing = computePositionSizing(evaluation.context, currentPrice, totalPortfolioValue);
 
-      const actionReasoning = await generateActionReasoning(
-        evaluation,
-        this.providerRouter ?? null,
-        entityContext,
-        sizing,
-      );
+      const actionReasoning = await generateActionReasoning(evaluation, this.providerRouter ?? null, entityContext);
 
       // Skip actions without clean LLM reasoning — no value in a bare REVIEW card
       if (!actionReasoning.fromLlm || !actionReasoning.parsedCleanly) {
@@ -1349,6 +1342,10 @@ export class Scheduler {
       this.recordLlmSuccess();
       const { headline, verdict, reasoning, sizeGuidance } = actionReasoning;
       const contextParts = formatTriggerContext(evaluation.context);
+
+      // Numeric sizing is BUY-only; SELL carries sizeGuidance text, REVIEW has none.
+      const sizing =
+        verdict === 'BUY' ? computePositionSizing(evaluation.context, currentPrice, totalPortfolioValue) : null;
 
       const result = await this.actionStore.create({
         id: randomUUID(),
