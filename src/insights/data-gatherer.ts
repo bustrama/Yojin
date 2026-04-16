@@ -15,7 +15,6 @@ import { buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 import type { InsightStore } from './insight-store.js';
 import type { InsightReport } from './types.js';
 import type { AssetClass, Platform, Position } from '../api/graphql/types.js';
-import { isShortInterestFresh } from '../jintel/freshness.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { SignalMemoryStore } from '../memory/memory-store.js';
 import type { MemoryEntry } from '../memory/types.js';
@@ -182,7 +181,6 @@ interface OwnershipBrief {
   outstandingShares: number | null;
   floatShares: number | null;
   shortPercentOfFloat: number | null;
-  shortInterestDate: string | null;
 }
 
 interface TopHolderBrief {
@@ -415,8 +413,8 @@ export function formatBriefsForContext(briefs: DataBrief[]): string {
         ownerParts.push(`Institutional: ${(o.institutionOwnership * 100).toFixed(1)}%`);
       if (o.institutionsCount != null) ownerParts.push(`${o.institutionsCount} institutions`);
       if (o.floatShares != null) ownerParts.push(`Float: ${formatLargeNumber(o.floatShares)}`);
-      if (o.shortPercentOfFloat != null && isShortInterestFresh(o.shortInterestDate)) {
-        ownerParts.push(`Short/float: ${(o.shortPercentOfFloat * 100).toFixed(1)}% (as of ${o.shortInterestDate})`);
+      if (o.shortPercentOfFloat != null) {
+        ownerParts.push(`Short/float: ${(o.shortPercentOfFloat * 100).toFixed(1)}%`);
       }
       if (ownerParts.length > 0) lines.push(`Ownership: ${ownerParts.join(' | ')}`);
     }
@@ -879,7 +877,6 @@ export function buildBrief(
           outstandingShares: entity.ownership.outstandingShares ?? null,
           floatShares: entity.ownership.floatShares ?? null,
           shortPercentOfFloat: entity.ownership.shortPercentOfFloat ?? null,
-          shortInterestDate: entity.ownership.shortInterestDate ?? null,
         }
       : null,
     topHolders: (entity?.topHolders ?? []).slice(0, 10).map((h) => ({
