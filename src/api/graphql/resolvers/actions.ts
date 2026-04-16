@@ -53,6 +53,9 @@ interface ActionGql {
   stopLoss: number | null;
   horizon: string | null;
   conviction: ConvictionLevel | null;
+  maxEntry: number | null;
+  catalystImpact: string | null;
+  pricedIn: boolean | null;
   severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
@@ -85,6 +88,9 @@ function toGql(action: Action): ActionGql {
     stopLoss: action.stopLoss ?? null,
     horizon: action.horizon ?? null,
     conviction: action.conviction ?? null,
+    maxEntry: action.maxEntry ?? null,
+    catalystImpact: action.catalystImpact ?? null,
+    pricedIn: action.pricedIn ?? null,
     severityLabel: deriveSeverityLabel(action.severity),
     status: action.status,
     expiresAt: action.expiresAt,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseVerdictFromHeadline } from '../../src/actions/types.js';
 import {
+  checkPricedIn,
   formatAllocationBudget,
   formatBuySizeGuidance,
   parseActionResponse,
@@ -266,5 +267,126 @@ describe('parseVerdictFromHeadline', () => {
 
   it('requires a word boundary — does not match BUYBACK as BUY', () => {
     expect(parseVerdictFromHeadline('BUYBACK announced')).toBe('REVIEW');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseStructuredParams — MAX_ENTRY + CATALYST_IMPACT
+// ---------------------------------------------------------------------------
+
+describe('parseStructuredParams — priced-in fields', () => {
+  it('parses MAX_ENTRY with dollar sign', () => {
+    const params = parseStructuredParams(['MAX_ENTRY: $265']);
+    expect(params.maxEntry).toBe(265);
+  });
+
+  it('parses MAX_ENTRY without dollar sign', () => {
+    const params = parseStructuredParams(['MAX_ENTRY: 265.50']);
+    expect(params.maxEntry).toBe(265.5);
+  });
+
+  it('parses MAX_ENTRY with commas', () => {
+    const params = parseStructuredParams(['MAX_ENTRY: $1,265.00']);
+    expect(params.maxEntry).toBe(1265);
+  });
+
+  it('skips non-numeric MAX_ENTRY', () => {
+    const params = parseStructuredParams(['MAX_ENTRY: around $265']);
+    expect(params.maxEntry).toBeUndefined();
+  });
+
+  it('skips zero/negative MAX_ENTRY', () => {
+    const params = parseStructuredParams(['MAX_ENTRY: $0']);
+    expect(params.maxEntry).toBeUndefined();
+  });
+
+  it('parses CATALYST_IMPACT', () => {
+    const params = parseStructuredParams(['CATALYST_IMPACT: 3-5%']);
+    expect(params.catalystImpact).toBe('3-5%');
+  });
+
+  it('parses CATALYST_IMPACT with descriptive text', () => {
+    const params = parseStructuredParams(['CATALYST_IMPACT: ~8% upside from earnings beat']);
+    expect(params.catalystImpact).toBe('~8% upside from earnings beat');
+  });
+
+  it('filters MAX_ENTRY and CATALYST_IMPACT from reasoning text', () => {
+    const raw = [
+      'ACTION: BUY AAPL — earnings beat',
+      'MAX_ENTRY: $265',
+      'CATALYST_IMPACT: 3-5%',
+      '',
+      'Strong quarter with revenue above expectations.',
+    ].join('\n');
+    const result = parseActionResponse(raw, makeEvaluation());
+    expect(result.maxEntry).toBe(265);
+    expect(result.catalystImpact).toBe('3-5%');
+    expect(result.reasoning).not.toContain('MAX_ENTRY');
+    expect(result.reasoning).not.toContain('CATALYST_IMPACT');
+    expect(result.reasoning).toContain('Strong quarter');
+  });
+
+  it('parses full response with all params including new fields', () => {
+    const raw = [
+      'ACTION: BUY TSLA — AI5 confirmed',
+      'SIZE: BUY to 5% of portfolio',
+      'ENTRY: $245-250',
+      'TARGET: $275',
+      'STOP: $230',
+      'HORIZON: 1-2 weeks',
+      'CONVICTION: HIGH',
+      'MAX_ENTRY: $260',
+      'CATALYST_IMPACT: 5-8% upside',
+      '',
+      'The partnership has been confirmed.',
+    ].join('\n');
+    const result = parseActionResponse(raw, makeEvaluation());
+    expect(result.parsedCleanly).toBe(true);
+    expect(result.entryRange).toBe('$245-250');
+    expect(result.targetPrice).toBe(275);
+    expect(result.stopLoss).toBe(230);
+    expect(result.horizon).toBe('1-2 weeks');
+    expect(result.conviction).toBe('HIGH');
+    expect(result.maxEntry).toBe(260);
+    expect(result.catalystImpact).toBe('5-8% upside');
+    expect(result.reasoning).toContain('partnership has been confirmed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkPricedIn
+// ---------------------------------------------------------------------------
+
+describe('checkPricedIn', () => {
+  it('returns true when BUY price exceeds maxEntry', () => {
+    expect(checkPricedIn('BUY', 270, 265)).toBe(true);
+  });
+
+  it('returns false when BUY price is below maxEntry', () => {
+    expect(checkPricedIn('BUY', 260, 265)).toBe(false);
+  });
+
+  it('returns false when BUY price equals maxEntry', () => {
+    expect(checkPricedIn('BUY', 265, 265)).toBe(false);
+  });
+
+  it('returns true when SELL price is below maxEntry (floor)', () => {
+    expect(checkPricedIn('SELL', 50, 55)).toBe(true);
+  });
+
+  it('returns false when SELL price is above maxEntry (floor)', () => {
+    expect(checkPricedIn('SELL', 60, 55)).toBe(false);
+  });
+
+  it('returns undefined when currentPrice is missing', () => {
+    expect(checkPricedIn('BUY', undefined, 265)).toBeUndefined();
+  });
+
+  it('returns undefined when maxEntry is missing', () => {
+    expect(checkPricedIn('BUY', 270, undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for REVIEW verdict', () => {
+    expect(checkPricedIn('REVIEW', 270, 265)).toBeUndefined();
   });
 });

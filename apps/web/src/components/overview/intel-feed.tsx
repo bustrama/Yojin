@@ -78,6 +78,9 @@ interface IntelFeedItem {
   stopLoss?: number | null;
   horizon?: string | null;
   conviction?: ConvictionLevel | null;
+  maxEntry?: number | null;
+  catalystImpact?: string | null;
+  pricedIn?: boolean | null;
 }
 
 /** Map signal type to an icon name. */
@@ -677,6 +680,9 @@ function IntelFeedContent({
       stopLoss: action.stopLoss,
       horizon: action.horizon,
       conviction: action.conviction,
+      maxEntry: action.maxEntry,
+      catalystImpact: action.catalystImpact,
+      pricedIn: action.pricedIn,
     }));
 
     const merged = [...signalItems, ...actionItems];
@@ -938,6 +944,9 @@ function IntelFeedContent({
             stopLoss: item.stopLoss ?? null,
             horizon: item.horizon ?? null,
             conviction: item.conviction ?? null,
+            maxEntry: item.maxEntry ?? null,
+            catalystImpact: item.catalystImpact ?? null,
+            pricedIn: item.pricedIn ?? null,
           }
         : undefined,
     });

@@ -50,7 +50,7 @@ import type { Signal } from './signals/types.js';
 import { snapFromInsight } from './snap/snap-from-insight.js';
 import { snapFromMicro } from './snap/snap-from-micro.js';
 import type { SnapStore } from './snap/snap-store.js';
-import { computePositionSizing, generateActionReasoning } from './strategies/action-reasoning.js';
+import { checkPricedIn, computePositionSizing, generateActionReasoning } from './strategies/action-reasoning.js';
 import { capabilitiesToEnrichmentFields, deriveCapabilities } from './strategies/capabilities.js';
 import { formatTriggerContext } from './strategies/format-trigger-context.js';
 import { buildPortfolioContext, buildSingleTickerContext } from './strategies/portfolio-context-builder.js';
@@ -1388,12 +1388,26 @@ export class Scheduler {
         stopLoss,
         horizon,
         conviction,
+        maxEntry,
+        catalystImpact,
       } = actionReasoning;
       const contextParts = formatTriggerContext(evaluation.context);
 
       // Numeric sizing is BUY-only; SELL carries sizeGuidance text, REVIEW has none.
       const sizing =
         verdict === 'BUY' ? computePositionSizing(evaluation.context, currentPrice, totalPortfolioValue) : null;
+
+      // Deterministic priced-in detection
+      const pricedIn = checkPricedIn(verdict, currentPrice, maxEntry) || undefined;
+      if (pricedIn) {
+        logger.info('Action flagged as potentially priced in', {
+          ticker,
+          verdict,
+          currentPrice,
+          maxEntry,
+          catalystImpact,
+        });
+      }
 
       const result = await this.actionStore.create({
         id: randomUUID(),
@@ -1410,12 +1424,15 @@ export class Scheduler {
         triggerStrength: evaluation.triggerStrength,
         suggestedQuantity: sizing?.suggestedQuantity,
         suggestedValue: sizing?.suggestedValue,
-        currentPrice: sizing?.currentPrice,
+        currentPrice: sizing?.currentPrice ?? currentPrice,
         entryRange,
         targetPrice: tgtPrice,
         stopLoss,
         horizon,
         conviction,
+        maxEntry,
+        catalystImpact,
+        pricedIn,
         status: 'PENDING',
         expiresAt,
         createdAt: now,

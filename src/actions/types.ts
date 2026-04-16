@@ -77,6 +77,12 @@ export const ActionSchema = z.object({
   horizon: z.string().optional(),
   /** LLM's conviction level — independent of deterministic triggerStrength. */
   conviction: ConvictionLevelSchema.optional(),
+  /** Price ceiling (BUY) or floor (SELL) beyond which the catalyst is priced in. */
+  maxEntry: z.number().positive().optional(),
+  /** LLM-estimated catalyst impact magnitude, e.g. "3-5%". */
+  catalystImpact: z.string().optional(),
+  /** Deterministic flag: current price already exceeds maxEntry. */
+  pricedIn: z.boolean().optional(),
   status: ActionStatusSchema.default('PENDING'),
   expiresAt: DateTimeField,
   createdAt: DateTimeField,

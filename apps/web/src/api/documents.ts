@@ -1642,6 +1642,9 @@ export const ACTION_FIELDS = gql`
     stopLoss
     horizon
     conviction
+    maxEntry
+    catalystImpact
+    pricedIn
     severityLabel
     status
     expiresAt

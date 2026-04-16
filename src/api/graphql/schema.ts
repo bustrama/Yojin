@@ -642,6 +642,9 @@ export const typeDefs = /* GraphQL */ `
     stopLoss: Float
     horizon: String
     conviction: ConvictionLevel
+    maxEntry: Float
+    catalystImpact: String
+    pricedIn: Boolean
     severityLabel: String!
     status: ActionStatus!
     expiresAt: String!

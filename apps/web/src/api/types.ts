@@ -1208,6 +1208,9 @@ export interface Action {
   stopLoss: number | null;
   horizon: string | null;
   conviction: ConvictionLevel | null;
+  maxEntry: number | null;
+  catalystImpact: string | null;
+  pricedIn: boolean | null;
   severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
