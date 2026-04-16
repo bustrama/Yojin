@@ -1201,6 +1201,7 @@ export class Scheduler {
 
     const totalValue = snapshot.totalValue || 0;
     const allEvaluations: StrategyEvaluation[] = [];
+    const entityByTicker = new Map<string, { entity: Entity; signals: Signal[] }>();
 
     for (const { symbol, entity, signals } of results) {
       const ticker = symbol.toUpperCase();
@@ -1210,6 +1211,8 @@ export class Scheduler {
       // Build a lightweight single-ticker context from the Entity data we already have
       const quote = entity.market?.quote;
       if (!quote) continue; // no quote data — can't evaluate
+
+      entityByTicker.set(ticker, { entity, signals });
 
       const ctx = buildSingleTickerContext(
         ticker,
@@ -1231,7 +1234,7 @@ export class Scheduler {
       triggers: allEvaluations.map((e) => `${e.strategyName}:${e.context.ticker}`),
     });
 
-    await this.processStrategyEvaluations(allEvaluations);
+    await this.processStrategyEvaluations(allEvaluations, entityByTicker);
   }
 
   /**
@@ -1242,7 +1245,10 @@ export class Scheduler {
    * the opinionated BUY/SELL/REVIEW output layer. Neutral intel observations
    * (from insight pipelines) are persisted as Summaries in a separate store.
    */
-  private async processStrategyEvaluations(evaluations: StrategyEvaluation[]): Promise<void> {
+  private async processStrategyEvaluations(
+    evaluations: StrategyEvaluation[],
+    entityByTicker?: Map<string, { entity: Entity; signals: Signal[] }>,
+  ): Promise<void> {
     if (!this.actionStore || evaluations.length === 0) return;
 
     if (this.eventLog) {
@@ -1259,9 +1265,14 @@ export class Scheduler {
     const now = new Date().toISOString();
 
     for (const evaluation of evaluations) {
-      const { headline, verdict, reasoning } = await generateActionReasoning(evaluation, this.providerRouter ?? null);
-
       const ticker = evaluation.context.ticker as string | undefined;
+      const entityContext = ticker ? entityByTicker?.get(ticker) : undefined;
+      const { headline, verdict, reasoning } = await generateActionReasoning(
+        evaluation,
+        this.providerRouter ?? null,
+        entityContext,
+      );
+
       const contextParts = formatTriggerContext(evaluation.context);
 
       const result = await this.actionStore.create({
