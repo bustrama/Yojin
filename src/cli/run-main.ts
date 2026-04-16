@@ -331,6 +331,7 @@ async function startGateway(): Promise<void> {
     strategyEvaluator: services.strategyEvaluator,
     summaryStore: services.summaryStore,
     actionStore: services.actionStore,
+    alertStore: services.alertStore,
     snapshotStore: services.snapshotStore,
     snapStore: services.snapStore,
     insightStore: services.insightStore,
@@ -349,6 +350,14 @@ async function startGateway(): Promise<void> {
     microLlmIntervalMs: alertsConfig.microLlmIntervalHours
       ? alertsConfig.microLlmIntervalHours * 60 * 60 * 1000
       : undefined,
+    alertPromoterConfig: {
+      ...(alertsConfig.alertSeverityThreshold !== undefined && {
+        severityThreshold: alertsConfig.alertSeverityThreshold,
+      }),
+      ...(alertsConfig.alertCooldownHours !== undefined && {
+        cooldownMs: alertsConfig.alertCooldownHours * 60 * 60 * 1000,
+      }),
+    },
   });
   scheduler.start();
 
