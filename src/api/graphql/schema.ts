@@ -614,6 +614,12 @@ export const typeDefs = /* GraphQL */ `
     EXTREME
   }
 
+  enum ConvictionLevel {
+    LOW
+    MEDIUM
+    HIGH
+  }
+
   type Action {
     id: ID!
     strategyId: ID!
@@ -631,6 +637,14 @@ export const typeDefs = /* GraphQL */ `
     suggestedQuantity: Int
     suggestedValue: Float
     currentPrice: Float
+    entryRange: String
+    targetPrice: Float
+    stopLoss: Float
+    horizon: String
+    conviction: ConvictionLevel
+    maxEntry: Float
+    catalystImpact: String
+    pricedIn: Boolean
     severityLabel: String!
     status: ActionStatus!
     expiresAt: String!

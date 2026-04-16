@@ -1184,6 +1184,7 @@ export interface SummaryQueryVariables {
 export type ActionVerdict = 'BUY' | 'SELL' | 'REVIEW';
 export type ActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
 export type TriggerStrength = 'WEAK' | 'MODERATE' | 'STRONG' | 'EXTREME';
+export type ConvictionLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface Action {
   id: string;
@@ -1202,6 +1203,14 @@ export interface Action {
   suggestedQuantity: number | null;
   suggestedValue: number | null;
   currentPrice: number | null;
+  entryRange: string | null;
+  targetPrice: number | null;
+  stopLoss: number | null;
+  horizon: string | null;
+  conviction: ConvictionLevel | null;
+  maxEntry: number | null;
+  catalystImpact: string | null;
+  pricedIn: boolean | null;
   severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
