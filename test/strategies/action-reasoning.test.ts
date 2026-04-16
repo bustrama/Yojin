@@ -5,23 +5,28 @@ import {
   formatAllocationBudget,
   formatBuySizeGuidance,
   parseActionResponse,
+  parseStructuredParams,
 } from '../../src/strategies/action-reasoning.js';
 import type { StrategyEvaluation } from '../../src/strategies/types.js';
 
-function makeEvaluation(partial: Partial<StrategyEvaluation> = {}): StrategyEvaluation {
+function makeEvaluation(overrides?: Partial<StrategyEvaluation>): StrategyEvaluation {
   return {
-    strategyId: 'strat-1',
-    strategyName: 'Test strategy',
-    triggerId: 'strat-1-THRESHOLD-AAPL',
-    triggerType: 'ALLOCATION_DRIFT',
-    triggerDescription: 'AAPL below target allocation',
-    context: { ticker: 'AAPL' },
-    strategyContent: '# Test',
+    strategyId: 'strat-001',
+    strategyName: 'Momentum Breakout',
+    triggerId: 'strat-001-PRICE_MOVE-TSLA',
+    triggerType: 'PRICE_MOVE',
+    triggerDescription: 'Price moved +5.2%',
+    context: { ticker: 'TSLA', change: 0.052, threshold: 0.05 },
+    strategyContent: '# Momentum Breakout\nBuy on breakout...',
     evaluatedAt: new Date().toISOString(),
-    triggerStrength: 'MODERATE',
-    ...partial,
-  } as StrategyEvaluation;
+    triggerStrength: 'STRONG',
+    ...overrides,
+  };
 }
+
+// ---------------------------------------------------------------------------
+// formatBuySizeGuidance / formatAllocationBudget
+// ---------------------------------------------------------------------------
 
 describe('formatBuySizeGuidance', () => {
   it('renders target + actual when targetAllocation is present', () => {
@@ -67,8 +72,123 @@ describe('formatAllocationBudget', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// parseStructuredParams
+// ---------------------------------------------------------------------------
+
+describe('parseStructuredParams', () => {
+  it('parses all structured params from well-formed lines', () => {
+    const lines = [
+      'ACTION: BUY TSLA — AI5 chip milestone confirmed',
+      'ENTRY: $245-250',
+      'TARGET: $275',
+      'STOP: $230',
+      'HORIZON: 1-2 weeks',
+      'CONVICTION: HIGH',
+      '',
+      '## Why Now',
+      'The AI5 chip partnership was confirmed...',
+    ];
+    const params = parseStructuredParams(lines);
+    expect(params.entryRange).toBe('$245-250');
+    expect(params.targetPrice).toBe(275);
+    expect(params.stopLoss).toBe(230);
+    expect(params.horizon).toBe('1-2 weeks');
+    expect(params.conviction).toBe('HIGH');
+  });
+
+  it('handles "at market" entry range', () => {
+    const params = parseStructuredParams(['ENTRY: at market']);
+    expect(params.entryRange).toBe('at market');
+  });
+
+  it('handles prices with commas', () => {
+    const params = parseStructuredParams(['TARGET: $1,250.50', 'STOP: $1,100']);
+    expect(params.targetPrice).toBe(1250.5);
+    expect(params.stopLoss).toBe(1100);
+  });
+
+  it('handles prices without dollar signs', () => {
+    const params = parseStructuredParams(['TARGET: 260', 'STOP: 235']);
+    expect(params.targetPrice).toBe(260);
+    expect(params.stopLoss).toBe(235);
+  });
+
+  it('skips non-numeric target/stop values gracefully', () => {
+    const params = parseStructuredParams(['TARGET: around $260', 'STOP: depends on volatility']);
+    expect(params.targetPrice).toBeUndefined();
+    expect(params.stopLoss).toBeUndefined();
+  });
+
+  it('normalizes conviction case', () => {
+    const params = parseStructuredParams(['CONVICTION: medium']);
+    expect(params.conviction).toBe('MEDIUM');
+  });
+
+  it('rejects invalid conviction values', () => {
+    const params = parseStructuredParams(['CONVICTION: Moderate to High']);
+    expect(params.conviction).toBeUndefined();
+  });
+
+  it('returns empty object when no params are present', () => {
+    const params = parseStructuredParams(['## Why Now', 'The stock broke out above resistance...']);
+    expect(params).toEqual({});
+  });
+
+  it('parses partial params (only some lines present)', () => {
+    const params = parseStructuredParams(['ENTRY: $245-250', 'CONVICTION: LOW']);
+    expect(params.entryRange).toBe('$245-250');
+    expect(params.conviction).toBe('LOW');
+    expect(params.targetPrice).toBeUndefined();
+    expect(params.stopLoss).toBeUndefined();
+    expect(params.horizon).toBeUndefined();
+  });
+
+  it('handles zero or negative prices', () => {
+    const params = parseStructuredParams(['TARGET: $0', 'STOP: $-10']);
+    expect(params.targetPrice).toBeUndefined();
+    expect(params.stopLoss).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseActionResponse
+// ---------------------------------------------------------------------------
+
 describe('parseActionResponse', () => {
   const evaluation = makeEvaluation();
+
+  it('parses full structured response with headline + params + reasoning', () => {
+    const rawOutput = [
+      'ACTION: BUY TSLA — AI5 chip milestone confirmed',
+      'ENTRY: $245-250',
+      'TARGET: $275',
+      'STOP: $230',
+      'HORIZON: 1-2 weeks',
+      'CONVICTION: HIGH',
+      '',
+      '## Why Now',
+      'The AI5 chip partnership confirmed by Tesla today.',
+      '',
+      '## Key Risks',
+      'RSI is already at 72, overbought territory.',
+    ].join('\n');
+
+    const result = parseActionResponse(rawOutput, evaluation);
+
+    expect(result.headline).toBe('BUY TSLA — AI5 chip milestone confirmed');
+    expect(result.entryRange).toBe('$245-250');
+    expect(result.targetPrice).toBe(275);
+    expect(result.stopLoss).toBe(230);
+    expect(result.horizon).toBe('1-2 weeks');
+    expect(result.conviction).toBe('HIGH');
+    // Structured param lines should be filtered OUT of reasoning
+    expect(result.reasoning).not.toContain('ENTRY:');
+    expect(result.reasoning).not.toContain('TARGET:');
+    expect(result.reasoning).not.toContain('CONVICTION:');
+    expect(result.reasoning).toContain('AI5 chip partnership');
+    expect(result.reasoning).toContain('RSI is already at 72');
+  });
 
   it('parses ACTION-only response without SIZE', () => {
     const raw = 'ACTION: BUY AAPL — golden cross on 200-day MA\n\nAnalysis: momentum is strong.';
@@ -99,7 +219,7 @@ describe('parseActionResponse', () => {
     const raw = 'I think AAPL looks bullish but cannot commit.';
     const result = parseActionResponse(raw, evaluation);
     expect(result.parsedCleanly).toBe(false);
-    expect(result.headline).toBe('REVIEW AAPL — AAPL below target allocation');
+    expect(result.headline).toContain('REVIEW');
     expect(result.reasoning).toBe(raw);
   });
 

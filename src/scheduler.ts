@@ -1378,7 +1378,17 @@ export class Scheduler {
       }
 
       this.recordLlmSuccess();
-      const { headline, verdict, reasoning, sizeGuidance } = actionReasoning;
+      const {
+        headline,
+        verdict,
+        reasoning,
+        sizeGuidance,
+        entryRange,
+        targetPrice: tgtPrice,
+        stopLoss,
+        horizon,
+        conviction,
+      } = actionReasoning;
       const contextParts = formatTriggerContext(evaluation.context);
 
       // Numeric sizing is BUY-only; SELL carries sizeGuidance text, REVIEW has none.
@@ -1401,6 +1411,11 @@ export class Scheduler {
         suggestedQuantity: sizing?.suggestedQuantity,
         suggestedValue: sizing?.suggestedValue,
         currentPrice: sizing?.currentPrice,
+        entryRange,
+        targetPrice: tgtPrice,
+        stopLoss,
+        horizon,
+        conviction,
         status: 'PENDING',
         expiresAt,
         createdAt: now,

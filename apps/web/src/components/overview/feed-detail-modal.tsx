@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import Modal from '../common/modal';
 import Badge from '../common/badge';
 import type { BadgeVariant } from '../common/badge';
-import type { TriggerStrength } from '../../api/types';
+import type { ConvictionLevel, TriggerStrength } from '../../api/types';
 import { cn, timeUntil } from '../../lib/utils';
 
 /** Lightweight markdown → HTML for LLM-generated analysis text. */
@@ -59,6 +59,11 @@ export interface FeedDetailData {
     suggestedQuantity?: number | null;
     suggestedValue?: number | null;
     currentPrice?: number | null;
+    entryRange?: string | null;
+    targetPrice?: number | null;
+    stopLoss?: number | null;
+    horizon?: string | null;
+    conviction?: ConvictionLevel | null;
   };
 }
 
@@ -73,6 +78,12 @@ const TRIGGER_STRENGTH_VARIANT: Record<TriggerStrength, BadgeVariant> = {
   MODERATE: 'info',
   STRONG: 'warning',
   EXTREME: 'error',
+};
+
+const CONVICTION_VARIANT: Record<ConvictionLevel, BadgeVariant> = {
+  LOW: 'neutral',
+  MEDIUM: 'info',
+  HIGH: 'success',
 };
 
 const sentimentBadge: Record<string, { label: string; variant: BadgeVariant }> = {
@@ -175,6 +186,11 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
             {data.triggerStrength.charAt(0) + data.triggerStrength.slice(1).toLowerCase()} Strength
           </Badge>
         )}
+        {data.actionMeta?.conviction && (
+          <Badge variant={CONVICTION_VARIANT[data.actionMeta.conviction]} outline>
+            {data.actionMeta.conviction.charAt(0) + data.actionMeta.conviction.slice(1).toLowerCase()} Conviction
+          </Badge>
+        )}
       </div>
 
       {/* Summary details */}
@@ -210,6 +226,54 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
                 )}
               </div>
             </div>
+          )}
+
+          {/* Trading parameters — entry/target/stop/horizon from LLM */}
+          {(data.actionMeta.entryRange ||
+            data.actionMeta.targetPrice != null ||
+            data.actionMeta.stopLoss != null ||
+            data.actionMeta.horizon) && (
+            <>
+              <SectionRule label="Trading Parameters" />
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {data.actionMeta.entryRange && (
+                  <div>
+                    <span className="text-3xs font-semibold uppercase tracking-wider text-text-muted">Entry</span>
+                    <p className="mt-0.5 text-xs text-text-primary">{data.actionMeta.entryRange}</p>
+                  </div>
+                )}
+                {data.actionMeta.targetPrice != null && (
+                  <div>
+                    <span className="text-3xs font-semibold uppercase tracking-wider text-text-muted">Target</span>
+                    <p className="mt-0.5 text-xs text-text-primary">
+                      $
+                      {data.actionMeta.targetPrice.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
+                  </div>
+                )}
+                {data.actionMeta.stopLoss != null && (
+                  <div>
+                    <span className="text-3xs font-semibold uppercase tracking-wider text-text-muted">Stop Loss</span>
+                    <p className="mt-0.5 text-xs text-text-primary">
+                      $
+                      {data.actionMeta.stopLoss.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
+                  </div>
+                )}
+                {data.actionMeta.horizon && (
+                  <div>
+                    <span className="text-3xs font-semibold uppercase tracking-wider text-text-muted">Horizon</span>
+                    <p className="mt-0.5 text-xs text-text-primary">{data.actionMeta.horizon}</p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           <SectionRule label="Trigger Details" />

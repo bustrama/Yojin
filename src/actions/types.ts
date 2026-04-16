@@ -28,6 +28,10 @@ export type ActionVerdict = z.infer<typeof ActionVerdictSchema>;
 export const ActionStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED']);
 export type ActionStatus = z.infer<typeof ActionStatusSchema>;
 
+/** LLM's conviction in the recommendation — independent of the deterministic triggerStrength. */
+export const ConvictionLevelSchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
+export type ConvictionLevel = z.infer<typeof ConvictionLevelSchema>;
+
 // ---------------------------------------------------------------------------
 // Action — the core entity
 // ---------------------------------------------------------------------------
@@ -63,6 +67,16 @@ export const ActionSchema = z.object({
   suggestedValue: z.number().min(0).optional(),
   /** Price at time of recommendation. */
   currentPrice: z.number().positive().optional(),
+  /** LLM-suggested entry range, e.g. "$245-250" or "at market". */
+  entryRange: z.string().optional(),
+  /** LLM-suggested target exit price. */
+  targetPrice: z.number().positive().optional(),
+  /** LLM-suggested stop loss price. */
+  stopLoss: z.number().positive().optional(),
+  /** Time horizon, e.g. "1-2 weeks", "intraday". */
+  horizon: z.string().optional(),
+  /** LLM's conviction level — independent of deterministic triggerStrength. */
+  conviction: ConvictionLevelSchema.optional(),
   status: ActionStatusSchema.default('PENDING'),
   expiresAt: DateTimeField,
   createdAt: DateTimeField,
