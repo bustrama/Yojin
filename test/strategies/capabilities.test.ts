@@ -72,8 +72,10 @@ describe('capabilitiesToEnrichmentFields', () => {
 
   it('maps news, research, sentiment, filings, derivatives', () => {
     const fields = capabilitiesToEnrichmentFields(['news', 'research', 'sentiment', 'filings', 'derivatives']);
-    expect(fields).toEqual(expect.arrayContaining(['news', 'research', 'sentiment', 'regulatory', 'derivatives']));
-    expect(fields).toHaveLength(5);
+    expect(fields).toEqual(
+      expect.arrayContaining(['news', 'research', 'sentiment', 'social', 'regulatory', 'derivatives']),
+    );
+    expect(fields).toHaveLength(6);
   });
 
   it('returns empty for portfolio-only capabilities', () => {

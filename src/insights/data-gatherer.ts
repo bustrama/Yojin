@@ -571,6 +571,7 @@ const BATCH_ENRICH_DEFAULT_FIELDS: EnrichmentField[] = [
   'regulatory',
   'technicals',
   'sentiment',
+  'social',
   'news',
   'research',
   'institutionalHoldings',

@@ -48,7 +48,7 @@ import type { Signal } from './signals/types.js';
 import { snapFromInsight } from './snap/snap-from-insight.js';
 import { snapFromMicro } from './snap/snap-from-micro.js';
 import type { SnapStore } from './snap/snap-store.js';
-import { generateActionReasoning } from './strategies/action-reasoning.js';
+import { computePositionSizing, generateActionReasoning } from './strategies/action-reasoning.js';
 import { capabilitiesToEnrichmentFields, deriveCapabilities } from './strategies/capabilities.js';
 import { formatTriggerContext } from './strategies/format-trigger-context.js';
 import { buildPortfolioContext, buildSingleTickerContext } from './strategies/portfolio-context-builder.js';
@@ -564,7 +564,7 @@ export class Scheduler {
       // Adaptive per-asset enrichment shape:
       //  - LLM-ready → full enrichment bundle + LLM narration + trigger eval
       //  - LLM-throttled → baseline fields (+ strategy-derived fields if active) + trigger eval, no LLM
-      const MICRO_BASELINE_FIELDS: EnrichmentField[] = ['market', 'technicals', 'sentiment', 'news'];
+      const MICRO_BASELINE_FIELDS: EnrichmentField[] = ['market', 'technicals', 'sentiment', 'social', 'news'];
 
       const now = Date.now();
       const llmReadySet = new Set(
@@ -1264,13 +1264,21 @@ export class Scheduler {
     const expiresAt = new Date(Date.now() + ACTION_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
     const now = new Date().toISOString();
 
+    // Compute total portfolio value for position sizing
+    const snapshot = await this.snapshotStore?.getLatest();
+    const totalPortfolioValue = snapshot?.totalValue ?? 0;
+
     for (const evaluation of evaluations) {
       const ticker = evaluation.context.ticker as string | undefined;
       const entityContext = ticker ? entityByTicker?.get(ticker) : undefined;
+      const currentPrice = entityContext?.entity.market?.quote?.price;
+      const sizing = computePositionSizing(evaluation.context, currentPrice, totalPortfolioValue);
+
       const { headline, verdict, reasoning } = await generateActionReasoning(
         evaluation,
         this.providerRouter ?? null,
         entityContext,
+        sizing,
       );
 
       const contextParts = formatTriggerContext(evaluation.context);
@@ -1287,6 +1295,9 @@ export class Scheduler {
         tickers: ticker ? [ticker] : [],
         riskContext: contextParts.join('\n'),
         triggerStrength: evaluation.triggerStrength,
+        suggestedQuantity: sizing?.suggestedQuantity,
+        suggestedValue: sizing?.suggestedValue,
+        currentPrice: sizing?.currentPrice,
         status: 'PENDING',
         expiresAt,
         createdAt: now,
