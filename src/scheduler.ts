@@ -19,7 +19,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { Entity, JintelClient } from '@yojinhq/jintel-client';
+import type { EnrichmentField, Entity, JintelClient } from '@yojinhq/jintel-client';
 import { z } from 'zod';
 
 import type { ActionStore } from './actions/action-store.js';
@@ -49,6 +49,7 @@ import { snapFromInsight } from './snap/snap-from-insight.js';
 import { snapFromMicro } from './snap/snap-from-micro.js';
 import type { SnapStore } from './snap/snap-store.js';
 import { generateActionReasoning } from './strategies/action-reasoning.js';
+import { capabilitiesToEnrichmentFields, deriveCapabilities } from './strategies/capabilities.js';
 import { formatTriggerContext } from './strategies/format-trigger-context.js';
 import { buildPortfolioContext, buildSingleTickerContext } from './strategies/portfolio-context-builder.js';
 import type { PortfolioContext, StrategyEvaluator } from './strategies/strategy-evaluator.js';
@@ -560,21 +561,45 @@ export class Scheduler {
         return;
       }
 
-      // LLM interval gate: even when new signals exist, don't re-analyze an asset
-      // more often than microLlmIntervalMs. This bounds LLM spend on busy news days.
+      // Adaptive per-asset shape:
+      //  - LLM-ready (4h elapsed)  → full enrichment bundle + LLM narration + trigger eval
+      //  - LLM-throttled + active strategies → narrow enrichment (only sub-graphs triggers read) + trigger eval, no LLM
+      //  - LLM-throttled + no strategies → skip (nothing to do this cycle, honors lastMicroAt stamp)
       const now = Date.now();
-      const assetsReadyForLlm = assetsWithNewSignals.filter((asset) => {
-        const state = this.microRegistry.get(asset.symbol);
-        if (!state?.lastLlmAt) return true; // never analyzed — always eligible
-        return now - new Date(state.lastLlmAt).getTime() >= this.microLlmIntervalMs;
-      });
+      const llmReadySet = new Set(
+        assetsWithNewSignals
+          .filter((asset) => {
+            const state = this.microRegistry.get(asset.symbol);
+            if (!state?.lastLlmAt) return true;
+            return now - new Date(state.lastLlmAt).getTime() >= this.microLlmIntervalMs;
+          })
+          .map((a) => a.symbol),
+      );
 
-      if (assetsReadyForLlm.length === 0) {
-        logger.debug('Micro research skipped — LLM interval not elapsed for batch', {
+      const activeStrategies = this.strategyEvaluator?.getActiveStrategies() ?? [];
+      const triggerFields: EnrichmentField[] | null = (() => {
+        if (activeStrategies.length === 0) return null;
+        const caps = deriveCapabilities(activeStrategies.flatMap((s) => s.triggerGroups));
+        const fields = capabilitiesToEnrichmentFields(caps);
+        // Baseline: always include `market` so the Entity has a quote for supersede / context building.
+        return fields.length > 0 ? fields : (['market'] satisfies EnrichmentField[]);
+      })();
+
+      // Build the per-asset job list. An asset is skipped entirely only when
+      // LLM is throttled AND no strategies would consume a trigger-only fetch.
+      const scheduled = assetsWithNewSignals
+        .map((asset) => {
+          const readyForLlm = llmReadySet.has(asset.symbol);
+          if (!readyForLlm && !triggerFields) return null;
+          return { asset, readyForLlm };
+        })
+        .filter((x): x is { asset: (typeof assetsWithNewSignals)[number]; readyForLlm: boolean } => x !== null);
+
+      if (scheduled.length === 0) {
+        logger.debug('Micro research skipped — LLM throttled and no active strategies', {
           symbols: assetsWithNewSignals.map((a) => a.symbol),
           microLlmIntervalMs: this.microLlmIntervalMs,
         });
-        // Mark all assets with new signals as completed today — they were processed, just throttled.
         for (const asset of assetsWithNewSignals) {
           const state = this.microRegistry.get(asset.symbol);
           if (state) state.completedToday = true;
@@ -582,23 +607,23 @@ export class Scheduler {
         return;
       }
 
-      logger.debug('Micro research LLM gate', {
+      logger.debug('Micro research adaptive gate', {
         withNewSignals: assetsWithNewSignals.length,
-        readyForLlm: assetsReadyForLlm.length,
-        symbols: assetsReadyForLlm.map((a) => a.symbol),
+        llmReady: [...llmReadySet],
+        triggerOnly: scheduled.filter((s) => !s.readyForLlm).map((s) => s.asset.symbol),
+        triggerFields: triggerFields ?? undefined,
       });
 
-      // Run micro research in parallel (up to MAX_MICRO_CONCURRENCY)
       // Note: getJintelClient/signalIngestor are omitted from the top-level deps
       // (so runMicroResearch won't re-fetch signals per ticker — already batch-fetched above).
-      // getJintelClient IS passed in briefOptions so buildSingleBrief can enrich entities
-      // for fundamentals, risk, technicals etc. that signals alone don't provide.
+      // getJintelClient IS passed in briefOptions so buildSingleBriefEnriched can enrich entities.
       const results = await Promise.allSettled(
-        assetsReadyForLlm.map((asset) => {
+        scheduled.map(({ asset, readyForLlm }) => {
           const isFirstRun = preFetchAt.get(asset.symbol) === null;
           return runMicroResearch(asset.symbol, asset.source, {
             providerRouter,
             microInsightStore,
+            runLlm: readyForLlm,
             briefOptions: {
               snapshotStore,
               signalArchive: archive,
@@ -606,6 +631,9 @@ export class Scheduler {
               memoryStores: this.memoryStores ?? new Map(),
               profileStore: this.profileStore,
               signalsSince: isFirstRun ? fourDaysAgo : oneDayAgo,
+              // Narrow the Jintel payload when we're only evaluating triggers —
+              // skip news/research/filings/ownership unless the LLM will read them.
+              enrichFields: readyForLlm ? undefined : (triggerFields ?? undefined),
             },
             eventLog: this.eventLog,
           });
@@ -618,30 +646,42 @@ export class Scheduler {
         return;
       }
 
-      // Update registry timestamps and mark completed today
+      // Update registry timestamps, collect insights, and build trigger inputs from every enriched result.
       const microInsights: MicroInsight[] = [];
+      const microStrategyInputs: Array<{ symbol: string; entity: Entity; signals: Signal[] }> = [];
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
-        const asset = assetsReadyForLlm[i];
-        if (!result || !asset) continue;
+        const entry = scheduled[i];
+        if (!result || !entry) continue;
+        const { asset, readyForLlm } = entry;
         const symbol = asset.symbol;
 
-        if (result.status === 'fulfilled' && result.value.insight) {
-          const state = this.microRegistry.get(symbol);
-          if (state) {
-            state.lastLlmAt = new Date().toISOString();
-            state.completedToday = true;
-          }
+        if (result.status === 'rejected') {
+          logger.error('Micro research failed', { symbol, error: String(result.reason) });
+          continue;
+        }
 
+        const state = this.microRegistry.get(symbol);
+        if (state) state.completedToday = true;
+
+        if (result.value.insight) {
+          if (state) state.lastLlmAt = new Date().toISOString();
           microInsights.push(result.value.insight);
-
           logger.info('Micro research complete', {
             symbol,
             rating: result.value.insight.rating,
             durationMs: result.value.durationMs,
           });
-        } else if (result.status === 'rejected') {
-          logger.error('Micro research failed', { symbol, error: String(result.reason) });
+        } else if (readyForLlm) {
+          logger.warn('Micro research LLM path returned no insight', { symbol });
+        }
+
+        if (result.value.entity) {
+          microStrategyInputs.push({
+            symbol,
+            entity: result.value.entity,
+            signals: result.value.signals ?? [],
+          });
         }
       }
 
@@ -651,19 +691,8 @@ export class Scheduler {
         await this.persistMicroSummaries(microInsights);
       }
 
-      // Evaluate per-asset strategy triggers for tickers that completed micro research
-      const microStrategyInputs = [];
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        const asset = assetsReadyForLlm[i];
-        if (result?.status === 'fulfilled' && result.value.entity && asset) {
-          microStrategyInputs.push({
-            symbol: asset.symbol,
-            entity: result.value.entity,
-            signals: result.value.signals ?? [],
-          });
-        }
-      }
+      // Evaluate per-asset strategy triggers — fires for every asset we enriched,
+      // whether or not the LLM also ran.
       if (microStrategyInputs.length > 0) {
         logger.debug('Evaluating micro strategy triggers', {
           symbols: microStrategyInputs.map((i) => i.symbol),
