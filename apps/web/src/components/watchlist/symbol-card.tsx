@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { SymbolLogo } from '../common/symbol-logo';
 import Button from '../common/button';
 import { cn } from '../../lib/utils';
-import { formatPrice } from '../../lib/format';
+import { formatSharePrice } from '../../lib/format';
 import { getMarketElapsedMinutes } from '../../hooks/use-market-status';
 import type { WatchlistEntry } from '../../api';
 import type { MarketStatus } from '../../hooks/use-market-status';
@@ -232,7 +232,7 @@ export function SymbolCard({ entry, onRemove, onSelect, removing, marketStatus }
           {hasQuote ? (
             <div className="text-right">
               <span className="text-lg font-semibold tabular-nums text-text-primary">
-                {formatPrice(entry.price ?? 0)}
+                {formatSharePrice(entry.price ?? 0)}
               </span>
               <div className="flex items-center justify-end gap-1">
                 <span
@@ -259,7 +259,9 @@ export function SymbolCard({ entry, onRemove, onSelect, removing, marketStatus }
             <span className="rounded bg-bg-tertiary px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider text-text-muted">
               {extended.label}
             </span>
-            <span className="text-2xs font-medium tabular-nums text-text-secondary">{formatPrice(extended.price)}</span>
+            <span className="text-2xs font-medium tabular-nums text-text-secondary">
+              {formatSharePrice(extended.price)}
+            </span>
             <span
               className={cn(
                 'text-2xs font-medium tabular-nums',
