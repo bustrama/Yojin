@@ -40,10 +40,14 @@ interface ActionGql {
   verdict: ActionVerdict;
   what: string;
   why: string;
+  sizeGuidance: string | null;
   tickers: string[];
   riskContext: string | null;
   severity: number | null;
   triggerStrength: TriggerStrength;
+  suggestedQuantity: number | null;
+  suggestedValue: number | null;
+  currentPrice: number | null;
   severityLabel: string;
   status: ActionStatus;
   expiresAt: string;
@@ -63,10 +67,14 @@ function toGql(action: Action): ActionGql {
     verdict: action.verdict,
     what: action.what,
     why: action.why,
+    sizeGuidance: action.sizeGuidance ?? null,
     tickers: action.tickers ?? [],
     riskContext: action.riskContext ?? null,
     severity: action.severity ?? null,
     triggerStrength: action.triggerStrength,
+    suggestedQuantity: action.suggestedQuantity ?? null,
+    suggestedValue: action.suggestedValue ?? null,
+    currentPrice: action.currentPrice ?? null,
     severityLabel: deriveSeverityLabel(action.severity),
     status: action.status,
     expiresAt: action.expiresAt,

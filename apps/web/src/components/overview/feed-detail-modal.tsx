@@ -48,13 +48,14 @@ export interface FeedDetailData {
   recommendation?: string;
   relatedTickers?: string[];
   signals?: FeedSignalLink[];
-  verdict?: 'BUY' | 'SELL';
+  verdict?: 'BUY' | 'SELL' | 'REVIEW';
   /** Action-specific fields */
   actionMeta?: {
     strategyName: string | null;
     severity: string;
     riskContext: string | null;
     expiresAt: string;
+    sizeGuidance: string | null;
     suggestedQuantity?: number | null;
     suggestedValue?: number | null;
     currentPrice?: number | null;
@@ -194,7 +195,8 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
               <div>
                 <span className="text-2xs font-semibold uppercase tracking-wider opacity-70">Suggested</span>
                 <p className="text-lg font-bold leading-tight">
-                  {data.verdict === 'SELL' ? 'Sell' : 'Buy'} {data.actionMeta.suggestedQuantity} shares
+                  {data.verdict === 'BUY' ? 'Buy' : data.verdict === 'SELL' ? 'Sell' : 'Review'}{' '}
+                  {data.actionMeta.suggestedQuantity} shares
                 </p>
               </div>
               <div className="text-right">
@@ -226,6 +228,12 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
               <span className="text-3xs font-semibold uppercase tracking-wider text-text-muted">Expires</span>
               <p className="mt-0.5 text-xs text-text-primary">{timeUntil(data.actionMeta.expiresAt)}</p>
             </div>
+            {data.actionMeta.sizeGuidance && (
+              <div className="col-span-2">
+                <span className="text-3xs font-semibold uppercase tracking-wider text-text-muted">Size</span>
+                <p className="mt-0.5 text-xs text-text-primary">{data.actionMeta.sizeGuidance}</p>
+              </div>
+            )}
           </div>
           {data.actionMeta.riskContext && (
             <div className="mt-3 rounded-lg border border-border-light bg-bg-primary/50 px-3 py-2">

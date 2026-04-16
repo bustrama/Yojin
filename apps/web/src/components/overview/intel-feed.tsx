@@ -63,7 +63,8 @@ interface IntelFeedItem {
   link: string | null;
   data?: DataRow[];
   isAction?: boolean;
-  verdict?: 'BUY' | 'SELL';
+  verdict?: 'BUY' | 'SELL' | 'REVIEW';
+  sizeGuidance?: string;
   triggerStrength?: TriggerStrength;
   strategyName?: string;
   riskContext?: string;
@@ -268,7 +269,11 @@ function IntelFeedCard({
               <span
                 className={cn(
                   'mb-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider',
-                  item.verdict === 'BUY' ? 'bg-success/15 text-success' : 'bg-error/15 text-error',
+                  item.verdict === 'BUY'
+                    ? 'bg-success/15 text-success'
+                    : item.verdict === 'SELL'
+                      ? 'bg-error/15 text-error'
+                      : 'bg-info/15 text-info',
                 )}
               >
                 {item.verdict}
@@ -321,6 +326,22 @@ function IntelFeedCard({
           <div className="px-3 pb-3 pt-0.5">
             {item.description && (
               <p className="line-clamp-3 text-xs leading-relaxed text-text-secondary">{item.description}</p>
+            )}
+
+            {item.sizeGuidance && (
+              <div
+                className={cn(
+                  'mt-2 rounded-md border px-2.5 py-1.5 text-xs font-medium',
+                  item.verdict === 'BUY'
+                    ? 'border-success/30 bg-success/10 text-success'
+                    : item.verdict === 'SELL'
+                      ? 'border-error/30 bg-error/10 text-error'
+                      : 'border-border-light bg-bg-primary/50 text-text-secondary',
+                )}
+              >
+                <span className="mr-1.5 text-2xs font-bold uppercase tracking-wider opacity-70">Size</span>
+                {item.sizeGuidance}
+              </div>
             )}
 
             {/* Meta row */}
@@ -518,7 +539,7 @@ function IntelFeedContent({
     unseenImportantRef.current = unseenImportantIds;
   }, [unseenImportantIds]);
 
-  const [{ data: schedulerData }] = useQuery<SchedulerStatusQueryResult>({
+  const [{ data: schedulerData }, reexecuteScheduler] = useQuery<SchedulerStatusQueryResult>({
     query: SCHEDULER_STATUS_QUERY,
     requestPolicy: 'cache-and-network',
   });
@@ -564,9 +585,10 @@ function IntelFeedContent({
     const id = setInterval(() => {
       reexecute({ requestPolicy: 'network-only' });
       reexecuteActions({ requestPolicy: 'network-only' });
+      reexecuteScheduler({ requestPolicy: 'network-only' });
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [reexecute, reexecuteActions]);
+  }, [reexecute, reexecuteActions, reexecuteScheduler]);
 
   // Map API data into IntelFeedItem[]
   const items: IntelFeedItem[] = useMemo(() => {
@@ -640,6 +662,7 @@ function IntelFeedContent({
       strategyName: action.strategyName,
       riskContext: action.riskContext ?? undefined,
       expiresAt: action.expiresAt,
+      sizeGuidance: action.sizeGuidance ?? undefined,
       suggestedQuantity: action.suggestedQuantity,
       suggestedValue: action.suggestedValue,
       currentPrice: action.currentPrice,
@@ -871,9 +894,11 @@ function IntelFeedContent({
           ? 'success'
           : item.verdict === 'SELL'
             ? 'error'
-            : item.type === 'alert'
-              ? 'warning'
-              : 'success',
+            : item.verdict === 'REVIEW'
+              ? 'info'
+              : item.type === 'alert'
+                ? 'warning'
+                : 'success',
       sentiment:
         item.sentiment === 'bullish' || item.sentiment === 'bearish' || item.sentiment === 'neutral'
           ? item.sentiment
@@ -893,6 +918,7 @@ function IntelFeedContent({
             severity: item.severity,
             riskContext: item.riskContext ?? null,
             expiresAt: item.expiresAt ?? '',
+            sizeGuidance: item.sizeGuidance ?? null,
             suggestedQuantity: item.suggestedQuantity,
             suggestedValue: item.suggestedValue,
             currentPrice: item.currentPrice,
@@ -952,6 +978,23 @@ function IntelFeedContent({
               </button>
             ))}
           </div>
+
+          {(() => {
+            const s = schedulerData?.schedulerStatus;
+            if (!s?.lastLlmError || !s.lastLlmErrorAt) return null;
+            if (s.lastLlmSuccessAt && s.lastLlmErrorAt <= s.lastLlmSuccessAt) return null;
+            return (
+              <div className="mx-4 mt-2 mb-1 flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-[11px] text-warning">
+                <span className="mt-px shrink-0">⚠</span>
+                <span>
+                  AI analysis paused — credentials may be invalid.{' '}
+                  <Link to="/settings#ai-provider" className="underline hover:text-text-primary">
+                    Check Settings
+                  </Link>
+                </span>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Scrollable content */}
