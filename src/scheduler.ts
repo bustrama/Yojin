@@ -1274,12 +1274,8 @@ export class Scheduler {
       const currentPrice = entityContext?.entity.market?.quote?.price;
       const sizing = computePositionSizing(evaluation.context, currentPrice, totalPortfolioValue);
 
-      const { headline, verdict, reasoning } = await generateActionReasoning(
-        evaluation,
-        this.providerRouter ?? null,
-        entityContext,
-        sizing,
-      );
+      const { headline, verdict, reasoning, entryRange, targetPrice, stopLoss, horizon, conviction } =
+        await generateActionReasoning(evaluation, this.providerRouter ?? null, entityContext, sizing);
 
       const contextParts = formatTriggerContext(evaluation.context);
 
@@ -1298,6 +1294,11 @@ export class Scheduler {
         suggestedQuantity: sizing?.suggestedQuantity,
         suggestedValue: sizing?.suggestedValue,
         currentPrice: sizing?.currentPrice,
+        entryRange,
+        targetPrice,
+        stopLoss,
+        horizon,
+        conviction,
         status: 'PENDING',
         expiresAt,
         createdAt: now,

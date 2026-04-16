@@ -1633,6 +1633,11 @@ export const ACTION_FIELDS = gql`
     suggestedQuantity
     suggestedValue
     currentPrice
+    entryRange
+    targetPrice
+    stopLoss
+    horizon
+    conviction
     severityLabel
     status
     expiresAt
