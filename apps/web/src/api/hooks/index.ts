@@ -42,6 +42,7 @@ export {
   useStrategies,
   useStrategy,
   useExportStrategy,
+  useSuggestTickersForStrategy,
   useToggleStrategy,
   useCreateStrategy,
   useUpdateStrategy,

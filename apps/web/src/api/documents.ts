@@ -1511,6 +1511,18 @@ export const EXPORT_STRATEGY_QUERY = gql`
   }
 `;
 
+export const SUGGEST_TICKERS_FOR_STRATEGY_QUERY = gql`
+  query SuggestTickersForStrategy($id: ID!) {
+    suggestTickersForStrategy(id: $id) {
+      symbol
+      name
+      assetClass
+      rationale
+      confidence
+    }
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // Mutations — Strategies
 // ---------------------------------------------------------------------------

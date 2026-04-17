@@ -5,6 +5,7 @@ import {
   STRATEGIES_QUERY,
   STRATEGY_QUERY,
   EXPORT_STRATEGY_QUERY,
+  SUGGEST_TICKERS_FOR_STRATEGY_QUERY,
   TOGGLE_STRATEGY_MUTATION,
   CREATE_STRATEGY_MUTATION,
   UPDATE_STRATEGY_MUTATION,
@@ -21,6 +22,8 @@ import type {
   StrategiesQueryVariables,
   StrategyQueryResult,
   ExportStrategyQueryResult,
+  SuggestTickersForStrategyResult,
+  SuggestTickersForStrategyVariables,
   ToggleStrategyMutationResult,
   CreateStrategyMutationResult,
   UpdateStrategyMutationResult,
@@ -51,6 +54,20 @@ export function useExportStrategy() {
     [client],
   );
   return exportStrategy;
+}
+
+export function useSuggestTickersForStrategy() {
+  const client = useClient();
+  return useCallback(
+    (variables: SuggestTickersForStrategyVariables) =>
+      client
+        .query<
+          SuggestTickersForStrategyResult,
+          SuggestTickersForStrategyVariables
+        >(SUGGEST_TICKERS_FOR_STRATEGY_QUERY, variables, { requestPolicy: 'network-only' })
+        .toPromise(),
+    [client],
+  );
 }
 
 export function useToggleStrategy() {

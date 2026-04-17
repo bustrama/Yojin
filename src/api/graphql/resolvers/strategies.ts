@@ -2,20 +2,44 @@
  * GraphQL resolvers for Strategies — trading strategy management.
  */
 
+import type { JintelClient } from '@yojinhq/jintel-client';
+
+import { createSubsystemLogger } from '../../../logging/logger.js';
+import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import { DataCapabilitySchema, deriveCapabilities } from '../../../strategies/capabilities.js';
 import { parseFromMarkdown, serializeToMarkdown, slugify } from '../../../strategies/strategy-serializer.js';
 import type { StrategyStore } from '../../../strategies/strategy-store.js';
+import type { TickerSuggester, TickerSuggestion } from '../../../strategies/ticker-suggester.js';
 import { StrategyStyleSchema, TargetWeightsSchema, TriggerTypeSchema } from '../../../strategies/types.js';
 import type { Strategy, StrategyCategory, StrategyStyle, TargetWeights } from '../../../strategies/types.js';
+import type { WatchlistStore } from '../../../watchlist/watchlist-store.js';
+
+const log = createSubsystemLogger('strategy-resolver');
 
 // ---------------------------------------------------------------------------
 // State — wired by composition root
 // ---------------------------------------------------------------------------
 
 let strategyStore: StrategyStore | null = null;
+let tickerSuggester: TickerSuggester | null = null;
+let portfolioSnapshotStore: PortfolioSnapshotStore | null = null;
+let watchlistStore: WatchlistStore | null = null;
+let suggestionJintelClient: JintelClient | null = null;
 
 export function setStrategyStore(store: StrategyStore): void {
   strategyStore = store;
+}
+
+export function setStrategySuggestionDeps(deps: {
+  tickerSuggester: TickerSuggester;
+  snapshotStore: PortfolioSnapshotStore;
+  watchlistStore: WatchlistStore;
+  jintelClient: JintelClient | undefined;
+}): void {
+  tickerSuggester = deps.tickerSuggester;
+  portfolioSnapshotStore = deps.snapshotStore;
+  watchlistStore = deps.watchlistStore;
+  suggestionJintelClient = deps.jintelClient ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +102,88 @@ export function resolveExportStrategy(_: unknown, args: { id: string }): string 
   const strategy = strategyStore.getById(args.id);
   if (!strategy) throw new Error(`Strategy not found: ${args.id}`);
   return serializeToMarkdown(strategy);
+}
+
+export async function resolveSuggestTickersForStrategy(_: unknown, args: { id: string }): Promise<unknown[]> {
+  if (!strategyStore) throw new Error('Strategy store not initialized');
+  if (!tickerSuggester || !portfolioSnapshotStore) {
+    throw new Error('Ticker suggester not configured — AI provider or portfolio store missing');
+  }
+  const strategy = strategyStore.getById(args.id);
+  if (!strategy) throw new Error(`Strategy not found: ${args.id}`);
+
+  const exclude = new Set<string>();
+  const snapshot = await portfolioSnapshotStore.getLatest();
+  for (const position of snapshot?.positions ?? []) {
+    exclude.add(position.symbol.toUpperCase());
+  }
+  // Also exclude anything already on the watchlist so we don't re-propose it.
+  for (const entry of watchlistStore?.list() ?? []) {
+    exclude.add(entry.symbol.toUpperCase());
+  }
+
+  const suggestions = await tickerSuggester.suggest({ strategy, excludeSymbols: exclude });
+  return verifySuggestions(suggestions);
+}
+
+/**
+ * Verify LLM-proposed tickers against Jintel before returning them to the UI.
+ * The LLM can hallucinate symbols or mislabel asset classes; the watchlist and
+ * downstream enrichment pipelines trust what we write. Only keep suggestions
+ * whose symbol resolves to a real Jintel entity, and replace the LLM-supplied
+ * name / assetClass with the canonical values from Jintel.
+ */
+async function verifySuggestions(suggestions: TickerSuggestion[]): Promise<TickerSuggestion[]> {
+  if (suggestions.length === 0) return [];
+  if (!suggestionJintelClient) {
+    log.warn('Ticker suggestions dropped — Jintel client not configured for verification');
+    return [];
+  }
+  const client = suggestionJintelClient;
+
+  const verified = await Promise.all(
+    suggestions.map(async (suggestion) => {
+      const symbol = suggestion.symbol.toUpperCase();
+      const result = await client.searchEntities(symbol, { limit: 5 }).catch((err: unknown) => {
+        log.warn('Jintel searchEntities failed during suggestion verification', {
+          symbol,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return { success: false as const, error: 'searchEntities threw', data: [] as never[] };
+      });
+      if (!result.success) return null;
+
+      const match = result.data.find((entity) => (entity.tickers ?? []).some((t) => t.toUpperCase() === symbol));
+      if (!match) return null;
+
+      const assetClass = jintelTypeToAssetClass(match.type);
+      if (!assetClass) return null;
+      const parsed = match.tickers?.find((t) => t.toUpperCase() === symbol) ?? symbol;
+      return {
+        ...suggestion,
+        symbol: parsed.toUpperCase(),
+        name: match.name || suggestion.name,
+        assetClass,
+      } as TickerSuggestion;
+    }),
+  );
+
+  return verified.filter((s): s is TickerSuggestion => s !== null);
+}
+
+/** Map Jintel EntityType → our AssetClass. Returns null for non-investable types (e.g. PERSON). */
+function jintelTypeToAssetClass(type: string): TickerSuggestion['assetClass'] | null {
+  switch (type) {
+    case 'CRYPTO':
+      return 'CRYPTO';
+    case 'COMMODITY':
+      return 'COMMODITY';
+    case 'COMPANY':
+    case 'INDEX':
+      return 'EQUITY';
+    default:
+      return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

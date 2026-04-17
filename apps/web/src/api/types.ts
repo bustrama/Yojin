@@ -1431,6 +1431,22 @@ export interface ExportStrategyQueryResult {
   exportStrategy: string;
 }
 
+export interface TickerSuggestion {
+  symbol: string;
+  name: string;
+  assetClass: AssetClass;
+  rationale: string;
+  confidence: number;
+}
+
+export interface SuggestTickersForStrategyResult {
+  suggestTickersForStrategy: TickerSuggestion[];
+}
+
+export interface SuggestTickersForStrategyVariables {
+  id: string;
+}
+
 export interface ToggleStrategyMutationResult {
   toggleStrategy: { id: string; active: boolean };
 }
