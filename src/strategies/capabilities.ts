@@ -121,7 +121,7 @@ const CAPABILITY_TO_FIELDS: Record<DataCapability, readonly EnrichmentField[]> =
   news: ['news'],
   research: ['research'],
   sentiment: ['sentiment', 'social'],
-  filings: ['regulatory'],
+  filings: ['regulatory', 'insiderTrades', 'earningsPressReleases'],
   derivatives: ['derivatives'],
   portfolio: [],
   macro_data: [],

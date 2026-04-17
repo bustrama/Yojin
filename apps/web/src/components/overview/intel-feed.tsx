@@ -228,11 +228,11 @@ function TradeParamChip({
   bold?: boolean;
 }) {
   return (
-    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+    <span className="flex min-w-0 items-baseline gap-1">
       <span className="text-3xs font-semibold uppercase tracking-wider text-text-muted">{label}</span>
       <span
         className={cn(
-          'text-2xs',
+          'min-w-0 break-words text-2xs',
           bold && 'font-semibold',
           variant === 'success' && 'text-success',
           variant === 'error' && 'text-error',
