@@ -39,6 +39,7 @@ import {
   setTriggerMicroAnalysis,
   setTriggerStrategyEvaluation,
 } from '../api/graphql/resolvers/scheduler.js';
+import { setStrategySuggestionDeps } from '../api/graphql/resolvers/strategies.js';
 import { setWatchlistChangedCallback } from '../api/graphql/resolvers/watchlist.js';
 import { buildContext } from '../composition.js';
 import { AgentRuntime } from '../core/agent-runtime.js';
@@ -261,6 +262,15 @@ async function startGateway(): Promise<void> {
       memoryStores: services.memoryStores,
       profileStore: services.profileStore,
     },
+  });
+
+  // Wire LLM-powered ticker suggester for strategy activation modal
+  const { TickerSuggester } = await import('../strategies/ticker-suggester.js');
+  setStrategySuggestionDeps({
+    tickerSuggester: new TickerSuggester(providerRouter),
+    snapshotStore: services.snapshotStore,
+    watchlistStore: services.watchlistStore,
+    jintelClient: services.jintelToolOptions.client,
   });
 
   // Register full-curation workflow (Tier 1 + Tier 2) for the UI button

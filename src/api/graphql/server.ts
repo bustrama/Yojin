@@ -130,6 +130,7 @@ import {
   resolveImportStrategy,
   resolveStrategies,
   resolveStrategy,
+  resolveSuggestTickersForStrategy,
   resolveToggleStrategy,
   resolveUpdateStrategy,
 } from './resolvers/strategies.js';
@@ -208,6 +209,7 @@ const schema = createSchema({
       strategies: resolveStrategies,
       strategy: resolveStrategy,
       exportStrategy: resolveExportStrategy,
+      suggestTickersForStrategy: resolveSuggestTickersForStrategy,
       strategySources: resolveStrategySources,
       tickerProfile: tickerProfileQuery,
       tickerProfiles: tickerProfilesQuery,

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 import StrategyCard from './strategy-card.js';
 import StrategyDetailModal from './strategy-detail-modal.js';
+import StrategyTickerSuggestionsModal from './strategy-ticker-suggestions-modal.js';
 import Spinner from '../common/spinner.js';
 import Modal from '../common/modal.js';
 import { useStrategies, useToggleStrategy } from '../../api/hooks/index.js';
@@ -27,6 +28,7 @@ export default function ActiveRulesView() {
   const [categoryFilter, setCategoryFilter] = useState<StrategyCategory | 'ALL'>('ALL');
   const [pendingActivation, setPendingActivation] = useState<Strategy | null>(null);
   const [disclaimerAcked, setDisclaimerAcked] = useState(false);
+  const [suggestionsFor, setSuggestionsFor] = useState<{ id: string; name: string } | null>(null);
 
   const strategies = useMemo(() => result.data?.strategies ?? [], [result.data?.strategies]);
 
@@ -52,7 +54,12 @@ export default function ActiveRulesView() {
 
   async function activate(id: string) {
     const res = await toggleStrategy({ id, active: true });
-    if (res.error) setToggleError(res.error.message);
+    if (res.error) {
+      setToggleError(res.error.message);
+      return;
+    }
+    const strategy = strategies.find((s) => s.id === id);
+    if (strategy) setSuggestionsFor({ id: strategy.id, name: strategy.name });
   }
 
   async function handleToggle(id: string, newActive: boolean) {
@@ -192,6 +199,15 @@ export default function ActiveRulesView() {
           open={!!selectedStrategy}
           strategyId={selectedStrategy.id}
           onClose={() => setSelectedStrategy(null)}
+        />
+      )}
+
+      {suggestionsFor && (
+        <StrategyTickerSuggestionsModal
+          key={suggestionsFor.id}
+          strategyId={suggestionsFor.id}
+          strategyName={suggestionsFor.name}
+          onClose={() => setSuggestionsFor(null)}
         />
       )}
 

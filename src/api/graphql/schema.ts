@@ -1262,6 +1262,18 @@ export const typeDefs = /* GraphQL */ `
     targetWeights: String
   }
 
+  """
+  LLM-proposed ticker for a strategy. Not yet added to the watchlist — the UI
+  shows these in a modal for the user to pick which ones to add.
+  """
+  type TickerSuggestion {
+    symbol: String!
+    name: String!
+    assetClass: AssetClass!
+    rationale: String!
+    confidence: Float!
+  }
+
   # ---------------------------------------------------------------------------
   # Strategy Sources
   # ---------------------------------------------------------------------------
@@ -1368,6 +1380,11 @@ export const typeDefs = /* GraphQL */ `
     strategies(category: StrategyCategory, active: Boolean, style: StrategyStyle, query: String): [Strategy!]!
     strategy(id: ID!): Strategy
     exportStrategy(id: ID!): String!
+    """
+    Ask the LLM to propose 5-15 tickers for a strategy, excluding anything already in the portfolio.
+    Used by the frontend to offer "add to watchlist" picks when a user activates a strategy.
+    """
+    suggestTickersForStrategy(id: ID!): [TickerSuggestion!]!
     strategySources: [StrategySource!]!
     tickerProfile(ticker: String!): TickerProfile
     tickerProfiles(tickers: [String!]!): [TickerProfile!]!
