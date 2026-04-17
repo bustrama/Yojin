@@ -9,6 +9,7 @@ import type {
   EconomicDataPoint,
   EnrichOptions,
   Entity,
+  InsiderTrade,
   JintelClient,
   SP500DataPoint,
   Social,
@@ -56,6 +57,8 @@ const ENRICHMENT_FIELDS = [
   'institutionalHoldings',
   'ownership',
   'topHolders',
+  'insiderTrades',
+  'earningsPressReleases',
 ] as const;
 
 // Reddit-owned domains — native media/shortlinks, not external articles
@@ -808,6 +811,105 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       tickers,
       confidence: 0.9,
       metadata: { holderCount: topHolders.length, reportDate: topHolders[0].reportDate },
+    });
+  }
+
+  // 18. Insider trades (Form 4) — aggregate last 30 days into ONE summary signal per ticker.
+  // Equity only; server returns null/empty for crypto/ETF. Skip derivatives (option exercises
+  // are mechanical, not directional). Uses ingestion time (`now`) as publishedAt so the signal
+  // lands in recent-window queries; original filing/transaction dates go in metadata.
+  const insiderTrades = entity.insiderTrades;
+  if (insiderTrades?.length) {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recent = insiderTrades.filter((t) => !t.isDerivative && new Date(t.transactionDate) >= cutoff);
+    if (recent.length > 0) {
+      const buys = recent.filter((t) => t.acquiredDisposed === 'A');
+      const sells = recent.filter((t) => t.acquiredDisposed === 'D');
+      const sumValue = (ts: InsiderTrade[]) =>
+        ts.reduce((sum, t) => sum + (t.transactionValue ?? (t.pricePerShare ?? 0) * t.shares), 0);
+      const buyValue = sumValue(buys);
+      const sellValue = sumValue(sells);
+      const roleSummary = (ts: InsiderTrade[]) => {
+        const officers = ts.filter((t) => t.isOfficer).length;
+        const directors = ts.filter((t) => t.isDirector).length;
+        const owners = ts.filter((t) => t.isTenPercentOwner).length;
+        const parts: string[] = [];
+        if (officers) parts.push(`${officers} officer${officers > 1 ? 's' : ''}`);
+        if (directors) parts.push(`${directors} director${directors > 1 ? 's' : ''}`);
+        if (owners) parts.push(`${owners} 10%-owner${owners > 1 ? 's' : ''}`);
+        return parts.length ? ` (${parts.join(', ')})` : '';
+      };
+      const lines: string[] = [];
+      lines.push(`${buys.length} buy${buys.length === 1 ? '' : 's'} $${formatNumber(buyValue)}${roleSummary(buys)}`);
+      lines.push(
+        `${sells.length} sell${sells.length === 1 ? '' : 's'} $${formatNumber(sellValue)}${roleSummary(sells)}`,
+      );
+      const planned = recent.filter((t) => t.isUnder10b5One).length;
+      if (planned > 0) lines.push(`${planned} under 10b5-1 trading plan`);
+      const topTrades = recent.slice(0, 5).map((t) => {
+        const dir = t.acquiredDisposed === 'A' ? 'BUY' : 'SELL';
+        const val = t.transactionValue ?? (t.pricePerShare ?? 0) * t.shares;
+        return `${t.transactionDate} ${dir}: ${t.reporterName} (${t.officerTitle}) — ${formatNumber(t.shares)} shares, $${formatNumber(val)}`;
+      });
+      if (topTrades.length > 0) {
+        lines.push('');
+        lines.push(...topTrades);
+      }
+      signals.push({
+        sourceId: 'jintel-insider-trades',
+        sourceName: 'Insider Trades (Form 4)',
+        sourceType: SourceType.ENRICHMENT,
+        reliability: 0.95,
+        title: `${entity.name ?? tickers[0]} Insider Trading (30d)`,
+        content: lines.join('\n'),
+        publishedAt: now,
+        type: SignalType.FILINGS,
+        tickers,
+        confidence: 0.9,
+        metadata: {
+          windowDays: 30,
+          buyCount: buys.length,
+          sellCount: sells.length,
+          buyValue,
+          sellValue,
+          latestFilingDate: recent[0].filingDate,
+        },
+      });
+    }
+  }
+
+  // 19. Earnings press releases (8-K EX-99.1) — emit ONE signal per ticker for the latest release.
+  // Stable date-based title + filingDate as publishedAt (exception: filings have a real publish
+  // date that users expect to see anchored in time, per data-layer rules).
+  const earningsReleases = entity.earningsPressReleases;
+  if (earningsReleases?.length) {
+    const latest = earningsReleases[0];
+    const excerpt = latest.excerpt.trim();
+    const lines: string[] = [];
+    lines.push(`Report date: ${latest.reportDate}`);
+    lines.push(`8-K items: ${latest.items}`);
+    if (excerpt) {
+      lines.push('');
+      lines.push(excerpt);
+    }
+    signals.push({
+      sourceId: 'jintel-earnings-press-release',
+      sourceName: 'Earnings Press Release (8-K)',
+      sourceType: SourceType.ENRICHMENT,
+      reliability: 0.95,
+      title: `${entity.name ?? tickers[0]}: Earnings Press Release ${latest.reportDate}`,
+      content: lines.join('\n'),
+      link: latest.pressReleaseUrl ?? latest.filingUrl,
+      publishedAt: latest.filingDate.includes('T') ? latest.filingDate : `${latest.filingDate}T00:00:00Z`,
+      type: SignalType.FILINGS,
+      tickers,
+      confidence: 0.95,
+      metadata: {
+        accessionNumber: latest.accessionNumber,
+        reportDate: latest.reportDate,
+        filingDate: latest.filingDate,
+        items: latest.items,
+      },
     });
   }
 

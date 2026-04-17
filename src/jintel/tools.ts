@@ -9,6 +9,7 @@
 import {
   type ArraySubGraphOptions,
   type DerivativesData,
+  type EarningsPressRelease,
   type EconomicDataPoint,
   type EnrichmentField,
   type Entity,
@@ -23,6 +24,7 @@ import {
   type HackerNewsStory,
   INFLATION,
   INTEREST_RATES,
+  type InsiderTrade,
   type InstitutionalHolding,
   JintelAuthError,
   type JintelClient,
@@ -38,6 +40,7 @@ import {
   SP500SeriesSchema,
   SP500_MULTIPLES,
   type SanctionsMatch,
+  type SegmentRevenue,
   type ShortInterestReport,
   type Social,
   type SocialSentiment,
@@ -101,6 +104,9 @@ const JINTEL_QUERY_KIND = z.enum([
   'institutional_holdings',
   'ownership',
   'top_holders',
+  'insider_trades',
+  'earnings_press_releases',
+  'segmented_revenue',
 ]);
 
 type JintelQueryKind = z.infer<typeof JINTEL_QUERY_KIND>;
@@ -121,6 +127,9 @@ const ENRICHMENT_FIELDS = z.enum([
   'institutionalHoldings',
   'ownership',
   'topHolders',
+  'insiderTrades',
+  'earningsPressReleases',
+  'segmentedRevenue',
 ]);
 
 const SEVERITY_CONFIDENCE: Record<string, number> = {
@@ -385,6 +394,18 @@ function formatEnrichment(entity: Entity): string {
     sections.push(`## Top Institutional Holders\n${formatTopHolders(entity.topHolders)}`);
   }
 
+  if (entity.insiderTrades?.length) {
+    sections.push(`## Insider Trades (Form 4)\n${formatInsiderTrades(entity.insiderTrades)}`);
+  }
+
+  if (entity.earningsPressReleases?.length) {
+    sections.push(`## Earnings Press Releases (8-K)\n${formatEarningsPressReleases(entity.earningsPressReleases)}`);
+  }
+
+  if (entity.segmentedRevenue?.length) {
+    sections.push(`## Segmented Revenue\n${formatSegmentedRevenue(entity.segmentedRevenue)}`);
+  }
+
   // financials & executives are planned jintel-client fields (not yet in Entity type).
   // Access via cast until the client ships these as first-class enrichment fields.
   const ext = entity as Entity & { financials?: FinancialStatements; executives?: KeyExecutive[] };
@@ -576,6 +597,65 @@ function formatTopHolders(holders: TopHolder[]): string {
       return parts.join(' | ');
     })
     .join('\n');
+}
+
+function formatInsiderTrades(trades: InsiderTrade[]): string {
+  if (trades.length === 0) return 'No insider trades available.';
+  return trades
+    .map((t) => {
+      const action =
+        t.acquiredDisposed === 'A' ? 'ACQUIRED' : t.acquiredDisposed === 'D' ? 'DISPOSED' : t.acquiredDisposed;
+      const role =
+        [t.isOfficer ? 'Officer' : null, t.isDirector ? 'Director' : null, t.isTenPercentOwner ? '10% Owner' : null]
+          .filter(Boolean)
+          .join(', ') || 'Insider';
+      const parts = [`${t.transactionDate} ${action} ${formatNumber(t.shares)} × ${t.securityTitle}`];
+      if (t.pricePerShare != null) parts.push(`@$${t.pricePerShare.toFixed(2)}`);
+      if (t.transactionValue != null) parts.push(`value $${formatNumber(t.transactionValue)}`);
+      parts.push(`by ${t.reporterName} (${role}${t.officerTitle ? ` — ${t.officerTitle}` : ''})`);
+      parts.push(`code ${t.transactionCode}`);
+      if (t.isUnder10b5One) parts.push('10b5-1 plan');
+      if (t.isDerivative) parts.push('derivative');
+      parts.push(`ownership ${t.ownershipType === 'D' ? 'direct' : 'indirect'}`);
+      parts.push(`after: ${formatNumber(t.sharesOwnedFollowingTransaction)} shares`);
+      return `- ${parts.join(' | ')}\n  Filed ${t.filingDate} — ${t.filingUrl}`;
+    })
+    .join('\n');
+}
+
+function formatEarningsPressReleases(releases: EarningsPressRelease[]): string {
+  if (releases.length === 0) return 'No earnings press releases available.';
+  return releases
+    .map((r) => {
+      const parts = [`- Report ${r.reportDate} (filed ${r.filingDate}, items ${r.items})`];
+      if (r.excerpt) parts.push(`  ${r.excerpt}`);
+      parts.push(`  Body length: ${formatNumber(r.bodyLength)} chars`);
+      if (r.pressReleaseUrl) parts.push(`  Press release: ${r.pressReleaseUrl}`);
+      parts.push(`  Filing: ${r.filingUrl}`);
+      return parts.join('\n');
+    })
+    .join('\n');
+}
+
+function formatSegmentedRevenue(rows: SegmentRevenue[]): string {
+  if (rows.length === 0) return 'No segmented revenue data available.';
+  const byDimension = new Map<string, SegmentRevenue[]>();
+  for (const row of rows) {
+    const key = `${row.dimension} — ${row.reportDate} (${row.form})`;
+    const bucket = byDimension.get(key) ?? [];
+    bucket.push(row);
+    byDimension.set(key, bucket);
+  }
+  const sections: string[] = [];
+  for (const [key, bucket] of byDimension) {
+    const sorted = [...bucket].sort((a, b) => b.value - a.value);
+    const lines = sorted.map((s) => {
+      const period = s.startDate && s.endDate ? `${s.startDate}→${s.endDate}` : s.reportDate;
+      return `  ${s.segment}: $${formatNumber(s.value)} (${period})`;
+    });
+    sections.push(`### ${key}\n${lines.join('\n')}`);
+  }
+  return sections.join('\n\n');
 }
 
 function formatFactorData(data: FactorDataPoint[], series: string): string {
@@ -1565,15 +1645,127 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
+  const getInsiderTrades: ToolDefinition = {
+    name: 'get_insider_trades',
+    description:
+      'Get recent insider trades (SEC Form 4) for an equity ticker — officers, directors, and 10% owners ' +
+      'reporting share acquisitions/dispositions with transaction codes, prices, and 10b5-1 plan flags.\n\n' +
+      'Equity-only: returns no data for crypto or ETFs. Use when the user asks about insider buying/selling, ' +
+      'CEO/CFO transactions, Form 4 filings, or tracking insider sentiment on a specific stock.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Equity ticker symbol (e.g. AAPL, NVDA, MSFT)'),
+      since: z.string().optional().describe('ISO date — only include transactions filed on/after this date'),
+      until: z.string().optional().describe('ISO date — only include transactions filed on/before this date'),
+      limit: z.number().int().min(1).max(200).optional().describe('Max trades to return (default 20)'),
+    }),
+    async execute(params: { ticker: string; since?: string; until?: string; limit?: number }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const ticker = params.ticker.toUpperCase();
+      const { opts } = buildFilter(params.since, params.limit);
+      if (params.until) opts.until = params.until;
+      const query = buildEnrichQuery(['insiderTrades'] as EnrichmentField[], opts);
+      const vars: Record<string, unknown> = { id: ticker, filter: opts };
+      const result = await safeCall(() => client.request<Entity>(query, vars));
+      if (!result.ok) return result.toolResult;
+      const entity = result.data;
+      if (!entity.insiderTrades?.length) {
+        return {
+          content: `No insider trades available for ${ticker}. (Equity-only field — not available for crypto or ETFs.)`,
+        };
+      }
+      return {
+        content: `# ${entity.name ?? ticker} — Insider Trades (Form 4)\n\n${formatInsiderTrades(entity.insiderTrades)}`,
+      };
+    },
+  };
+
+  const getEarningsPressReleases: ToolDefinition = {
+    name: 'get_earnings_press_releases',
+    description:
+      'Get recent earnings press releases (8-K filings with item 2.02) for an equity ticker — filing dates, ' +
+      'excerpts, body length, and links to the EX-99.1 press release attachment.\n\n' +
+      'Equity-only: returns no data for crypto or ETFs. Use when the user asks about the latest earnings release, ' +
+      '8-K filings, earnings announcements, or wants to read the actual press release text.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Equity ticker symbol (e.g. AAPL, NVDA, MSFT)'),
+      since: z.string().optional().describe('ISO date — only include releases filed on/after this date'),
+      until: z.string().optional().describe('ISO date — only include releases filed on/before this date'),
+      limit: z.number().int().min(1).max(50).optional().describe('Max releases to return (default 8)'),
+    }),
+    async execute(params: { ticker: string; since?: string; until?: string; limit?: number }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const ticker = params.ticker.toUpperCase();
+      const { opts } = buildFilter(params.since, params.limit);
+      if (params.until) opts.until = params.until;
+      const query = buildEnrichQuery(['earningsPressReleases'] as EnrichmentField[], opts);
+      const vars: Record<string, unknown> = { id: ticker, filter: opts };
+      const result = await safeCall(() => client.request<Entity>(query, vars));
+      if (!result.ok) return result.toolResult;
+      const entity = result.data;
+      if (!entity.earningsPressReleases?.length) {
+        return {
+          content: `No earnings press releases available for ${ticker}. (Equity-only field — not available for crypto or ETFs.)`,
+        };
+      }
+      return {
+        content: `# ${entity.name ?? ticker} — Earnings Press Releases\n\n${formatEarningsPressReleases(entity.earningsPressReleases)}`,
+      };
+    },
+  };
+
+  const getSegmentedRevenue: ToolDefinition = {
+    name: 'get_segmented_revenue',
+    description:
+      'Get revenue broken down by product, segment, or geography for an equity ticker — parsed from XBRL data ' +
+      'in 10-K/10-Q filings. Returns the segment label, period, and dollar value per dimension.\n\n' +
+      'Equity-only: returns no data for crypto or ETFs. Use when the user asks about revenue mix, product-line ' +
+      'performance, geographic concentration, or segment-by-segment revenue breakdowns.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Equity ticker symbol (e.g. AAPL, NVDA, MSFT)'),
+      since: z.string().optional().describe('ISO date — only include filings on/after this date'),
+      until: z.string().optional().describe('ISO date — only include filings on/before this date'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Max segment rows to return (default 100 — one filing can emit many rows)'),
+    }),
+    async execute(params: { ticker: string; since?: string; until?: string; limit?: number }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const ticker = params.ticker.toUpperCase();
+      const { opts } = buildFilter(params.since, params.limit);
+      if (params.until) opts.until = params.until;
+      const query = buildEnrichQuery(['segmentedRevenue'] as EnrichmentField[], opts);
+      const vars: Record<string, unknown> = { id: ticker, filter: opts };
+      const result = await safeCall(() => client.request<Entity>(query, vars));
+      if (!result.ok) return result.toolResult;
+      const entity = result.data;
+      if (!entity.segmentedRevenue?.length) {
+        return {
+          content: `No segmented revenue data available for ${ticker}. (Equity-only field — not available for crypto or ETFs.)`,
+        };
+      }
+      return {
+        content: `# ${entity.name ?? ticker} — Segmented Revenue\n\n${formatSegmentedRevenue(entity.segmentedRevenue)}`,
+      };
+    },
+  };
+
   const jintelQuery: ToolDefinition = {
     name: 'jintel_query',
     description:
       'Generic Jintel query tool for quotes, fundamentals, market data, history, news, research, sentiment, ' +
       'technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ' +
-      'ownership, or top_holders. Use this when you want one Jintel-backed entry point instead of choosing a more specialized tool.',
+      'ownership, top_holders, insider_trades, earnings_press_releases, or segmented_revenue. Use this when you ' +
+      'want one Jintel-backed entry point instead of choosing a more specialized tool.',
     parameters: z.object({
       kind: JINTEL_QUERY_KIND.describe(
-        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ownership, or top_holders',
+        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ownership, top_holders, insider_trades, earnings_press_releases, or segmented_revenue',
       ),
       ticker: z
         .string()
@@ -1642,6 +1834,12 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
           return getOwnership.execute({ ticker: singleTicker });
         case 'top_holders':
           return getTopHolders.execute({ ticker: singleTicker });
+        case 'insider_trades':
+          return getInsiderTrades.execute({ ticker: singleTicker });
+        case 'earnings_press_releases':
+          return getEarningsPressReleases.execute({ ticker: singleTicker });
+        case 'segmented_revenue':
+          return getSegmentedRevenue.execute({ ticker: singleTicker });
       }
 
       return { content: `Unsupported Jintel query kind: ${params.kind}`, isError: true };
@@ -1792,5 +1990,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     getInstitutionalHoldings,
     getOwnership,
     getTopHolders,
+    getInsiderTrades,
+    getEarningsPressReleases,
+    getSegmentedRevenue,
   ];
 }
