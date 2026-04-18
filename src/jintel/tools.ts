@@ -1791,16 +1791,27 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       if (!options.client) return notConfigured();
       const client = options.client;
       const ticker = params.ticker.toUpperCase();
-      const topHoldersFilter: Record<string, unknown> = { sort: 'DESC' };
-      if (params.limit) topHoldersFilter.limit = params.limit;
-      if (params.offset != null) topHoldersFilter.offset = params.offset;
-      if (params.minValue != null) topHoldersFilter.minValue = params.minValue;
-      if (params.since) topHoldersFilter.since = params.since;
-      if (params.until) topHoldersFilter.until = params.until;
+      // Only build a filter when the caller passes something — otherwise let the server default apply.
+      const hasFilter =
+        params.limit != null ||
+        params.offset != null ||
+        params.minValue != null ||
+        params.since != null ||
+        params.until != null;
+      const topHoldersFilter: Record<string, unknown> | undefined = hasFilter ? {} : undefined;
+      if (topHoldersFilter) {
+        if (params.limit) topHoldersFilter.limit = params.limit;
+        if (params.offset != null) topHoldersFilter.offset = params.offset;
+        if (params.minValue != null) topHoldersFilter.minValue = params.minValue;
+        if (params.since) topHoldersFilter.since = params.since;
+        if (params.until) topHoldersFilter.until = params.until;
+      }
       const query = buildEnrichQuery(['topHolders'] as EnrichmentField[], {
         topHoldersFilter: topHoldersFilter as EnrichOptions['topHoldersFilter'],
       });
-      const result = await safeCall(() => client.request<Entity>(query, { id: ticker, topHoldersFilter }));
+      const vars: Record<string, unknown> = { id: ticker };
+      if (topHoldersFilter) vars.topHoldersFilter = topHoldersFilter;
+      const result = await safeCall(() => client.request<Entity>(query, vars));
       if (!result.ok) return result.toolResult;
       const entity = result.data;
       if (!entity.topHolders?.length) {
@@ -1967,7 +1978,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
         .describe("Restrict to period-type codes (e.g. ['12M'] for annual only, ['3M'] for quarterly only)"),
       since: z.string().optional().describe('ISO date — only include periods ending on/after this date'),
       until: z.string().optional().describe('ISO date — only include periods ending on/before this date'),
-      limit: z.number().int().min(1).max(40).optional().describe('Max periods per statement (default 8)'),
+      limit: z.number().int().min(1).max(40).optional().describe('Max periods per statement (server default applies)'),
     }),
     async execute(params: {
       ticker: string;
@@ -1979,7 +1990,8 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       if (!options.client) return notConfigured();
       const client = options.client;
       const ticker = params.ticker.toUpperCase();
-      const financialStatementsFilter: Record<string, unknown> = { sort: 'DESC', limit: params.limit ?? 8 };
+      const financialStatementsFilter: Record<string, unknown> = { sort: 'DESC' };
+      if (params.limit != null) financialStatementsFilter.limit = params.limit;
       if (params.periodTypes?.length) financialStatementsFilter.periodTypes = params.periodTypes;
       if (params.since) financialStatementsFilter.since = params.since;
       if (params.until) financialStatementsFilter.until = params.until;
@@ -1988,7 +2000,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       });
       const result = await safeCall(() => client.request<Entity>(query, { id: ticker, financialStatementsFilter }));
       if (!result.ok) return result.toolResult;
-      const entity = result.data as Entity & { financials?: FinancialStatements };
+      const entity = result.data;
       if (!entity.financials) {
         return {
           content: `No financial statement data available for ${params.ticker}. (Equity-only field — not available for crypto or ETFs.)`,
@@ -2034,7 +2046,7 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       });
       const result = await safeCall(() => client.request<Entity>(query, { id: ticker, executivesFilter }));
       if (!result.ok) return result.toolResult;
-      const entity = result.data as Entity & { executives?: KeyExecutive[] };
+      const entity = result.data;
       if (!entity.executives?.length) {
         return {
           content: `No executive data available for ${params.ticker}. (Equity-only field — not available for crypto or ETFs.)`,
