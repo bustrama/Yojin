@@ -102,14 +102,22 @@ export async function fetchJintelSignals(
 ): Promise<JintelFetchResult> {
   if (tickers.length === 0) return { ingested: 0, duplicates: 0, tickers: 0 };
 
+  // Generic `filter` applies to the array sub-graphs that still take ArrayFilterInput in 0.21.0
+  // (market.history/keyEvents/shortInterest, social, discussions, institutionalHoldings, earningsPressReleases).
   const arrayFilter = { sort: 'DESC' as const, ...(options?.since ? { since: options.since } : {}) };
   const filingsFilter = { types: MATERIAL_FILING_TYPES, sort: 'DESC' as const, limit: 10 };
   const riskSignalFilter = { severities: MEANINGFUL_RISK_SEVERITIES, sort: 'DESC' as const, limit: 10 };
+  // Per-field filters — 0.21.0 split these out of the generic `filter`.
+  const newsFilter = { sort: 'DESC' as const, ...(options?.since ? { since: options.since } : {}) };
+  const insiderTradesFilter = { sort: 'DESC' as const, ...(options?.since ? { since: options.since } : {}) };
+  const topHoldersFilter = { limit: 20, sort: 'DESC' as const };
   const enrichOpts: EnrichOptions = {
     filter: arrayFilter,
     filingsFilter,
     riskSignalFilter,
-    topHolders: { limit: 20 },
+    newsFilter,
+    insiderTradesFilter,
+    topHoldersFilter,
   };
   const query = buildBatchEnrichQuery([...ENRICHMENT_FIELDS], enrichOpts);
   // Build variables to pass alongside the query — must match the $filter declarations emitted above.
@@ -128,6 +136,9 @@ export async function fetchJintelSignals(
         filter,
         filingsFilter,
         riskSignalFilter,
+        newsFilter,
+        insiderTradesFilter,
+        topHoldersFilter,
       });
 
       // Build ticker → entity map
