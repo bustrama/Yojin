@@ -13,9 +13,16 @@ const log = getLogger().sub('watchlist-enrichment');
 const ENRICHMENT_FIELDS: EnrichmentField[] = ['market', 'risk'];
 const DEFAULT_TTL_SECONDS = 3600; // 1 hour
 const MIN_RESOLVE_RETRY_SECONDS = 60;
+const SPARKLINE_TTL_MS = 15 * 60 * 1000; // 15 min
+
+interface SparklineCacheEntry {
+  points: number[];
+  fetchedAt: number;
+}
 
 export class WatchlistEnrichment {
   private readonly cache = new Map<string, EnrichmentCacheEntry>();
+  private readonly sparklineCache = new Map<string, SparklineCacheEntry>();
   private readonly cachePath: string;
   private readonly store: WatchlistStore;
   private jintelClient?: JintelClient;
@@ -199,22 +206,39 @@ export class WatchlistEnrichment {
    * Best-effort — returns an empty map on failure.
    */
   async getSparklines(symbols: string[]): Promise<Map<string, number[]>> {
-    if (!this.jintelClient || symbols.length === 0) return new Map();
+    if (symbols.length === 0) return new Map();
+
+    const now = Date.now();
+    const result = new Map<string, number[]>();
+    const stale: string[] = [];
+
+    for (const s of symbols) {
+      const key = s.toUpperCase();
+      const hit = this.sparklineCache.get(key);
+      if (hit && now - hit.fetchedAt < SPARKLINE_TTL_MS) {
+        result.set(key, hit.points);
+      } else {
+        stale.push(key);
+      }
+    }
+
+    if (!this.jintelClient || stale.length === 0) return result;
+
     try {
-      const result = await this.jintelClient.priceHistory(symbols, '5d', '30m');
-      if (!result.success) return new Map();
-      const map = new Map<string, number[]>();
-      for (const ticker of result.data) {
+      const response = await this.jintelClient.priceHistory(stale, '5d', '30m');
+      if (!response.success) return result;
+      for (const ticker of response.data) {
         const points = ticker.history.map((p: { close: number }) => p.close);
         if (points.length > 0) {
-          map.set(ticker.ticker.toUpperCase(), points);
+          const key = ticker.ticker.toUpperCase();
+          this.sparklineCache.set(key, { points, fetchedAt: now });
+          result.set(key, points);
         }
       }
-      return map;
     } catch {
-      log.warn('Failed to fetch sparkline price history', { symbols });
-      return new Map();
+      log.warn('Failed to fetch sparkline price history', { symbols: stale });
     }
+    return result;
   }
 
   getCached(symbol: string): EnrichmentCacheEntry | null {
@@ -224,6 +248,7 @@ export class WatchlistEnrichment {
   async removeCache(symbol: string): Promise<void> {
     const key = symbol.toUpperCase();
     this.cache.delete(key);
+    this.sparklineCache.delete(key);
     await this.flush();
   }
 
@@ -240,6 +265,7 @@ export class WatchlistEnrichment {
         this.cache.delete(key);
         changed = true;
       }
+      this.sparklineCache.delete(key);
     }
     if (changed) await this.flush();
     // Also clear the JintelClient response cache so the next batchEnrich
