@@ -309,106 +309,60 @@ describe('PortfolioSnapshotStore', () => {
     expect(latest!.positions[0].symbol).toBe('BTC');
   });
 
-  it('getPositionTimeline returns earliest date per symbol', async () => {
-    await store.save({
-      positions: [
-        {
-          symbol: 'AAPL',
-          name: 'Apple',
-          quantity: 10,
-          costBasis: 150,
-          currentPrice: 178,
-          marketValue: 1780,
-          unrealizedPnl: 280,
-          unrealizedPnlPercent: 18.67,
-          assetClass: 'EQUITY',
-          platform: 'MANUAL',
-        },
-      ],
-      platform: 'MANUAL',
-    });
-    await store.save({
-      positions: [
-        {
-          symbol: 'AAPL',
-          name: 'Apple',
-          quantity: 10,
-          costBasis: 150,
-          currentPrice: 178,
-          marketValue: 1780,
-          unrealizedPnl: 280,
-          unrealizedPnlPercent: 18.67,
-          assetClass: 'EQUITY',
-          platform: 'MANUAL',
-        },
-        {
-          symbol: 'BTC',
-          name: 'Bitcoin',
-          quantity: 1,
-          costBasis: 60000,
-          currentPrice: 67000,
-          marketValue: 67000,
-          unrealizedPnl: 7000,
-          unrealizedPnlPercent: 11.67,
-          assetClass: 'CRYPTO',
-          platform: 'COINBASE',
-        },
-      ],
-      platform: 'COINBASE',
+  describe('getFirstSeenMap', () => {
+    it('returns empty map when no snapshots exist', async () => {
+      const result = await store.getFirstSeenMap();
+      expect(result.firstSeenBySymbol.size).toBe(0);
+      expect(result.overallFirstDate).toBeNull();
     });
 
-    const timeline = await store.getPositionTimeline(['AAPL', 'BTC']);
+    it('reports earliest day a symbol appeared and overall first snapshot day', async () => {
+      await store.save({ positions: [TEST_POSITIONS[0]], platform: 'INTERACTIVE_BROKERS' });
+      await new Promise((r) => setTimeout(r, 5));
+      await store.save({ positions: TEST_POSITIONS, platform: 'COINBASE' });
 
-    expect(timeline.size).toBe(2);
-    expect(timeline.get('AAPL')).toBeDefined();
-    expect(timeline.get('BTC')).toBeDefined();
-    expect(timeline.get('AAPL')! <= timeline.get('BTC')!).toBe(true);
-  });
+      const { firstSeenBySymbol, overallFirstDate } = await store.getFirstSeenMap();
+      const today = new Date().toISOString().slice(0, 10);
 
-  it('getPositionTimeline returns empty map when no snapshots exist', async () => {
-    const timeline = await store.getPositionTimeline(['AAPL']);
-    expect(timeline.size).toBe(0);
-  });
-
-  it('getPositionTimeline stops early once all symbols found', async () => {
-    await store.save({
-      positions: [
-        {
-          symbol: 'AAPL',
-          name: 'Apple',
-          quantity: 10,
-          costBasis: 150,
-          currentPrice: 178,
-          marketValue: 1780,
-          unrealizedPnl: 280,
-          unrealizedPnlPercent: 18.67,
-          assetClass: 'EQUITY',
-          platform: 'MANUAL',
-        },
-      ],
-      platform: 'MANUAL',
-    });
-    await store.save({
-      positions: [
-        {
-          symbol: 'AAPL',
-          name: 'Apple',
-          quantity: 10,
-          costBasis: 150,
-          currentPrice: 180,
-          marketValue: 1800,
-          unrealizedPnl: 300,
-          unrealizedPnlPercent: 20,
-          assetClass: 'EQUITY',
-          platform: 'MANUAL',
-        },
-      ],
-      platform: 'MANUAL',
+      expect(overallFirstDate).toBe(today);
+      expect(firstSeenBySymbol.get('AAPL')).toBe(today);
+      expect(firstSeenBySymbol.get('BTC')).toBe(today);
     });
 
-    const timeline = await store.getPositionTimeline(['AAPL']);
-    expect(timeline.size).toBe(1);
-    expect(timeline.get('AAPL')).toBeDefined();
+    it('distinguishes new-addition from originally-held when snapshots span multiple days', async () => {
+      // Simulate two snapshots on different calendar days by hand-appending lines.
+      const { appendFile, mkdir } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      const path = join(tmpDir, 'snapshots', 'portfolio.jsonl');
+      await mkdir(join(tmpDir, 'snapshots'), { recursive: true });
+
+      const oldSnap = {
+        id: 'snap-old',
+        positions: [{ ...TEST_POSITIONS[0], platform: 'INTERACTIVE_BROKERS' }],
+        totalValue: 100,
+        totalCost: 100,
+        totalPnl: 0,
+        totalPnlPercent: 0,
+        totalDayChange: 0,
+        totalDayChangePercent: 0,
+        timestamp: '2026-04-01T12:00:00.000Z',
+        platform: null,
+      };
+      const newSnap = {
+        ...oldSnap,
+        id: 'snap-new',
+        positions: [...oldSnap.positions, { ...TEST_POSITIONS[1], platform: 'COINBASE' }],
+        timestamp: '2026-04-15T12:00:00.000Z',
+      };
+
+      await appendFile(path, JSON.stringify(oldSnap) + '\n' + JSON.stringify(newSnap) + '\n');
+
+      const { firstSeenBySymbol, overallFirstDate } = await store.getFirstSeenMap();
+
+      expect(overallFirstDate).toBe('2026-04-01');
+      expect(firstSeenBySymbol.get('AAPL')).toBe('2026-04-01');
+      expect(firstSeenBySymbol.get('BTC')).toBe('2026-04-15');
+    });
   });
 
   it('MANUAL same-symbol update preserves other platforms (simulates addManualPosition flow)', async () => {

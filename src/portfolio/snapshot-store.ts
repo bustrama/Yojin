@@ -127,45 +127,47 @@ export class PortfolioSnapshotStore {
   }
 
   /**
-   * Forward-scan the JSONL to find the earliest snapshot date for each
-   * requested symbol. Stops as soon as all symbols are found.
-   * Returns Map<symbol, dateString (YYYY-MM-DD)>.
+   * Scan every snapshot and report, for each symbol, the earliest day it appeared — plus the
+   * earliest snapshot day overall. Used by history gating to distinguish "new addition" (symbol
+   * first-seen > overall-first) from "held since the first snapshot" (equal). Symbols are
+   * uppercased for consistent lookup.
    */
-  async getPositionTimeline(symbols: string[]): Promise<Map<string, string>> {
-    const result = new Map<string, string>();
-    if (symbols.length === 0) return result;
-
+  async getFirstSeenMap(): Promise<{
+    firstSeenBySymbol: Map<string, string>;
+    overallFirstDate: string | null;
+  }> {
     let content: string;
     try {
       content = await readFile(this.filePath, 'utf-8');
     } catch {
-      return result;
+      return { firstSeenBySymbol: new Map(), overallFirstDate: null };
     }
 
-    const remaining = new Set(symbols);
-    const lines = content.split('\n');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const firstSeenBySymbol = new Map<string, string>();
+    let overallFirstDate: string | null = null;
 
     for (const line of lines) {
-      if (remaining.size === 0) break;
-      if (!line.trim()) continue;
-
       let snap: PortfolioSnapshot;
       try {
         snap = JSON.parse(line) as PortfolioSnapshot;
       } catch {
         continue;
       }
-
-      const snapDate = snap.timestamp.slice(0, 10);
+      const day = snap.timestamp.slice(0, 10);
+      if (overallFirstDate === null || day < overallFirstDate) {
+        overallFirstDate = day;
+      }
       for (const pos of snap.positions) {
-        if (remaining.has(pos.symbol)) {
-          result.set(pos.symbol, snapDate);
-          remaining.delete(pos.symbol);
+        const symbol = pos.symbol.toUpperCase();
+        const existing = firstSeenBySymbol.get(symbol);
+        if (!existing || day < existing) {
+          firstSeenBySymbol.set(symbol, day);
         }
       }
     }
 
-    return result;
+    return { firstSeenBySymbol, overallFirstDate };
   }
 
   /** Remove all snapshots (used during onboarding reset). */

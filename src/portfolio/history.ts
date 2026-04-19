@@ -2,6 +2,35 @@ import type { TickerPriceHistory } from '@yojinhq/jintel-client';
 
 import type { PortfolioHistoryPoint, Position } from '../api/graphql/types.js';
 
+/**
+ * Decide the earliest day a position contributes to historical totals.
+ *
+ * Returns a YYYY-MM-DD gate, or `null` meaning "include throughout the window".
+ *
+ * Rule 1: explicit `entryDate` strictly in the past wins (user declared purchase date).
+ * Rule 2: symbol first appears in snapshots after the overall first snapshot → new addition, gate at first-seen.
+ * Rule 3: otherwise (first-ever import, or symbol held since the first snapshot) → include throughout.
+ *
+ * `entryDate === today` is ignored (rule 1 skipped) because the add-position mutation used to default
+ * entryDate to today; honoring it would hide the position from all historical points and cause a false
+ * jump between yesterday and today's live point.
+ */
+export function resolvePositionStart(
+  pos: Position,
+  firstSeenBySymbol: Map<string, string>,
+  overallFirstDate: string | null,
+  today: string,
+): string | null {
+  if (pos.entryDate && pos.entryDate < today) {
+    return pos.entryDate;
+  }
+  const firstSeen = firstSeenBySymbol.get(pos.symbol.toUpperCase());
+  if (firstSeen && overallFirstDate && firstSeen > overallFirstDate) {
+    return firstSeen;
+  }
+  return null;
+}
+
 /** Map Jintel price history to symbol → date → close price. */
 export function buildPriceMap(data: TickerPriceHistory[]): Map<string, Map<string, number>> {
   const map = new Map<string, Map<string, number>>();
@@ -27,6 +56,18 @@ function dateRange(start: string, end: string): string[] {
   return days;
 }
 
+function latestBefore(map: Map<string, number>, cutoff: string): number | undefined {
+  let latestDay = '';
+  let value: number | undefined;
+  for (const [day, price] of map) {
+    if (day < cutoff && day > latestDay) {
+      latestDay = day;
+      value = price;
+    }
+  }
+  return value;
+}
+
 export function fillCalendarDays(
   priceMap: Map<string, Map<string, number>>,
   start: string,
@@ -37,16 +78,12 @@ export function fillCalendarDays(
 
   for (const [symbol, dateClose] of priceMap) {
     const filledDates = new Map<string, number>();
-    let lastClose: number | undefined;
+    let lastClose = latestBefore(dateClose, start);
 
     for (const day of days) {
       const price = dateClose.get(day);
-      if (price != null) {
-        lastClose = price;
-        filledDates.set(day, price);
-      } else if (lastClose != null) {
-        filledDates.set(day, lastClose);
-      }
+      if (price != null) lastClose = price;
+      if (lastClose != null) filledDates.set(day, lastClose);
     }
 
     filled.set(symbol, filledDates);
@@ -58,9 +95,9 @@ export function fillCalendarDays(
 export function buildHistoryPoints(
   positions: Position[],
   filledPrices: Map<string, Map<string, number>>,
-  startDates: Map<string, string>,
   start: string,
   end: string,
+  gates?: Map<string, string>,
 ): PortfolioHistoryPoint[] {
   const days = dateRange(start, end);
   const points: PortfolioHistoryPoint[] = [];
@@ -72,12 +109,9 @@ export function buildHistoryPoints(
     let totalCost = 0;
 
     for (const pos of positions) {
-      const key = `${pos.symbol}:${pos.platform}`;
-      const posStart = startDates.get(key) ?? pos.entryDate ?? start;
-      if (day < posStart) continue;
-
-      const close = filledPrices.get(pos.symbol)?.get(day);
-      if (close == null) continue;
+      const gate = gates?.get(pos.symbol);
+      if (gate && day < gate) continue;
+      const close = filledPrices.get(pos.symbol)?.get(day) ?? pos.currentPrice;
       totalValue += pos.quantity * close;
       totalCost += pos.costBasis * pos.quantity;
     }
@@ -109,29 +143,4 @@ export function buildHistoryPoints(
   }
 
   return points;
-}
-
-export function resolvePositionStartDates(
-  positions: Position[],
-  timeline: Map<string, string> | null,
-  fallbackDate?: string,
-): Map<string, string> {
-  const fallback = fallbackDate ?? new Date().toISOString().slice(0, 10);
-  const result = new Map<string, string>();
-
-  for (const pos of positions) {
-    const key = `${pos.symbol}:${pos.platform}`;
-    const startDate = pos.entryDate ?? timeline?.get(pos.symbol) ?? fallback;
-    result.set(key, startDate);
-  }
-
-  return result;
-}
-
-export function daysToJintelRange(days?: number | null): string {
-  if (days == null || days <= 7) return '1m';
-  if (days <= 30) return '3m';
-  if (days <= 90) return '6m';
-  if (days <= 180) return '1y';
-  return '2y';
 }

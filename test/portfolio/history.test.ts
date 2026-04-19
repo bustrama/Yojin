@@ -5,9 +5,8 @@ import type { Position } from '../../src/api/graphql/types.js';
 import {
   buildHistoryPoints,
   buildPriceMap,
-  daysToJintelRange,
   fillCalendarDays,
-  resolvePositionStartDates,
+  resolvePositionStart,
 } from '../../src/portfolio/history.js';
 
 // ---------------------------------------------------------------------------
@@ -143,6 +142,45 @@ describe('fillCalendarDays', () => {
     expect(aapl.has('2026-04-02')).toBe(false);
     expect(aapl.get('2026-04-03')).toBe(150);
   });
+
+  it('seeds first range-day from latest close before start', () => {
+    const priceMap = new Map<string, Map<string, number>>([
+      [
+        'AAPL',
+        new Map([
+          ['2026-04-09', 149],
+          ['2026-04-10', 152],
+          ['2026-04-13', 155],
+        ]),
+      ],
+    ]);
+
+    const filled = fillCalendarDays(priceMap, '2026-04-12', '2026-04-13');
+    const aapl = filled.get('AAPL')!;
+
+    expect(aapl.get('2026-04-12')).toBe(152);
+    expect(aapl.get('2026-04-13')).toBe(155);
+  });
+
+  it('produces same value on a shared date regardless of range start', () => {
+    const priceMap = new Map<string, Map<string, number>>([
+      [
+        'AAPL',
+        new Map([
+          ['2026-03-19', 148],
+          ['2026-03-20', 150],
+          ['2026-04-10', 152],
+          ['2026-04-13', 155],
+        ]),
+      ],
+    ]);
+
+    const filled7D = fillCalendarDays(priceMap, '2026-04-12', '2026-04-13');
+    const filled1M = fillCalendarDays(priceMap, '2026-03-20', '2026-04-13');
+
+    expect(filled7D.get('AAPL')?.get('2026-04-12')).toBe(152);
+    expect(filled1M.get('AAPL')?.get('2026-04-12')).toBe(152);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -163,16 +201,15 @@ describe('buildHistoryPoints', () => {
         ]),
       ],
     ]);
-    const startDates = new Map([['AAPL:ROBINHOOD', '2026-04-01']]);
 
-    const points = buildHistoryPoints(positions, filledPrices, startDates, '2026-04-01', '2026-04-02');
+    const points = buildHistoryPoints(positions, filledPrices, '2026-04-01', '2026-04-02');
 
     expect(points).toHaveLength(2);
-    expect(points[0].totalValue).toBe(1500); // 10 × 150
-    expect(points[1].totalValue).toBe(1600); // 10 × 160
+    expect(points[0].totalValue).toBe(1500);
+    expect(points[1].totalValue).toBe(1600);
   });
 
-  it('computes periodPnl as value delta minus cost delta', () => {
+  it('computes periodPnl as value delta (cost basis constant across window)', () => {
     const positions: Position[] = [
       makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 }),
     ];
@@ -185,20 +222,24 @@ describe('buildHistoryPoints', () => {
         ]),
       ],
     ]);
-    const startDates = new Map([['AAPL:ROBINHOOD', '2026-04-01']]);
 
-    const points = buildHistoryPoints(positions, filledPrices, startDates, '2026-04-01', '2026-04-02');
+    const points = buildHistoryPoints(positions, filledPrices, '2026-04-01', '2026-04-02');
 
-    // day 0: periodPnl = 0 (first point)
     expect(points[0].periodPnl).toBe(0);
-    // day 1: valueChange=100, costChange=0, periodPnl=100
     expect(points[1].periodPnl).toBe(100);
     expect(points[1].periodPnlPercent).toBeCloseTo((100 / 1500) * 100, 5);
   });
 
-  it('excludes positions before their startDate', () => {
+  it('includes every position across the full window regardless of entryDate', () => {
     const positions: Position[] = [
-      makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 }),
+      makePosition({
+        symbol: 'AAPL',
+        platform: 'ROBINHOOD',
+        quantity: 10,
+        costBasis: 140,
+        entryDate: '2026-04-02',
+        currentPrice: 160,
+      }),
     ];
     const filledPrices = new Map([
       [
@@ -209,83 +250,38 @@ describe('buildHistoryPoints', () => {
         ]),
       ],
     ]);
-    // Position starts on day 2
-    const startDates = new Map([['AAPL:ROBINHOOD', '2026-04-02']]);
 
-    const points = buildHistoryPoints(positions, filledPrices, startDates, '2026-04-01', '2026-04-02');
+    const points = buildHistoryPoints(positions, filledPrices, '2026-04-01', '2026-04-02');
 
-    expect(points[0].totalValue).toBe(0); // excluded
-    expect(points[1].totalValue).toBe(1600); // included
-  });
-
-  it('subtracts cost delta when new position enters', () => {
-    const pos1 = makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 });
-    const pos2 = makePosition({ symbol: 'TSLA', platform: 'ROBINHOOD', quantity: 5, costBasis: 200 });
-
-    const filledPrices = new Map([
-      [
-        'AAPL',
-        new Map([
-          ['2026-04-01', 150],
-          ['2026-04-02', 155],
-        ]),
-      ],
-      [
-        'TSLA',
-        new Map([
-          ['2026-04-01', 210],
-          ['2026-04-02', 215],
-        ]),
-      ],
-    ]);
-    // AAPL from day 1, TSLA enters on day 2
-    const startDates = new Map([
-      ['AAPL:ROBINHOOD', '2026-04-01'],
-      ['TSLA:ROBINHOOD', '2026-04-02'],
-    ]);
-
-    const points = buildHistoryPoints([pos1, pos2], filledPrices, startDates, '2026-04-01', '2026-04-02');
-
-    // Day 1: only AAPL. value=1500, cost=1400
     expect(points[0].totalValue).toBe(1500);
-    expect(points[0].totalCost).toBe(1400);
-
-    // Day 2: AAPL value=1550, TSLA value=1075, total=2625; cost=1400+1000=2400
-    expect(points[1].totalValue).toBe(2625);
-    expect(points[1].totalCost).toBe(2400);
-
-    // periodPnl = valueChange - costChange = (2625-1500) - (2400-1400) = 1125 - 1000 = 125
-    expect(points[1].periodPnl).toBe(125);
+    expect(points[1].totalValue).toBe(1600);
   });
 
-  it('handles zero previous value without division by zero', () => {
+  it('falls back to pos.currentPrice when Jintel has no close for a day', () => {
     const positions: Position[] = [
-      makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 }),
+      makePosition({
+        symbol: 'AAPL',
+        platform: 'ROBINHOOD',
+        quantity: 10,
+        costBasis: 140,
+        currentPrice: 170,
+      }),
     ];
-    const filledPrices = new Map([
-      // No price on day 1, price on day 2
-      ['AAPL', new Map([['2026-04-02', 150]])],
-    ]);
-    const startDates = new Map([['AAPL:ROBINHOOD', '2026-04-01']]);
+    const filledPrices = new Map([['AAPL', new Map([['2026-04-02', 150]])]]);
 
-    const points = buildHistoryPoints(positions, filledPrices, startDates, '2026-04-01', '2026-04-02');
+    const points = buildHistoryPoints(positions, filledPrices, '2026-04-01', '2026-04-02');
 
-    // Day 1: no price → position skipped → value=0, cost=0
-    expect(points[0].totalValue).toBe(0);
-    expect(points[0].totalCost).toBe(0);
-    // Day 2: price available → value=1500, cost=1400
+    expect(points[0].totalValue).toBe(1700);
     expect(points[1].totalValue).toBe(1500);
-    expect(points[1].periodPnlPercent).toBe(0); // prevValue was 0, no division
   });
 
-  it('returns points with totalValue=0 when no prices available', () => {
+  it('returns points with totalValue=0 when no prices and currentPrice=0', () => {
     const positions: Position[] = [
       makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 }),
     ];
-    const filledPrices = new Map<string, Map<string, number>>(); // empty
-    const startDates = new Map([['AAPL:ROBINHOOD', '2026-04-01']]);
+    const filledPrices = new Map<string, Map<string, number>>();
 
-    const points = buildHistoryPoints(positions, filledPrices, startDates, '2026-04-01', '2026-04-01');
+    const points = buildHistoryPoints(positions, filledPrices, '2026-04-01', '2026-04-01');
 
     expect(points).toHaveLength(1);
     expect(points[0].totalValue).toBe(0);
@@ -293,54 +289,156 @@ describe('buildHistoryPoints', () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolvePositionStartDates
+// buildHistoryPoints — cross-range consistency
 // ---------------------------------------------------------------------------
 
-describe('resolvePositionStartDates', () => {
-  it('uses entryDate when available', () => {
-    const positions: Position[] = [
-      makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140, entryDate: '2026-01-15' }),
-    ];
+describe('resolvePositionStart', () => {
+  const today = '2026-04-19';
 
-    const result = resolvePositionStartDates(positions, null, '2026-01-01');
-    expect(result.get('AAPL:ROBINHOOD')).toBe('2026-01-15');
+  it('uses explicit past entryDate (rule 1)', () => {
+    const pos = makePosition({
+      symbol: 'AAPL',
+      platform: 'ROBINHOOD',
+      quantity: 10,
+      costBasis: 140,
+      entryDate: '2026-04-10',
+    });
+    const firstSeen = new Map([['AAPL', '2026-04-01']]);
+
+    expect(resolvePositionStart(pos, firstSeen, '2026-04-01', today)).toBe('2026-04-10');
   });
 
-  it('falls back to timeline map when entryDate is missing', () => {
-    const positions: Position[] = [
-      makePosition({ symbol: 'TSLA', platform: 'ROBINHOOD', quantity: 5, costBasis: 200 }),
-    ];
-    const timeline = new Map([['TSLA', '2026-02-10']]);
+  it('ignores entryDate === today and falls through (rule 1 skipped)', () => {
+    const pos = makePosition({
+      symbol: 'AAPL',
+      platform: 'ROBINHOOD',
+      quantity: 10,
+      costBasis: 140,
+      entryDate: today,
+    });
+    const firstSeen = new Map([['AAPL', today]]);
 
-    const result = resolvePositionStartDates(positions, timeline, '2026-01-01');
-    expect(result.get('TSLA:ROBINHOOD')).toBe('2026-02-10');
+    expect(resolvePositionStart(pos, firstSeen, today, today)).toBeNull();
   });
 
-  it('uses fallbackDate when both entryDate and timeline are missing', () => {
-    const positions: Position[] = [
-      makePosition({ symbol: 'BTC', platform: 'COINBASE', quantity: 1, costBasis: 70000 }),
-    ];
+  it('gates at first-seen when symbol appears after overall-first (rule 2)', () => {
+    const pos = makePosition({ symbol: 'GOOG', platform: 'ROBINHOOD', quantity: 3, costBasis: 140 });
+    const firstSeen = new Map([
+      ['AAPL', '2026-04-01'],
+      ['GOOG', '2026-04-15'],
+    ]);
 
-    const result = resolvePositionStartDates(positions, null, '2026-03-01');
-    expect(result.get('BTC:COINBASE')).toBe('2026-03-01');
+    expect(resolvePositionStart(pos, firstSeen, '2026-04-01', today)).toBe('2026-04-15');
+  });
+
+  it('returns null when symbol first-seen equals overall-first (rule 3)', () => {
+    const pos = makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 });
+    const firstSeen = new Map([['AAPL', '2026-04-01']]);
+
+    expect(resolvePositionStart(pos, firstSeen, '2026-04-01', today)).toBeNull();
+  });
+
+  it('returns null when snapshot history is empty (first-ever import)', () => {
+    const pos = makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 });
+    expect(resolvePositionStart(pos, new Map(), null, today)).toBeNull();
+  });
+
+  it('matches symbols case-insensitively', () => {
+    const pos = makePosition({ symbol: 'goog', platform: 'ROBINHOOD', quantity: 3, costBasis: 140 });
+    const firstSeen = new Map([['GOOG', '2026-04-15']]);
+
+    expect(resolvePositionStart(pos, firstSeen, '2026-04-01', today)).toBe('2026-04-15');
   });
 });
 
-// ---------------------------------------------------------------------------
-// daysToJintelRange
-// ---------------------------------------------------------------------------
+describe('buildHistoryPoints with gates', () => {
+  it('excludes position on days before its gate', () => {
+    const positions: Position[] = [
+      makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 }),
+      makePosition({ symbol: 'GOOG', platform: 'ROBINHOOD', quantity: 5, costBasis: 100 }),
+    ];
+    const filledPrices = new Map([
+      [
+        'AAPL',
+        new Map([
+          ['2026-04-01', 150],
+          ['2026-04-02', 152],
+          ['2026-04-03', 155],
+        ]),
+      ],
+      [
+        'GOOG',
+        new Map([
+          ['2026-04-01', 200],
+          ['2026-04-02', 205],
+          ['2026-04-03', 210],
+        ]),
+      ],
+    ]);
+    const gates = new Map([['GOOG', '2026-04-03']]);
 
-describe('daysToJintelRange', () => {
-  it('maps 7→1m, 30→3m, 90→6m, 180→1y, 365→2y', () => {
-    expect(daysToJintelRange(7)).toBe('1m');
-    expect(daysToJintelRange(30)).toBe('3m');
-    expect(daysToJintelRange(90)).toBe('6m');
-    expect(daysToJintelRange(180)).toBe('1y');
-    expect(daysToJintelRange(365)).toBe('2y');
+    const points = buildHistoryPoints(positions, filledPrices, '2026-04-01', '2026-04-03', gates);
+
+    // Apr 1: only AAPL
+    expect(points[0].totalValue).toBe(1500);
+    // Apr 2: only AAPL
+    expect(points[1].totalValue).toBe(1520);
+    // Apr 3: AAPL + GOOG (step-up)
+    expect(points[2].totalValue).toBe(1550 + 1050);
   });
 
-  it('maps undefined/null to 1m', () => {
-    expect(daysToJintelRange(undefined)).toBe('1m');
-    expect(daysToJintelRange(null)).toBe('1m');
+  it('no gates means every position contributes every day (backwards compatible)', () => {
+    const positions: Position[] = [
+      makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 }),
+    ];
+    const filledPrices = new Map([
+      [
+        'AAPL',
+        new Map([
+          ['2026-04-01', 150],
+          ['2026-04-02', 160],
+        ]),
+      ],
+    ]);
+
+    const points = buildHistoryPoints(positions, filledPrices, '2026-04-01', '2026-04-02');
+
+    expect(points[0].totalValue).toBe(1500);
+    expect(points[1].totalValue).toBe(1600);
+  });
+});
+
+describe('buildHistoryPoints cross-range consistency', () => {
+  it('produces identical periodPnl on overlap days when inputs match', () => {
+    const positions: Position[] = [
+      makePosition({ symbol: 'AAPL', platform: 'ROBINHOOD', quantity: 10, costBasis: 140 }),
+    ];
+    const filledPrices = new Map([
+      [
+        'AAPL',
+        new Map([
+          ['2026-03-20', 148],
+          ['2026-03-21', 149],
+          ['2026-04-12', 152],
+          ['2026-04-13', 153],
+          ['2026-04-14', 154],
+          ['2026-04-15', 155],
+          ['2026-04-16', 156],
+          ['2026-04-17', 158],
+          ['2026-04-18', 158],
+        ]),
+      ],
+    ]);
+
+    const week = buildHistoryPoints(positions, filledPrices, '2026-04-12', '2026-04-18');
+    const month = buildHistoryPoints(positions, filledPrices, '2026-03-20', '2026-04-18');
+
+    const pick = (points: ReturnType<typeof buildHistoryPoints>, day: string) =>
+      points.find((p) => p.timestamp.startsWith(day))!;
+
+    for (const day of ['2026-04-17', '2026-04-18']) {
+      expect(pick(week, day).periodPnl).toBeCloseTo(pick(month, day).periodPnl, 6);
+      expect(pick(week, day).totalValue).toBe(pick(month, day).totalValue);
+    }
   });
 });

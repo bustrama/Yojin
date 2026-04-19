@@ -11,9 +11,8 @@ import { getLogger } from '../../../logging/index.js';
 import {
   buildHistoryPoints,
   buildPriceMap,
-  daysToJintelRange,
   fillCalendarDays,
-  resolvePositionStartDates,
+  resolvePositionStart,
 } from '../../../portfolio/history.js';
 import { enrichPortfolioSnapshotWithLiveQuotes } from '../../../portfolio/live-enrichment.js';
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
@@ -106,32 +105,20 @@ export async function portfolioHistoryQuery(days?: number | null): Promise<Portf
   const snapshot = await snapshotStore.getLatest();
   if (!snapshot || snapshot.positions.length === 0) return [];
 
-  const positions = snapshot.positions;
-  const symbols = [...new Set(positions.map((p) => p.symbol))];
+  const symbols = [...new Set(snapshot.positions.map((p) => p.symbol))];
 
-  // Determine date range
   const effectiveDays = days ?? 7;
   const startDate = new Date(Date.now() - effectiveDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  // Resolve when each position was first held
-  const needsTimeline = positions.filter((p) => !p.entryDate);
-  let timeline: Map<string, string> | null = null;
-  if (needsTimeline.length > 0) {
-    timeline = await snapshotStore.getPositionTimeline(needsTimeline.map((p) => p.symbol));
-  }
-  const startDates = resolvePositionStartDates(positions, timeline, startDate);
-
-  // Fetch historical daily prices from Jintel
   if (!jintelClient) {
     log.debug('No Jintel client — returning empty history');
     return [];
   }
 
-  const range = daysToJintelRange(effectiveDays);
   let priceData: TickerPriceHistory[];
   try {
-    const result = await jintelClient.priceHistory(symbols, range, '1d');
+    const result = await jintelClient.priceHistory(symbols, '2y', '1d');
     if (!result.success) {
       log.warn('Jintel priceHistory returned non-success', { error: result });
       return [];
@@ -142,28 +129,26 @@ export async function portfolioHistoryQuery(days?: number | null): Promise<Portf
     return [];
   }
 
-  // Build price map and fill weekends/holidays
   const rawPriceMap = buildPriceMap(priceData);
   const filledPrices = fillCalendarDays(rawPriceMap, startDate, yesterday);
 
-  // Compute historical points (up to yesterday)
-  const history = buildHistoryPoints(positions, filledPrices, startDates, startDate, yesterday);
-
-  // Append today's live-priced trailing point.
-  //
-  // periodPnl here = today's intraday price movement on the current positions
-  // (`totalDayChange`), not the day-over-day delta of unrealized PnL. The delta
-  // approach breaks whenever the position set or cost basis differs between
-  // yesterday's historical point and today's live snapshot — e.g. a position
-  // missing from Jintel priceHistory (skipped at history.ts:80) or freshly
-  // added today (posStart > yesterday) pops into the live point carrying its
-  // full unrealized PnL, producing a phantom bar unrelated to today's trading.
-  // totalDayChange is source-of-truth for "today" and matches the Portfolio
-  // Value card exactly.
   const liveSnapshot = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
+
+  const { firstSeenBySymbol, overallFirstDate } = await snapshotStore.getFirstSeenMap();
+  const today = new Date().toISOString().slice(0, 10);
+  const gates = new Map<string, string>();
+  for (const pos of liveSnapshot.positions) {
+    const gate = resolvePositionStart(pos, firstSeenBySymbol, overallFirstDate, today);
+    if (gate) gates.set(pos.symbol, gate);
+  }
+
+  const history = buildHistoryPoints(liveSnapshot.positions, filledPrices, startDate, yesterday, gates);
+
   const prevPoint = history.length > 0 ? history[history.length - 1] : null;
-  const livePnl = liveSnapshot.totalDayChange ?? 0;
-  const livePnlPercent = liveSnapshot.totalDayChangePercent ?? 0;
+  const valueChange = prevPoint ? liveSnapshot.totalValue - prevPoint.totalValue : 0;
+  const costChange = prevPoint ? liveSnapshot.totalCost - prevPoint.totalCost : 0;
+  const periodPnl = prevPoint ? valueChange - costChange : 0;
+  const periodPnlPercent = prevPoint && prevPoint.totalValue > 0 ? (periodPnl / prevPoint.totalValue) * 100 : 0;
 
   const livePoint: PortfolioHistoryPoint = {
     timestamp: new Date().toISOString(),
@@ -171,8 +156,8 @@ export async function portfolioHistoryQuery(days?: number | null): Promise<Portf
     totalCost: liveSnapshot.totalCost,
     totalPnl: liveSnapshot.totalPnl,
     totalPnlPercent: liveSnapshot.totalPnlPercent,
-    periodPnl: prevPoint ? livePnl : 0,
-    periodPnlPercent: prevPoint ? livePnlPercent : 0,
+    periodPnl,
+    periodPnlPercent,
   };
 
   // If yesterday's point exists, append today. Otherwise just return the live point.
@@ -220,7 +205,7 @@ export async function addManualPositionMutation(
     unrealizedPnlPercent: 0,
     assetClass: (assetClass as AssetClass) ?? 'EQUITY',
     platform: ((platform as Position['platform']) ?? 'MANUAL').toUpperCase(),
-    entryDate: entryDate || new Date().toISOString().slice(0, 10),
+    entryDate: entryDate || undefined,
   };
 
   const effectivePlatform = newPosition.platform;
@@ -295,7 +280,7 @@ export async function editPositionMutation(
     unrealizedPnlPercent: 0,
     assetClass: (assetClass as AssetClass) ?? 'EQUITY',
     platform: ((platform as Position['platform']) ?? targetPlatform).toUpperCase(),
-    entryDate: entryDate || existingPosition.entryDate || new Date().toISOString().slice(0, 10),
+    entryDate: entryDate || existingPosition.entryDate,
   };
 
   const updatedPlatformPositions = targetPlatformPositions.map((p) =>
