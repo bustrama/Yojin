@@ -176,17 +176,36 @@ export async function priceHistoryQuery(
 ): Promise<TickerPriceHistory[]> {
   if (!jintelClient) return [];
 
-  try {
-    const result = await jintelClient.priceHistory(
-      args.tickers.map((t) => t.toUpperCase()),
-      args.range ?? '1y',
-      args.interval,
-    );
-    return result.success ? result.data : [];
-  } catch (err) {
-    log.warn('Jintel priceHistory failed', { tickers: args.tickers, error: String(err) });
-    return [];
-  }
+  const tickers = args.tickers.map((t) => t.toUpperCase());
+
+  const [historyResult, quotesResult] = await Promise.all([
+    jintelClient.priceHistory(tickers, args.range ?? '1y', args.interval).catch((err: unknown) => {
+      log.warn('Jintel priceHistory failed', { tickers, error: String(err) });
+      return { success: false as const, error: String(err), data: undefined as never };
+    }),
+    jintelClient.quotes(tickers).catch((err: unknown) => {
+      log.warn('Jintel quotes failed during priceHistory live-pricing', { tickers, error: String(err) });
+      return { success: false as const, error: String(err), data: undefined as never };
+    }),
+  ]);
+
+  if (!historyResult.success) return [];
+  if (!quotesResult.success) return historyResult.data;
+
+  const livePrices = new Map(quotesResult.data.map((q) => [q.ticker.toUpperCase(), q.price]));
+  return historyResult.data.map((th) => applyLivePriceToTrailingCandle(th, livePrices.get(th.ticker.toUpperCase())));
+}
+
+function applyLivePriceToTrailingCandle(th: TickerPriceHistory, livePrice: number | undefined): TickerPriceHistory {
+  if (livePrice === undefined || !Number.isFinite(livePrice) || th.history.length === 0) return th;
+  const last = th.history[th.history.length - 1];
+  const patched: PricePoint = {
+    ...last,
+    close: livePrice,
+    high: Math.max(last.high, livePrice),
+    low: Math.min(last.low, livePrice),
+  };
+  return { ticker: th.ticker, history: [...th.history.slice(0, -1), patched] };
 }
 
 // ---------------------------------------------------------------------------
