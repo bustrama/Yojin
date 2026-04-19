@@ -199,6 +199,14 @@ const MAX_MICRO_CONCURRENCY = 3;
 /** Max concurrent archive queries during the signal-gate. Archive reads are cheap FS IO so this can be higher than MAX_MICRO_CONCURRENCY. */
 const MAX_SIGNAL_GATE_CONCURRENCY = 10;
 
+/**
+ * Max tickers processed per micro batch. Caps the wall time of a single
+ * `runMicroResearchBatch` so `microRunning` releases in time for the next
+ * tick — including manual `triggerMicroFlow` calls. Overflow is re-queued
+ * onto `pendingMicroTickers` for the next tick.
+ */
+const MAX_MICRO_BATCH_SIZE = 20;
+
 interface MicroAssetState {
   symbol: string;
   source: MicroInsightSource;
@@ -496,11 +504,23 @@ export class Scheduler {
 
     if (due.length === 0) return;
 
-    // Pass every due asset through — the Jintel signal fetch is already batched
-    // into a single call. Downstream per-ticker work (enrichment + LLM) is
-    // concurrency-capped inside runMicroResearchBatch so a large watchlist
-    // doesn't fan out unbounded.
-    await this.runMicroResearchBatch(due);
+    // Cap batch size so `microRunning` releases in time for the next 5-min tick
+    // (and any manual triggers in between). Overflow lands on pendingMicroTickers
+    // and is drained on the next tick, preserving per-ticker order.
+    let batch = due;
+    if (due.length > MAX_MICRO_BATCH_SIZE) {
+      batch = due.slice(0, MAX_MICRO_BATCH_SIZE);
+      for (const asset of due.slice(MAX_MICRO_BATCH_SIZE)) {
+        this.pendingMicroTickers.set(asset.symbol, asset.source);
+      }
+      logger.info('Micro tick batch capped', {
+        dueCount: due.length,
+        batchSize: batch.length,
+        requeued: due.length - batch.length,
+      });
+    }
+
+    await this.runMicroResearchBatch(batch);
   }
 
   /**
@@ -578,7 +598,13 @@ export class Scheduler {
       // then stamp fetchedAt so symbols rotate out of the due queue on every tick regardless
       // of whether the LLM step runs. Without this stamp, assets with no new signals would
       // re-appear as due immediately, monopolising the batch slots.
-      const fetchedAt = new Date().toISOString();
+      //
+      // batchStartMs anchors the LLM freshness window to batch-start time, not post-fetch
+      // time. On long batches (e.g. 50+ first-run tickers), Jintel fetch alone can exceed
+      // microLlmIntervalMs; anchoring on `Date.now()` after fetch would silently age out the
+      // very signals the batch just ingested.
+      const batchStartMs = Date.now();
+      const fetchedAt = new Date(batchStartMs).toISOString();
       const preFetchAt = new Map<string, string | null>();
       for (const asset of assets) {
         const state = this.microRegistry.get(asset.symbol);
@@ -632,10 +658,12 @@ export class Scheduler {
       const MICRO_BASELINE_FIELDS: EnrichmentField[] = ['market', 'technicals', 'sentiment', 'social', 'news'];
 
       // LLM-gate: fire only when fresh data arrived for this asset inside the
-      // microLlmIntervalMs window (default 10 min). Replaces the per-ticker
-      // lastLlmAt cooldown — an asset with no recent ingestion stays on the
-      // light path, no Sonnet call.
-      const llmWindowSince = new Date(Date.now() - this.microLlmIntervalMs).toISOString();
+      // microLlmIntervalMs window AND at least that long has elapsed since the
+      // last LLM run for the ticker. The cooldown caps max run frequency per
+      // asset; the freshness check keeps quiet assets on the light path.
+      // Anchored to batchStartMs so a long batch doesn't age out signals it
+      // ingested moments earlier.
+      const llmWindowSince = new Date(batchStartMs - this.microLlmIntervalMs).toISOString();
       const llmReadyFlags = new Array<boolean>(assetsWithNewSignals.length);
       let llmIdx = 0;
       const llmWorkers = Array.from(
@@ -646,8 +674,18 @@ export class Scheduler {
             if (i >= assetsWithNewSignals.length) return;
             const asset = assetsWithNewSignals[i];
             if (!asset) return;
-            // Short-circuit: if baseline is newer than the LLM window, the signal-gate
-            // already proved freshness within the window — no extra archive query needed.
+            // Cooldown: enforce microLlmIntervalMs as a hard cap between LLM runs.
+            const state = this.microRegistry.get(asset.symbol);
+            const lastLlmAt = state?.lastLlmAt;
+            if (lastLlmAt) {
+              const sinceLastLlm = batchStartMs - new Date(lastLlmAt).getTime();
+              if (sinceLastLlm < this.microLlmIntervalMs) {
+                llmReadyFlags[i] = false;
+                continue;
+              }
+            }
+            // Freshness short-circuit: if baseline is newer than the LLM window,
+            // the signal-gate already proved freshness — no extra archive query.
             const baseline = preFetchAt.get(asset.symbol) ?? null;
             if (baseline !== null && baseline >= llmWindowSince) {
               llmReadyFlags[i] = true;
