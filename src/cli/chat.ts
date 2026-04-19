@@ -170,7 +170,8 @@ export async function startChat(args: string[]): Promise<void> {
       'CRITICAL: You MUST use your tools to perform actions. NEVER suggest CLI commands, bash snippets, or manual steps. ' +
       'You do NOT have access to a terminal — you can ONLY act through tool calls. ' +
       'When the user asks to store a credential, call store_credential. When they ask to check something, call the relevant tool. ' +
-      'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually.';
+      'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually. ' +
+      'You cannot fetch or browse URLs — there is no web-fetch tool. If a user pastes a link, tell them you cannot open it and ask them to paste the relevant text.';
 
   if (agentId) {
     const agentRegistry = services.agentRegistry;
