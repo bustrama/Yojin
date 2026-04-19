@@ -184,8 +184,8 @@ const RESOLUTION_COOLDOWN_MS = ACTION_EXPIRY_HOURS * 60 * 60 * 1000;
 /** Default micro research interval (5 minutes). */
 const DEFAULT_MICRO_INTERVAL_MS = 5 * 60 * 1000;
 
-/** Default LLM analysis interval per asset (4 hours). */
-const DEFAULT_MICRO_LLM_INTERVAL_MS = 4 * 60 * 60 * 1000;
+/** Default LLM analysis interval per asset (10 minutes). */
+const DEFAULT_MICRO_LLM_INTERVAL_MS = 10 * 60 * 1000;
 
 /** Micro tick interval — how often we check for due micro research (30 seconds). */
 const MICRO_TICK_INTERVAL_MS = 30_000;
@@ -193,8 +193,14 @@ const MICRO_TICK_INTERVAL_MS = 30_000;
 /** Minimum interval between snap.ready notifications to channels (1 hour). */
 const SNAP_NOTIFY_COOLDOWN_MS = 60 * 60 * 1000;
 
-/** Max concurrent micro research runs per tick. */
+/** Max concurrent per-ticker enrichment/LLM runs. Signal fetch is batched and not subject to this cap. */
 const MAX_MICRO_CONCURRENCY = 3;
+
+/** Max concurrent archive queries during the signal-gate. Archive reads are cheap FS IO so this can be higher than MAX_MICRO_CONCURRENCY. */
+const MAX_SIGNAL_GATE_CONCURRENCY = 10;
+
+/** Max symbols per batched Jintel signal fetch. Large watchlists chunk into sequential calls. */
+const JINTEL_BATCH_SYMBOL_LIMIT = 25;
 
 interface MicroAssetState {
   symbol: string;
@@ -493,9 +499,11 @@ export class Scheduler {
 
     if (due.length === 0) return;
 
-    // Take at most MAX_MICRO_CONCURRENCY assets
-    const batch = due.slice(0, MAX_MICRO_CONCURRENCY);
-    await this.runMicroResearchBatch(batch);
+    // Pass every due asset through — the Jintel signal fetch is already batched
+    // into a single call. Downstream per-ticker work (enrichment + LLM) is
+    // concurrency-capped inside runMicroResearchBatch so a large watchlist
+    // doesn't fan out unbounded.
+    await this.runMicroResearchBatch(due);
   }
 
   /**
@@ -519,25 +527,46 @@ export class Scheduler {
     logger.info('Micro research batch started', { symbols });
 
     try {
-      // Fetch Jintel signals for these tickers. Use each asset's lastMicroAt as the `since`
-      // parameter so restarts only re-fetch since the last known fetch, not the full 7-day window.
-      // First-run assets (lastMicroAt === null) fall back to 7 days.
+      // Fetch Jintel signals. Split assets into two buckets so a single first-run asset
+      // doesn't drag the whole (possibly 50+) batch to a 7-day window:
+      //   - first-run (lastMicroAt === null) → 7-day window
+      //   - recurring → oldest lastMicroAt across the recurring set
+      // Each bucket is then chunked to JINTEL_BATCH_SYMBOL_LIMIT and run sequentially
+      // to keep request payloads and rate usage bounded.
       const jintelClient = this.getJintelClient?.();
       if (jintelClient && this.signalIngestor) {
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        // Oldest lastMicroAt across the batch. Any first-run asset forces the full 7d window.
-        let since = sevenDaysAgo;
+        const firstRunSymbols: string[] = [];
+        const recurringSymbols: string[] = [];
+        let recurringSince: string | null = null;
         for (const asset of assets) {
           const t = this.microRegistry.get(asset.symbol)?.lastMicroAt ?? null;
           if (!t) {
-            since = sevenDaysAgo;
-            break;
-          } // first-run asset → use full window
-          if (t < since) since = t;
+            firstRunSymbols.push(asset.symbol);
+          } else {
+            recurringSymbols.push(asset.symbol);
+            if (recurringSince === null || t < recurringSince) recurringSince = t;
+          }
         }
-        const result = await fetchJintelSignals(jintelClient, this.signalIngestor, symbols, { since });
-        if (result.ingested > 0) {
-          logger.info('Micro research Jintel fetch', { ingested: result.ingested, duplicates: result.duplicates });
+
+        const buckets: Array<{ symbols: string[]; since: string }> = [];
+        if (firstRunSymbols.length > 0) buckets.push({ symbols: firstRunSymbols, since: sevenDaysAgo });
+        if (recurringSymbols.length > 0 && recurringSince !== null) {
+          buckets.push({ symbols: recurringSymbols, since: recurringSince });
+        }
+
+        let totalIngested = 0;
+        let totalDuplicates = 0;
+        for (const bucket of buckets) {
+          for (let i = 0; i < bucket.symbols.length; i += JINTEL_BATCH_SYMBOL_LIMIT) {
+            const chunk = bucket.symbols.slice(i, i + JINTEL_BATCH_SYMBOL_LIMIT);
+            const result = await fetchJintelSignals(jintelClient, this.signalIngestor, chunk, { since: bucket.since });
+            totalIngested += result.ingested;
+            totalDuplicates += result.duplicates;
+          }
+        }
+        if (totalIngested > 0) {
+          logger.info('Micro research Jintel fetch', { ingested: totalIngested, duplicates: totalDuplicates });
         }
       }
 
@@ -569,16 +598,27 @@ export class Scheduler {
       const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-      const assetsWithNewSignals = (
-        await Promise.all(
-          assets.map(async (asset) => {
-            const baseline = preFetchAt.get(asset.symbol) ?? null;
-            if (!baseline) return asset; // first run — always analyze
-            const fresh = await archive.query({ tickers: [asset.symbol], sinceIngested: baseline, limit: 1 });
-            return fresh.length > 0 ? asset : null;
-          }),
-        )
-      ).filter((a): a is (typeof assets)[number] => a !== null);
+      // Cap concurrent archive queries — previously all `assets.length` fired in parallel,
+      // which scaled unbounded with watchlist size. Worker pool preserves order for downstream.
+      const newSignalFlags = new Array<boolean>(assets.length);
+      let gateIdx = 0;
+      const gateWorkers = Array.from({ length: Math.min(MAX_SIGNAL_GATE_CONCURRENCY, assets.length) }, async () => {
+        while (true) {
+          const i = gateIdx++;
+          if (i >= assets.length) return;
+          const asset = assets[i];
+          if (!asset) return;
+          const baseline = preFetchAt.get(asset.symbol) ?? null;
+          if (!baseline) {
+            newSignalFlags[i] = true; // first run — always analyze
+            continue;
+          }
+          const fresh = await archive.query({ tickers: [asset.symbol], sinceIngested: baseline, limit: 1 });
+          newSignalFlags[i] = fresh.length > 0;
+        }
+      });
+      await Promise.all(gateWorkers);
+      const assetsWithNewSignals = assets.filter((_, i) => newSignalFlags[i] === true);
 
       if (assetsWithNewSignals.length === 0) {
         logger.debug('Micro research skipped — no new signals for batch', { symbols });
@@ -595,15 +635,40 @@ export class Scheduler {
       //  - LLM-throttled → baseline fields (+ strategy-derived fields if active) + trigger eval, no LLM
       const MICRO_BASELINE_FIELDS: EnrichmentField[] = ['market', 'technicals', 'sentiment', 'social', 'news'];
 
-      const now = Date.now();
+      // LLM-gate: fire only when fresh data arrived for this asset inside the
+      // microLlmIntervalMs window (default 10 min). Replaces the per-ticker
+      // lastLlmAt cooldown — an asset with no recent ingestion stays on the
+      // light path, no Sonnet call.
+      const llmWindowSince = new Date(Date.now() - this.microLlmIntervalMs).toISOString();
+      const llmReadyFlags = new Array<boolean>(assetsWithNewSignals.length);
+      let llmIdx = 0;
+      const llmWorkers = Array.from(
+        { length: Math.min(MAX_SIGNAL_GATE_CONCURRENCY, assetsWithNewSignals.length) },
+        async () => {
+          while (true) {
+            const i = llmIdx++;
+            if (i >= assetsWithNewSignals.length) return;
+            const asset = assetsWithNewSignals[i];
+            if (!asset) return;
+            // Short-circuit: if baseline is newer than the LLM window, the signal-gate
+            // already proved freshness within the window — no extra archive query needed.
+            const baseline = preFetchAt.get(asset.symbol) ?? null;
+            if (baseline !== null && baseline >= llmWindowSince) {
+              llmReadyFlags[i] = true;
+              continue;
+            }
+            const fresh = await archive.query({
+              tickers: [asset.symbol],
+              sinceIngested: llmWindowSince,
+              limit: 1,
+            });
+            llmReadyFlags[i] = fresh.length > 0;
+          }
+        },
+      );
+      await Promise.all(llmWorkers);
       const llmReadySet = new Set(
-        assetsWithNewSignals
-          .filter((asset) => {
-            const state = this.microRegistry.get(asset.symbol);
-            if (!state?.lastLlmAt) return true;
-            return now - new Date(state.lastLlmAt).getTime() >= this.microLlmIntervalMs;
-          })
-          .map((a) => a.symbol),
+        assetsWithNewSignals.filter((_, i) => llmReadyFlags[i] === true).map((a) => a.symbol),
       );
 
       // Light-path fields: baseline + any extra sub-graphs active strategies need.
@@ -632,26 +697,41 @@ export class Scheduler {
       // Note: getJintelClient/signalIngestor are omitted from the top-level deps
       // (so runMicroResearch won't re-fetch signals per ticker — already batch-fetched above).
       // getJintelClient IS passed in briefOptions so buildSingleBriefEnriched can enrich entities.
-      const results = await Promise.allSettled(
-        scheduled.map(({ asset, readyForLlm }) => {
+      // Signal fetch already covered every due ticker in one batched call above;
+      // here we cap per-ticker enrichment/LLM fan-out to MAX_MICRO_CONCURRENCY.
+      const results: PromiseSettledResult<Awaited<ReturnType<typeof runMicroResearch>>>[] = new Array(scheduled.length);
+      let nextIdx = 0;
+      const workers = Array.from({ length: Math.min(MAX_MICRO_CONCURRENCY, scheduled.length) }, async () => {
+        while (true) {
+          const i = nextIdx++;
+          if (i >= scheduled.length) return;
+          const entry = scheduled[i];
+          if (!entry) return;
+          const { asset, readyForLlm } = entry;
           const isFirstRun = preFetchAt.get(asset.symbol) === null;
-          return runMicroResearch(asset.symbol, asset.source, {
-            providerRouter,
-            microInsightStore,
-            runLlm: readyForLlm,
-            briefOptions: {
-              snapshotStore,
-              signalArchive: archive,
-              getJintelClient: this.getJintelClient,
-              memoryStores: this.memoryStores ?? new Map(),
-              profileStore: this.profileStore,
-              signalsSince: isFirstRun ? fourDaysAgo : oneDayAgo,
-              enrichFields: readyForLlm ? undefined : lightFields,
-            },
-            eventLog: this.eventLog,
-          });
-        }),
-      );
+          try {
+            const value = await runMicroResearch(asset.symbol, asset.source, {
+              providerRouter,
+              microInsightStore,
+              runLlm: readyForLlm,
+              briefOptions: {
+                snapshotStore,
+                signalArchive: archive,
+                getJintelClient: this.getJintelClient,
+                memoryStores: this.memoryStores ?? new Map(),
+                profileStore: this.profileStore,
+                signalsSince: isFirstRun ? fourDaysAgo : oneDayAgo,
+                enrichFields: readyForLlm ? undefined : lightFields,
+              },
+              eventLog: this.eventLog,
+            });
+            results[i] = { status: 'fulfilled', value };
+          } catch (reason) {
+            results[i] = { status: 'rejected', reason };
+          }
+        }
+      });
+      await Promise.all(workers);
 
       // Abort if scheduler was reset mid-flight (clear app data)
       if (this.resetGeneration !== gen) {
