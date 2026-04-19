@@ -36,6 +36,7 @@ import Modal from '../common/modal';
 import Spinner from '../common/spinner';
 import { SymbolLogo } from '../common/symbol-logo';
 import { GateCard } from '../common/feature-gate';
+import { ShareMenu } from '../insights/share-menu';
 import { timeAgo } from '../../lib/utils';
 
 /** Stable 7-day lookback for signal queries (computed once at module load). */
@@ -477,7 +478,7 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
 
       {/* Insight Thesis */}
       {latestInsightRun && (
-        <Card title="AI Analysis">
+        <Card title="AI Analysis" headerAction={<ShareMenu insight={latestInsightRun.insight} />}>
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
               <span>Updated {timeAgo(latestInsightRun.createdAt)}</span>

@@ -62,3 +62,6 @@ data/*
 
 # Reference / scratch code
 tttt/
+
+# Playwright MCP session artifacts
+.playwright-mcp/

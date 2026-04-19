@@ -6,6 +6,8 @@ import type { BadgeVariant } from '../common/badge';
 import type { ConvictionLevel, TriggerStrength } from '../../api/types';
 import { useQuote } from '../../api/hooks/use-market';
 import { cn, timeUntil } from '../../lib/utils';
+import { ShareMenu } from '../insights/share-menu';
+import { buildShareableFromFeed } from '../../lib/share-insight';
 
 /** Lightweight markdown → HTML for LLM-generated analysis text. */
 function markdownToHtml(md: string): string {
@@ -171,6 +173,17 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
   const priceDelta = livePrice != null && anchorPrice != null && anchorPrice > 0 ? livePrice - anchorPrice : null;
   const priceDeltaPct = priceDelta != null && anchorPrice ? (priceDelta / anchorPrice) * 100 : null;
 
+  const shareableInsight =
+    !data.actionMeta && data.tag === 'INSIGHT'
+      ? buildShareableFromFeed({
+          symbol: data.relatedTickers?.[0],
+          title: data.title,
+          sentiment: data.sentiment,
+          confidence: data.confidence,
+          opportunities: data.keyPoints,
+        })
+      : null;
+
   return (
     <Modal
       open={open}
@@ -187,6 +200,7 @@ export default function FeedDetailModal({ open, onClose, data }: FeedDetailModal
         <span className="text-2xs font-semibold uppercase tracking-wider text-text-muted">{data.source}</span>
         <div className="flex items-center gap-3">
           <span className="text-2xs text-text-muted">LAST UPDATE: {data.time}</span>
+          {shareableInsight && <ShareMenu insight={shareableInsight} />}
           <button
             onClick={onClose}
             className="cursor-pointer text-text-muted transition-colors hover:text-text-primary"

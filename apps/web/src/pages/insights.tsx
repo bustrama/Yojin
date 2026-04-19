@@ -29,6 +29,7 @@ import type { BadgeVariant } from '../components/common/badge';
 import Card from '../components/common/card';
 import Tabs from '../components/common/tabs';
 import { PageFeatureGate } from '../components/common/feature-gate';
+import { ShareMenu } from '../components/insights/share-menu';
 import { collectInsightSignalIds } from '../lib/insight-signals';
 
 // ---------------------------------------------------------------------------
@@ -842,7 +843,19 @@ function PositionSignalCard({
       {expanded && (
         <div className="mt-3 border-t border-border pt-3 space-y-3">
           {/* Analysis thesis — the "why" */}
-          {insight && <p className="text-sm text-text-primary leading-relaxed">{insight.thesis}</p>}
+          {insight && (
+            <div className="flex items-start gap-2">
+              <div
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                role="presentation"
+                className="shrink-0"
+              >
+                <ShareMenu insight={insight} compact />
+              </div>
+              <p className="text-sm text-text-primary leading-relaxed flex-1 min-w-0">{insight.thesis}</p>
+            </div>
+          )}
 
           {/* Deep analysis — on-demand deep dive */}
           {insight && insightReportId && <DeepAnalysis symbol={ticker} insightReportId={insightReportId} />}
