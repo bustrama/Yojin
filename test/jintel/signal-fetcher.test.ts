@@ -1,4 +1,4 @@
-import type { Entity } from '@yojinhq/jintel-client';
+import type { Entity, InsiderTrade } from '@yojinhq/jintel-client';
 import { describe, expect, it } from 'vitest';
 
 import { enrichmentToSignals } from '../../src/jintel/signal-fetcher.js';
@@ -551,5 +551,92 @@ describe('enrichmentToSignals — Reddit source attribution', () => {
     expect(reddit[0].sourceName).toBe('Reddit (r/CryptoCurrency)');
     expect(reddit[0].type).toBe('SOCIALS');
     expect(reddit[0].metadata?.redditPostId).toBeUndefined();
+  });
+});
+
+describe('enrichmentToSignals — insider trades 10b5-1 tagging', () => {
+  const recentDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  function makeTrade(overrides: Partial<InsiderTrade> = {}): InsiderTrade {
+    return {
+      accessionNumber: '0000000000-00-000000',
+      filingUrl: 'https://sec.gov/filing/x',
+      reporterName: 'Jane Doe',
+      reporterCik: '0000000001',
+      officerTitle: 'CFO',
+      isOfficer: true,
+      isDirector: false,
+      isTenPercentOwner: false,
+      isUnder10b5One: false,
+      securityTitle: 'Common Stock',
+      transactionDate: recentDate,
+      transactionCode: 'S',
+      acquiredDisposed: 'D',
+      shares: 1000,
+      pricePerShare: 100,
+      transactionValue: 100_000,
+      sharesOwnedFollowingTransaction: 5000,
+      ownershipType: 'D',
+      isDerivative: false,
+      filingDate: recentDate,
+      ...overrides,
+    };
+  }
+
+  function getInsiderSignal(entity: Entity) {
+    const signals = enrichmentToSignals(entity, ['AAPL']);
+    const sig = signals.find((s) => s.sourceId === 'jintel-insider-trades');
+    if (!sig) throw new Error('no insider signal');
+    return sig;
+  }
+
+  it('classifies a window with only 10b5-1 sells as PLANNED', () => {
+    const sig = getInsiderSignal(
+      makeEntity({
+        insiderTrades: [makeTrade({ isUnder10b5One: true, transactionValue: 200_000, shares: 2000 })],
+      }),
+    );
+    expect(sig.metadata?.tradePlanType).toBe('PLANNED');
+    expect(sig.metadata?.plannedSellCount).toBe(1);
+    expect(sig.metadata?.plannedSellValue).toBe(200_000);
+    expect(sig.metadata?.discretionarySellCount).toBe(0);
+    expect(sig.content).toContain('[10b5-1]');
+    expect(sig.content).toContain('Under 10b5-1 plan');
+  });
+
+  it('classifies a window with no 10b5-1 trades as DISCRETIONARY', () => {
+    const sig = getInsiderSignal(
+      makeEntity({
+        insiderTrades: [makeTrade({ isUnder10b5One: false, transactionValue: 150_000 })],
+      }),
+    );
+    expect(sig.metadata?.tradePlanType).toBe('DISCRETIONARY');
+    expect(sig.metadata?.plannedSellCount).toBe(0);
+    expect(sig.metadata?.discretionarySellCount).toBe(1);
+    expect(sig.metadata?.discretionarySellValue).toBe(150_000);
+    expect(sig.content).not.toContain('Under 10b5-1 plan');
+  });
+
+  it('classifies mixed windows and reports per-direction planned breakdown', () => {
+    const sig = getInsiderSignal(
+      makeEntity({
+        insiderTrades: [
+          makeTrade({
+            acquiredDisposed: 'A',
+            transactionCode: 'P',
+            isUnder10b5One: false,
+            transactionValue: 50_000,
+          }),
+          makeTrade({ isUnder10b5One: true, transactionValue: 100_000 }),
+          makeTrade({ isUnder10b5One: false, transactionValue: 50_000 }),
+        ],
+      }),
+    );
+    expect(sig.metadata?.tradePlanType).toBe('MIXED');
+    expect(sig.metadata?.plannedSellCount).toBe(1);
+    expect(sig.metadata?.discretionarySellCount).toBe(1);
+    expect(sig.metadata?.plannedBuyCount).toBe(0);
+    expect(sig.metadata?.discretionaryBuyCount).toBe(1);
+    expect(sig.content).toContain('Under 10b5-1 plan: 1 sell $100.0K');
   });
 });

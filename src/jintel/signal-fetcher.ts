@@ -856,6 +856,26 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
         ts.reduce((sum, t) => sum + (t.transactionValue ?? (t.pricePerShare ?? 0) * t.shares), 0);
       const buyValue = sumValue(buys);
       const sellValue = sumValue(sells);
+
+      // Split by Rule 10b5-1 trading plan — planned trades are scheduled months ahead and
+      // carry far weaker signal than discretionary opens/closes. Surface both in metadata so
+      // the quality agent and analyst can down-weight plan-dominated windows.
+      const planned = (ts: InsiderTrade[]) => ts.filter((t) => t.isUnder10b5One);
+      const discretionary = (ts: InsiderTrade[]) => ts.filter((t) => !t.isUnder10b5One);
+      const plannedBuys = planned(buys);
+      const plannedSells = planned(sells);
+      const discBuys = discretionary(buys);
+      const discSells = discretionary(sells);
+      const plannedBuyValue = sumValue(plannedBuys);
+      const plannedSellValue = sumValue(plannedSells);
+      const discBuyValue = sumValue(discBuys);
+      const discSellValue = sumValue(discSells);
+      const totalValue = buyValue + sellValue;
+      const plannedValue = plannedBuyValue + plannedSellValue;
+      const plannedShare = totalValue > 0 ? plannedValue / totalValue : 0;
+      const tradePlanType: 'PLANNED' | 'DISCRETIONARY' | 'MIXED' =
+        plannedShare >= 0.8 ? 'PLANNED' : plannedShare <= 0.2 ? 'DISCRETIONARY' : 'MIXED';
+
       const roleSummary = (ts: InsiderTrade[]) => {
         const officers = ts.filter((t) => t.isOfficer).length;
         const directors = ts.filter((t) => t.isDirector).length;
@@ -871,12 +891,17 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
       lines.push(
         `${sells.length} sell${sells.length === 1 ? '' : 's'} $${formatNumber(sellValue)}${roleSummary(sells)}`,
       );
-      const planned = recent.filter((t) => t.isUnder10b5One).length;
-      if (planned > 0) lines.push(`${planned} under 10b5-1 trading plan`);
+      if (plannedBuys.length + plannedSells.length > 0) {
+        const plannedParts: string[] = [];
+        if (plannedBuys.length) plannedParts.push(`${plannedBuys.length} buy $${formatNumber(plannedBuyValue)}`);
+        if (plannedSells.length) plannedParts.push(`${plannedSells.length} sell $${formatNumber(plannedSellValue)}`);
+        lines.push(`Under 10b5-1 plan: ${plannedParts.join(', ')}`);
+      }
       const topTrades = recent.slice(0, 5).map((t) => {
         const dir = t.acquiredDisposed === 'A' ? 'BUY' : 'SELL';
+        const tag = t.isUnder10b5One ? ' [10b5-1]' : '';
         const val = t.transactionValue ?? (t.pricePerShare ?? 0) * t.shares;
-        return `${t.transactionDate} ${dir}: ${t.reporterName} (${t.officerTitle}) — ${formatNumber(t.shares)} shares, $${formatNumber(val)}`;
+        return `${t.transactionDate} ${dir}${tag}: ${t.reporterName} (${t.officerTitle}) — ${formatNumber(t.shares)} shares, $${formatNumber(val)}`;
       });
       if (topTrades.length > 0) {
         lines.push('');
@@ -899,6 +924,15 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
           sellCount: sells.length,
           buyValue,
           sellValue,
+          plannedBuyCount: plannedBuys.length,
+          plannedSellCount: plannedSells.length,
+          plannedBuyValue,
+          plannedSellValue,
+          discretionaryBuyCount: discBuys.length,
+          discretionarySellCount: discSells.length,
+          discretionaryBuyValue: discBuyValue,
+          discretionarySellValue: discSellValue,
+          tradePlanType,
           latestFilingDate: recent[0].filingDate,
         },
       });
