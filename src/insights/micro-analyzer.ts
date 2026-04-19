@@ -81,6 +81,11 @@ Content priorities:
 
 interface AnalyzeTickerOptions {
   source: MicroInsightSource;
+  /**
+   * Reasons from progressive-enrichment triggers that fired for this ticker.
+   * Rendered as a focus hint so the LLM knows why extras were fetched.
+   */
+  triggerReasons?: string[];
 }
 
 export async function analyzeTicker(
@@ -90,11 +95,15 @@ export async function analyzeTicker(
 ): Promise<MicroInsight> {
   const start = Date.now();
   const briefText = formatBriefsForContext([brief]);
+  const focus =
+    options.triggerReasons && options.triggerReasons.length > 0
+      ? `\n\nFocus hints (enrichment triggers fired):\n${options.triggerReasons.map((r) => `- ${r}`).join('\n')}`
+      : '';
 
   const result = await providerRouter.completeWithTools({
     model: 'sonnet',
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: `Analyze ${brief.symbol} (${brief.name}):\n\n${briefText}` }],
+    messages: [{ role: 'user', content: `Analyze ${brief.symbol} (${brief.name}):\n\n${briefText}${focus}` }],
     maxTokens: 1024,
   });
 

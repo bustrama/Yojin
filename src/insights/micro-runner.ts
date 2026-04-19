@@ -10,11 +10,13 @@
 
 import type { Entity, JintelClient } from '@yojinhq/jintel-client';
 
-import { buildSingleBriefEnriched } from './data-gatherer.js';
+import { buildSingleBriefEnriched, fetchAndMergeEntityExtras } from './data-gatherer.js';
 import type { SingleBriefOptions } from './data-gatherer.js';
 import { analyzeTicker } from './micro-analyzer.js';
 import type { MicroInsightStore } from './micro-insight-store.js';
 import type { MicroInsight, MicroInsightSource } from './micro-types.js';
+import { evaluateTriggers, unionFields } from './triggers.js';
+import type { TriggerHit } from './triggers.js';
 import type { ProviderRouter } from '../ai-providers/router.js';
 import type { EventLog } from '../core/event-log.js';
 import { fetchJintelSignals } from '../jintel/signal-fetcher.js';
@@ -78,7 +80,30 @@ export async function runMicroResearch(
     logger.warn('Could not build brief — no snapshot', { symbol: ticker });
     return { insight: null, signalsIngested, durationMs: Date.now() - start };
   }
-  const { brief, entity, signals: curatedSignals } = enriched;
+  const { brief, signals: curatedSignals } = enriched;
+  let entity = enriched.entity;
+
+  // 2a. Progressive enrichment — evaluate Phase-1 triggers and, if any fire with
+  //     extra fields, fetch those sub-graphs and merge them onto the base entity.
+  //     Trigger reasons are forwarded to the LLM as focus hints.
+  const hits: TriggerHit[] = evaluateTriggers(brief, entity);
+  const extras = unionFields(hits);
+  if (extras.length > 0 && jintelClient) {
+    const before = entity;
+    entity = await fetchAndMergeEntityExtras(jintelClient, ticker, entity, extras);
+    logger.info('Tier-1 enrichment fetched', {
+      symbol: ticker,
+      triggers: hits.map((h) => h.id),
+      extras,
+      merged: entity !== before,
+    });
+  } else if (hits.length > 0) {
+    logger.debug('Triggers fired (focus-only, no extra fetch)', {
+      symbol: ticker,
+      triggers: hits.map((h) => h.id),
+    });
+  }
+  const triggerReasons = hits.map((h) => `[${h.id}] ${h.reason}`);
 
   // 3. AI analysis — wrap so entity/signals are still returned on LLM failure.
   //    When runLlm is false, we skip the LLM entirely and let the caller run
@@ -86,7 +111,7 @@ export async function runMicroResearch(
   let insight: MicroInsight | null = null;
   if (deps.runLlm !== false) {
     try {
-      insight = await analyzeTicker(brief, deps.providerRouter, { source });
+      insight = await analyzeTicker(brief, deps.providerRouter, { source, triggerReasons });
 
       // 4. Save
       await deps.microInsightStore.save(insight);

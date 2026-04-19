@@ -13,6 +13,8 @@ import type { EnrichOptions, EnrichmentField, Entity, JintelClient, MarketQuote 
 import { buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 
 import type { InsightStore } from './insight-store.js';
+import { evaluateTriggers, selectBudgeted, unionFields } from './triggers.js';
+import type { TriggerHit } from './triggers.js';
 import type { InsightReport } from './types.js';
 import type { AssetClass, Platform, Position } from '../api/graphql/types.js';
 import { isShortInterestFresh } from '../jintel/freshness.js';
@@ -299,6 +301,21 @@ export async function gatherDataBriefs(options: DataGathererOptions): Promise<Ga
 
     return buildBrief(pos, tickerSignals, quote, entity, mems, profile);
   });
+
+  // 7a. Progressive enrichment (Phase 1) — evaluate triggers per ticker, apply
+  //     per-cycle budget, and fetch extras for the top N. Keeps Tier-1 fan-out
+  //     bounded even when many triggers fire. Failures fall back to Tier-0 data.
+  if (jintelClient) {
+    await runProgressiveEnrichment({
+      client: jintelClient,
+      briefs,
+      entityByTicker: enrichmentByTicker,
+      positionsByTicker: new Map(snapshot.positions.map((p) => [p.symbol, p])),
+      signalsByTicker,
+      memoriesByTicker,
+      profileBriefs,
+    });
+  }
 
   const durationMs = Date.now() - start;
   logger.info('Data briefs gathered', { positionCount: briefs.length, durationMs });
@@ -1109,6 +1126,85 @@ export async function buildSingleBriefEnriched(
 
   const brief = buildBrief(pos, signals, quote, entity ?? undefined, memMap.get(ticker) ?? [], profileBrief);
   return { brief, entity, signals };
+}
+
+/**
+ * Tier-1 enrichment: fetch additional Jintel sub-graphs for a single ticker and
+ * shallow-merge them onto an existing base entity. Used by the progressive
+ * enrichment flow when Phase-1 triggers fire and request extras beyond the
+ * Tier-0 batch.
+ *
+ * Returns the merged entity, or the base entity unchanged if the extra fetch
+ * fails or returns nothing. Never throws.
+ */
+export async function fetchAndMergeEntityExtras(
+  client: JintelClient,
+  ticker: string,
+  base: Entity | null,
+  extras: EnrichmentField[],
+): Promise<Entity | null> {
+  if (extras.length === 0) return base;
+  const map = await batchEnrichAllChunked(client, [ticker], extras);
+  const extra = map.get(ticker.toUpperCase()) ?? map.get(ticker) ?? null;
+  if (!extra) return base;
+  if (!base) return extra;
+  return { ...base, ...extra };
+}
+
+interface ProgressiveEnrichmentContext {
+  client: JintelClient;
+  briefs: DataBrief[];
+  entityByTicker: Map<string, Entity>;
+  positionsByTicker: Map<string, Position>;
+  signalsByTicker: Map<string, Signal[]>;
+  memoriesByTicker: Map<string, MemoryBrief[]>;
+  profileBriefs: Map<string, TickerProfileBrief>;
+}
+
+/**
+ * Apply Phase-1 progressive enrichment to a portfolio of briefs: evaluate
+ * triggers per ticker, select the top N by total severity (budget-capped),
+ * fetch any extra sub-graphs those triggers request, merge onto the base
+ * entity, and rebuild the brief for each budgeted ticker in place.
+ *
+ * Tickers with only focus-only triggers (no extra fields) are still ranked by
+ * severity but never cause a Tier-1 fetch — they benefit from surrounding
+ * selection logic (e.g. downstream Tier-2 scheduling) without spending calls.
+ */
+async function runProgressiveEnrichment(ctx: ProgressiveEnrichmentContext): Promise<void> {
+  const hitsByTicker = new Map<string, TriggerHit[]>();
+  for (const brief of ctx.briefs) {
+    const entity = ctx.entityByTicker.get(brief.symbol) ?? null;
+    const hits = evaluateTriggers(brief, entity);
+    if (hits.length > 0) hitsByTicker.set(brief.symbol, hits);
+  }
+  if (hitsByTicker.size === 0) return;
+
+  const budgeted = selectBudgeted(hitsByTicker);
+  logger.info('Progressive enrichment — triggers fired', {
+    tickersWithHits: hitsByTicker.size,
+    budgeted: budgeted.size,
+  });
+
+  const tasks = [...budgeted.entries()].map(async ([ticker, hits]) => {
+    const extras = unionFields(hits);
+    if (extras.length === 0) return;
+    const base = ctx.entityByTicker.get(ticker) ?? null;
+    const merged = await fetchAndMergeEntityExtras(ctx.client, ticker, base, extras);
+    if (!merged || merged === base) return;
+    ctx.entityByTicker.set(ticker, merged);
+
+    const pos = ctx.positionsByTicker.get(ticker);
+    if (!pos) return;
+    const idx = ctx.briefs.findIndex((b) => b.symbol === ticker);
+    if (idx < 0) return;
+    const quote = merged.market?.quote;
+    const signals = ctx.signalsByTicker.get(ticker) ?? [];
+    const mems = ctx.memoriesByTicker.get(ticker) ?? [];
+    const profile = ctx.profileBriefs.get(ticker) ?? null;
+    ctx.briefs[idx] = buildBrief(pos, signals, quote, merged, mems, profile);
+  });
+  await Promise.all(tasks);
 }
 
 function formatLargeNumber(n: number): string {
