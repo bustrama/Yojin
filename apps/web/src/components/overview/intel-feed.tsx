@@ -29,6 +29,8 @@ import FeedDetailModal from './feed-detail-modal';
 import type { FeedDetailData } from './feed-detail-modal';
 import Spinner from '../common/spinner';
 import { SymbolLogo } from '../common/symbol-logo';
+import { ShareMenu } from '../insights/share-menu';
+import { buildShareableFromFeed } from '../../lib/share-insight';
 
 type ItemType = 'alert' | 'insight' | 'action';
 type FilterTab = 'all' | 'alerts' | 'insights' | 'actions';
@@ -426,10 +428,29 @@ function IntelFeedCard({
             </div>
 
             {/* CTA buttons */}
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-3 flex items-center gap-1.5">
+              {item.type === 'insight' &&
+                (() => {
+                  const shareable = buildShareableFromFeed({
+                    symbol: item.ticker,
+                    title: item.title,
+                    sentiment: item.sentiment,
+                    confidence: (() => {
+                      const row = item.data?.find((r) => r.label === 'Confidence');
+                      return row ? parseFloat(row.value) : null;
+                    })(),
+                    opportunities: item.summary ? [item.summary] : [],
+                  });
+                  return shareable ? (
+                    <div onClick={(e) => e.stopPropagation()} role="presentation" className="w-20">
+                      <ShareMenu insight={shareable} compact className="block w-full" />
+                    </div>
+                  ) : null;
+                })()}
               <Button
                 variant="secondary"
                 size="sm"
+                className="w-20 px-2"
                 onClick={(e) => {
                   e.stopPropagation();
                   onViewDetails();
@@ -451,6 +472,7 @@ function IntelFeedCard({
               <Button
                 variant="secondary"
                 size="sm"
+                className="w-20 px-2"
                 onClick={(e) => {
                   e.stopPropagation();
                   onAskYojin();
@@ -459,17 +481,17 @@ function IntelFeedCard({
                 <AgentIcon />
                 Chat
               </Button>
-              <button
-                type="button"
-                aria-label="Dismiss"
+              <Button
+                variant="danger"
+                size="sm"
+                className="w-20 px-2"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDismiss();
                 }}
-                className="ml-auto cursor-pointer rounded-lg border border-error/30 bg-error/10 px-2.5 py-1 text-xs font-medium text-error transition-colors hover:bg-error/20"
               >
                 Dismiss
-              </button>
+              </Button>
             </div>
           </div>
         </div>
