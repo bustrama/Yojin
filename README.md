@@ -269,6 +269,45 @@ PII redaction runs before every Jintel call — Jintel receives sanitized, anony
 
 **Signal Ingestion** — background pipeline in `src/signals/` that pulls from Jintel, deduplicates entries by content hash, extracts ticker mentions via `TickerExtractor`, and writes to the local archive. Agents query the archive at reasoning time rather than hitting the API inline.
 
+**Scheduler** — two-flow intelligence pipeline in `src/scheduler.ts`. The **micro flow** runs every 5 min per ticker (portfolio + watchlist): a single batched Jintel signal fetch covers every due ticker per tick, then per-ticker enrichment runs through a worker pool (max 3 concurrent). Each ticker has two independent gates: a *signal-gate* skips tickers with no new data, and an *LLM-gate* (10 min freshness window by default, configurable) — the LLM narration only runs when new signals arrived within the window. Between LLM runs a ticker still refreshes enrichment + strategy triggers. The **macro flow** runs every 2h (or when all micros have completed once): full multi-agent assessment → ProcessInsights → strategy evaluation → snap → reflection. State persists to `data/cron/state.json` so restarts honour cooldowns.
+
+```text
+              ┌─────────────────────────────────────────────────────┐
+              │  microTick()   every 5 min                          │
+              └───────────────────────┬─────────────────────────────┘
+                                      │ dueAssets = portfolio ∪ watchlist
+                                      ▼
+              ┌─────────────────────────────────────────────────────┐
+              │  Stage 1: batched Jintel signal fetch               │
+              │   • first-run bucket  → since = 7d                  │
+              │   • recurring bucket  → since = lastFetchedAt       │
+              │   • internal chunking (8 tickers/request)           │
+              └───────────────────────┬─────────────────────────────┘
+                                      ▼
+              ┌─────────────────────────────────────────────────────┐
+              │  Stage 2: signal-gate  (worker pool, cap 10)        │
+              │   skip tickers with no new archive rows since       │
+              │   baseline timestamp                                │
+              └───────────────────────┬─────────────────────────────┘
+                                      ▼
+              ┌─────────────────────────────────────────────────────┐
+              │  Stage 3: LLM-gate  (worker pool, cap 10)           │
+              │   run narration only if a new signal arrived        │
+              │   in the last 10 min (freshness window)             │
+              └───────────────────────┬─────────────────────────────┘
+                                      ▼
+              ┌─────────────────────────────────────────────────────┐
+              │  Stage 4: per-ticker enrichment  (pool, cap 3)      │
+              │   Sonnet narration + strategy triggers              │
+              └───────────────────────┬─────────────────────────────┘
+                                      ▼
+              ┌─────────────────────────────────────────────────────┐
+              │  macroTick()   every 2h  OR  all micros done once   │
+              │   full multi-agent assessment → ProcessInsights     │
+              │   → strategies → snap → reflection                  │
+              └─────────────────────────────────────────────────────┘
+```
+
 **ProcessInsights Workflow** — multi-agent pipeline in `src/insights/` that pre-aggregates portfolio data, triages positions (hot/warm/cold), then runs Research Analyst → Risk Manager → Strategist. Produces structured `InsightReport`s with per-position ratings, conviction scores, key signals, risks, and opportunities. Portfolio-level items (action items, risks, opportunities) are structured objects with deterministically-assigned signal references — signal IDs are matched to positions by ticker mention, not by the LLM. Reports are stored as append-only JSONL and surfaced in the Web UI via GraphQL.
 
 **GraphQL API** — graphql-yoga on Hono; exposes typed queries, mutations, and real-time subscriptions for the Web UI. The schema is the single contract between the backend and frontend — the React app reads portfolio state, risk data, agent activity, and signal feeds exclusively through this API. The schema uses GraphQL enums for all fixed-value fields (signal types, sentiment, verdicts, severities) and `ID!` for all entity identifiers, enabling compile-time validation on both client and server.

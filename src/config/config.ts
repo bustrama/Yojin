@@ -156,8 +156,12 @@ export const AlertsConfigSchema = z.object({
     .default([]),
   digestSchedule: DigestScheduleSchema.optional(),
   digestSections: z.array(z.string()).optional(),
-  /** How often (in hours) to run the LLM micro-analysis per asset. Default: 4h. */
-  microLlmIntervalHours: z.number().min(0.25).max(24).optional(),
+  /** How often (in hours) to run the LLM micro-analysis per asset. Default: 10 min. */
+  microLlmIntervalHours: z
+    .number()
+    .min(10 / 60)
+    .max(24)
+    .optional(),
   /** Minimum severity (0–1) for a MicroInsight to be promoted to an alert. Default: 0.7. */
   alertSeverityThreshold: z.number().min(0).max(1).optional(),
   /** Cooldown (in hours) between alerts for the same ticker. Default: 4h. */

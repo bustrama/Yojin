@@ -49,7 +49,7 @@ export function clearSchedulerLlmError(): void {
 export function schedulerStatusQuery(): SchedulerStatus {
   if (!getSchedulerStatus) {
     return {
-      microLlmIntervalHours: 4,
+      microLlmIntervalHours: 10 / 60,
       pendingCount: 0,
       throttledCount: 0,
       assets: [],

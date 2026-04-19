@@ -22,6 +22,7 @@ interface BriefingConfigQueryResult {
 }
 
 const LLM_INTERVAL_OPTIONS = [
+  { value: 10 / 60, label: '10 min' },
   { value: 0.25, label: '15 min' },
   { value: 0.5, label: '30 min' },
   { value: 1, label: '1 hour' },
@@ -32,7 +33,7 @@ const LLM_INTERVAL_OPTIONS = [
   { value: 24, label: '24 hours' },
 ];
 
-const DEFAULT_LLM_INTERVAL_HOURS = 4;
+const DEFAULT_LLM_INTERVAL_HOURS = 10 / 60;
 
 // ---------------------------------------------------------------------------
 // Component

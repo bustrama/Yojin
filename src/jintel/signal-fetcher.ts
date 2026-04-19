@@ -71,7 +71,26 @@ const REDDIT_DOMAIN_RE = /\b(reddit\.com|redd\.it|i\.redd\.it|v\.redd\.it|previe
 const SOCIAL_MIN_REDDIT_SCORE = 5;
 const SOCIAL_MIN_REDDIT_COMMENT_SCORE = 3;
 const SOCIAL_MIN_HN_POINTS = 5;
-const DEFAULT_CHUNK_SIZE = 10;
+// Jintel server enforces a 20-symbol cap per batchEnrich request. Keep chunk size
+// well under that so a bump in either direction doesn't immediately trip the cap,
+// and so per-request wall time stays reasonable (news/filings/social resolvers are
+// heavy).
+const DEFAULT_CHUNK_SIZE = 8;
+
+/** Small delay before the single retry on a transient batch failure. */
+const RETRY_DELAY_MS = 500;
+
+/**
+ * Return false for deterministic failures that won't recover on retry — 4xx
+ * HTTP statuses (auth, bad query, rate-limit) and GraphQL validation errors.
+ * Retry is for transient network/5xx blips only.
+ */
+function isRetryableError(err: unknown): boolean {
+  const e = err as { response?: { status?: number }; code?: string } | null;
+  const status = e?.response?.status;
+  if (typeof status === 'number' && status >= 400 && status < 500) return false;
+  return true;
+}
 
 // Material SEC filings only — drop OTHER (prospectuses, 3/5 stubs, etc.) at the source.
 const MATERIAL_FILING_TYPES: FilingType[] = ['FILING_10K', 'FILING_10Q', 'FILING_8K', 'ANNUAL_REPORT'];
@@ -134,21 +153,61 @@ export async function fetchJintelSignals(
   let totalDuplicates = 0;
 
   const chunkSize = options?.chunkSize ?? DEFAULT_CHUNK_SIZE;
+  const requestVars = {
+    filter,
+    filingsFilter,
+    riskSignalFilter,
+    newsFilter,
+    insiderTradesFilter,
+    topHoldersFilter,
+    discussionsFilter,
+    institutionalHoldingsFilter,
+  };
+
   for (let i = 0; i < tickers.length; i += chunkSize) {
     const chunk = tickers.slice(i, i + chunkSize);
-    try {
-      const entities = await client.request<Entity[]>(query, {
-        tickers: chunk,
-        filter,
-        filingsFilter,
-        riskSignalFilter,
-        newsFilter,
-        insiderTradesFilter,
-        topHoldersFilter,
-        discussionsFilter,
-        institutionalHoldingsFilter,
-      });
+    const chunkStart = Date.now();
+    let entities: Entity[] | null = null;
+    let lastError: unknown = null;
 
+    // One-shot retry — transient network blips and upstream 5xx shouldn't drop
+    // an entire chunk of the micro flow. A second failure gives up and moves on.
+    // Deterministic 4xx errors (auth, bad query) skip the retry to avoid the
+    // 500ms delay tax on failures that can't recover.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        entities = await client.request<Entity[]>(query, { tickers: chunk, ...requestVars });
+        break;
+      } catch (err) {
+        lastError = err;
+        if (attempt === 0 && isRetryableError(err)) {
+          logger.warn('Jintel batch fetch failed — retrying once', {
+            chunk: chunk.slice(0, 3),
+            error: err instanceof Error ? err.message : String(err),
+          });
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        } else {
+          break;
+        }
+      }
+    }
+
+    const durationMs = Date.now() - chunkStart;
+
+    if (entities === null) {
+      logger.warn('Jintel batch fetch failed', {
+        chunk: chunk.slice(0, 3),
+        chunkSize: chunk.length,
+        durationMs,
+        error: lastError instanceof Error ? lastError.message : String(lastError),
+      });
+      continue;
+    }
+
+    // Per-chunk try/catch — a bad entity (malformed data, ingestor failure) must
+    // not kill the entire chunk loop. Log and move on so remaining tickers still
+    // get processed.
+    try {
       // Build ticker → entity map
       const entityByTicker = new Map<string, Entity>();
       for (const entity of entities) {
@@ -181,10 +240,13 @@ export async function fetchJintelSignals(
         tickers: chunk,
         entities: entities.length,
         signals: rawSignals.length,
+        durationMs,
       });
     } catch (err) {
-      logger.warn('Jintel batch fetch failed', {
+      logger.error('Jintel chunk post-fetch processing failed', {
         chunk: chunk.slice(0, 3),
+        chunkSize: chunk.length,
+        durationMs,
         error: err instanceof Error ? err.message : String(err),
       });
     }

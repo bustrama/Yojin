@@ -810,7 +810,7 @@ export async function briefingConfigQuery(): Promise<BriefingConfigResult | null
       timezone: schedule.timezone,
       sections: alertsConfig.digestSections ?? [],
       enabled: true,
-      microLlmIntervalHours: alertsConfig.microLlmIntervalHours ?? 4,
+      microLlmIntervalHours: alertsConfig.microLlmIntervalHours ?? 10 / 60,
     };
   } catch {
     return null;
