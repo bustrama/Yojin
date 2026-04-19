@@ -7,6 +7,7 @@ import {
   setSnapshotStore,
 } from '../../../../src/api/graphql/resolvers/portfolio.js';
 import type { PortfolioSnapshot } from '../../../../src/api/graphql/types.js';
+import { clearLiveEnrichmentCache } from '../../../../src/portfolio/live-enrichment.js';
 import type { PortfolioSnapshotStore } from '../../../../src/portfolio/snapshot-store.js';
 
 function makeSnapshot(positions: PortfolioSnapshot['positions']): PortfolioSnapshot {
@@ -62,6 +63,7 @@ function createMockStore(snapshot: PortfolioSnapshot): PortfolioSnapshotStore {
 
 describe('portfolioHistoryQuery — backfill from Jintel prices', () => {
   beforeEach(() => {
+    clearLiveEnrichmentCache();
     setPortfolioJintelClient(undefined);
   });
 

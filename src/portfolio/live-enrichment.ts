@@ -75,6 +75,43 @@ export function clearLiveEnrichmentCache(): void {
   historyCache.clear();
 }
 
+/**
+ * Fetch priceHistory through the shared history cache so parallel resolvers
+ * within a single GraphQL request dedupe the upstream call. Returns `undefined`
+ * on failure — callers should treat that as "no baseline available".
+ */
+async function fetchCachedHistory(
+  client: JintelClient,
+  tickers: string[],
+  range: string,
+  interval?: string,
+): Promise<Map<string, TickerPriceHistory> | undefined> {
+  const cached = getCachedHistory(tickers, range, interval);
+  if (cached) return cached;
+  try {
+    const res = await client.priceHistory(tickers, range, interval);
+    if (!res?.success) return undefined;
+    const map = new Map<string, TickerPriceHistory>();
+    for (const h of res.data) map.set(h.ticker, h);
+    setCachedHistory(tickers, range, interval, map);
+    return map;
+  } catch (err) {
+    log.warn('Jintel priceHistory failed', { tickers, range, error: String(err) });
+    return undefined;
+  }
+}
+
+// 2y range (not 5d) so `portfolioQuery`'s yesterday lookup shares the same
+// cache entry as `portfolioHistoryQuery`, which needs up to 2y of closes for
+// the chart's lookback selectors. Do not narrow this without widening history.
+export async function fetchCachedDailyPriceHistory(
+  client: JintelClient,
+  symbols: string[],
+): Promise<TickerPriceHistory[] | undefined> {
+  const map = await fetchCachedHistory(client, symbols, '2y', '1d');
+  return map ? [...map.values()] : undefined;
+}
+
 /** Check if the US stock market is currently in regular trading hours (9:30–16:00 ET, Mon–Fri). */
 export function isUSMarketOpen(): boolean {
   const now = new Date();
@@ -184,28 +221,8 @@ export async function enrichPortfolioSnapshotWithLiveQuotes(
   // Check quote cache first to avoid hammering Jintel on repeated polls
   const cachedQuotes = getCachedQuotes(symbols);
 
-  const fetchHistory = (tickers: string[], range: string, interval?: string) => {
-    const cached = getCachedHistory(tickers, range, interval);
-    if (cached) {
-      log.debug('Using cached priceHistory', { tickers });
-      return Promise.resolve(cached);
-    }
-    return client
-      .priceHistory(tickers, range, interval)
-      .then((res) => {
-        if (res?.success) {
-          const map = new Map<string, TickerPriceHistory>();
-          for (const h of res.data) map.set(h.ticker, h);
-          setCachedHistory(tickers, range, interval, map);
-          return map;
-        }
-        return undefined;
-      })
-      .catch((err: unknown) => {
-        log.warn('Jintel priceHistory failed', { tickers, error: String(err) });
-        return undefined;
-      });
-  };
+  const fetchHistory = (tickers: string[], range: string, interval?: string) =>
+    fetchCachedHistory(client, tickers, range, interval);
 
   // Fetch quotes + history in parallel (all respect their own caches)
   const quotesPromise = cachedQuotes

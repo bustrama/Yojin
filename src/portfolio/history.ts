@@ -3,17 +3,14 @@ import type { TickerPriceHistory } from '@yojinhq/jintel-client';
 import type { PortfolioHistoryPoint, Position } from '../api/graphql/types.js';
 
 /**
- * Decide the earliest day a position contributes to historical totals.
+ * Earliest day a position contributes to historical totals — YYYY-MM-DD or
+ * null (include throughout the window).
  *
- * Returns a YYYY-MM-DD gate, or `null` meaning "include throughout the window".
+ * Priority: explicit past `entryDate` → first-seen date if the symbol appears
+ * after the overall first snapshot (genuine new addition) → null.
  *
- * Rule 1: explicit `entryDate` strictly in the past wins (user declared purchase date).
- * Rule 2: symbol first appears in snapshots after the overall first snapshot → new addition, gate at first-seen.
- * Rule 3: otherwise (first-ever import, or symbol held since the first snapshot) → include throughout.
- *
- * `entryDate === today` is ignored (rule 1 skipped) because the add-position mutation used to default
- * entryDate to today; honoring it would hide the position from all historical points and cause a false
- * jump between yesterday and today's live point.
+ * `entryDate === today` is ignored so same-day adds don't hide from history
+ * and cause a false jump on the live point.
  */
 export function resolvePositionStart(
   pos: Position,
@@ -90,6 +87,33 @@ export function fillCalendarDays(
   }
 
   return filled;
+}
+
+/**
+ * Today's portfolio P&L delta using yesterday's daily close as the reference —
+ * `(liveValue − yesterdayValue) − (liveCost − yesterdayCost)`. Gated positions
+ * (new adds, fresh imports) are excluded from the yesterday baseline so
+ * same-day buys don't register as gains. Callers must forward-fill
+ * `filledPrices` to the prior session's close for weekends/holidays.
+ */
+export function computePortfolioTodayDelta(
+  liveSnapshot: { positions: Position[]; totalValue: number; totalCost: number },
+  filledPrices: Map<string, Map<string, number>>,
+  gates: Map<string, string>,
+  yesterday: string,
+): { totalDayChange: number; totalDayChangePercent: number } {
+  let yesterdayValue = 0;
+  let yesterdayCost = 0;
+  for (const pos of liveSnapshot.positions) {
+    const gate = gates.get(pos.symbol);
+    if (gate && yesterday < gate) continue;
+    const close = filledPrices.get(pos.symbol)?.get(yesterday) ?? pos.currentPrice;
+    yesterdayValue += pos.quantity * close;
+    yesterdayCost += pos.costBasis * pos.quantity;
+  }
+  const totalDayChange = liveSnapshot.totalValue - yesterdayValue - (liveSnapshot.totalCost - yesterdayCost);
+  const totalDayChangePercent = yesterdayValue > 0 ? (totalDayChange / yesterdayValue) * 100 : 0;
+  return { totalDayChange, totalDayChangePercent };
 }
 
 export function buildHistoryPoints(

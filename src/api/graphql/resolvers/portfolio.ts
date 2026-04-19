@@ -5,16 +5,20 @@
  * empty state when no snapshots have been imported yet.
  */
 
-import type { JintelClient, TickerPriceHistory } from '@yojinhq/jintel-client';
+import type { JintelClient } from '@yojinhq/jintel-client';
 
 import { getLogger } from '../../../logging/index.js';
 import {
   buildHistoryPoints,
   buildPriceMap,
+  computePortfolioTodayDelta,
   fillCalendarDays,
   resolvePositionStart,
 } from '../../../portfolio/history.js';
-import { enrichPortfolioSnapshotWithLiveQuotes } from '../../../portfolio/live-enrichment.js';
+import {
+  enrichPortfolioSnapshotWithLiveQuotes,
+  fetchCachedDailyPriceHistory,
+} from '../../../portfolio/live-enrichment.js';
 import type { PortfolioSnapshotStore } from '../../../portfolio/snapshot-store.js';
 import type { ConnectionManager } from '../../../scraper/connection-manager.js';
 import type { WatchlistStore } from '../../../watchlist/watchlist-store.js';
@@ -96,7 +100,48 @@ export async function portfolioQuery(): Promise<PortfolioSnapshot | null> {
   if (!snapshotStore) return null;
   const snapshot = await snapshotStore.getLatest();
   if (!snapshot) return null;
-  return enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
+  return enrichAndOverlay(snapshot);
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function yesterdayISO(): string {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+async function resolveGates(positions: Position[], today: string): Promise<Map<string, string>> {
+  const gates = new Map<string, string>();
+  if (!snapshotStore) return gates;
+  const { firstSeenBySymbol, overallFirstDate } = await snapshotStore.getFirstSeenMap();
+  for (const pos of positions) {
+    const gate = resolvePositionStart(pos, firstSeenBySymbol, overallFirstDate, today);
+    if (gate) gates.set(pos.symbol, gate);
+  }
+  return gates;
+}
+
+/**
+ * Live-enrich a snapshot, then replace the quote-based `totalDayChange` with
+ * the value-based delta that drives the P&L chart's today bar so the card and
+ * chart always agree. Use at every site that returns or publishes a snapshot.
+ */
+export async function enrichAndOverlay(snapshot: PortfolioSnapshot): Promise<PortfolioSnapshot> {
+  const live = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
+  if (!jintelClient || !snapshotStore || live.positions.length === 0) return live;
+  // No live quotes landed → enrichment returned stored prices; overlay would compare stale vs stale.
+  if (!live.positions.some((p) => p.dayChange !== undefined)) return live;
+
+  const symbols = [...new Set(live.positions.map((p) => p.symbol))];
+  const priceData = await fetchCachedDailyPriceHistory(jintelClient, symbols);
+  if (!priceData) return live;
+
+  const yesterday = yesterdayISO();
+  const filledPrices = fillCalendarDays(buildPriceMap(priceData), yesterday, yesterday);
+  const gates = await resolveGates(live.positions, todayISO());
+  const delta = computePortfolioTodayDelta(live, filledPrices, gates, yesterday);
+  return { ...live, ...delta };
 }
 
 export async function portfolioHistoryQuery(days?: number | null): Promise<PortfolioHistoryPoint[]> {
@@ -105,43 +150,18 @@ export async function portfolioHistoryQuery(days?: number | null): Promise<Portf
   const snapshot = await snapshotStore.getLatest();
   if (!snapshot || snapshot.positions.length === 0) return [];
 
+  if (!jintelClient) return [];
+
   const symbols = [...new Set(snapshot.positions.map((p) => p.symbol))];
+  const startDate = new Date(Date.now() - (days ?? 7) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const yesterday = yesterdayISO();
 
-  const effectiveDays = days ?? 7;
-  const startDate = new Date(Date.now() - effectiveDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const priceData = await fetchCachedDailyPriceHistory(jintelClient, symbols);
+  if (!priceData) return [];
 
-  if (!jintelClient) {
-    log.debug('No Jintel client — returning empty history');
-    return [];
-  }
-
-  let priceData: TickerPriceHistory[];
-  try {
-    const result = await jintelClient.priceHistory(symbols, '2y', '1d');
-    if (!result.success) {
-      log.warn('Jintel priceHistory returned non-success', { error: result });
-      return [];
-    }
-    priceData = result.data;
-  } catch (err) {
-    log.warn('Jintel priceHistory call failed', { error: String(err) });
-    return [];
-  }
-
-  const rawPriceMap = buildPriceMap(priceData);
-  const filledPrices = fillCalendarDays(rawPriceMap, startDate, yesterday);
-
+  const filledPrices = fillCalendarDays(buildPriceMap(priceData), startDate, yesterday);
   const liveSnapshot = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
-
-  const { firstSeenBySymbol, overallFirstDate } = await snapshotStore.getFirstSeenMap();
-  const today = new Date().toISOString().slice(0, 10);
-  const gates = new Map<string, string>();
-  for (const pos of liveSnapshot.positions) {
-    const gate = resolvePositionStart(pos, firstSeenBySymbol, overallFirstDate, today);
-    if (gate) gates.set(pos.symbol, gate);
-  }
-
+  const gates = await resolveGates(liveSnapshot.positions, todayISO());
   const history = buildHistoryPoints(liveSnapshot.positions, filledPrices, startDate, yesterday, gates);
 
   const prevPoint = history.length > 0 ? history[history.length - 1] : null;
@@ -224,7 +244,7 @@ export async function addManualPositionMutation(
     platform: effectivePlatform,
     existingSnapshot: existing,
   });
-  const enriched = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
+  const enriched = await enrichAndOverlay(snapshot);
   pubsub.publish('portfolioUpdate', enriched);
   onPortfolioChangedCb?.([newPosition.symbol]);
 
@@ -295,7 +315,7 @@ export async function editPositionMutation(
       positions: otherPlatformPositions,
     },
   });
-  const enriched = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
+  const enriched = await enrichAndOverlay(snapshot);
   pubsub.publish('portfolioUpdate', enriched);
   onPortfolioChangedCb?.([updatedPosition.symbol]);
   return enriched;
@@ -335,7 +355,7 @@ export async function removePositionMutation(
       positions: otherPlatformPositions,
     },
   });
-  const enriched = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
+  const enriched = await enrichAndOverlay(snapshot);
   pubsub.publish('portfolioUpdate', enriched);
   onPortfolioChangedCb?.([targetSymbol]);
   return enriched;
@@ -345,23 +365,11 @@ export async function refreshPositionsMutation(
   _parent: unknown,
   args: { platform: Platform },
 ): Promise<PortfolioSnapshot> {
-  // If a connection manager is available and the platform is connected,
-  // trigger a live re-scrape via the connector.
   if (connectionManager && args.platform) {
-    const syncResult = await connectionManager.syncPlatform(args.platform);
-    if (syncResult.success) {
-      // Return the freshly saved snapshot with live prices
-      const snapshot = await getSnapshot();
-      const enriched = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
-      pubsub.publish('portfolioUpdate', enriched);
-      return enriched;
-    }
-    // If sync failed (e.g. no connector for this platform), fall through to
-    // returning the cached snapshot so the UI still gets data.
+    await connectionManager.syncPlatform(args.platform);
+    // Sync failure falls through to the cached snapshot so the UI still gets data.
   }
-
-  const snapshot = await getSnapshot();
-  const enriched = await enrichPortfolioSnapshotWithLiveQuotes(snapshot, jintelClient);
+  const enriched = await enrichAndOverlay(await getSnapshot());
   pubsub.publish('portfolioUpdate', enriched);
   return enriched;
 }

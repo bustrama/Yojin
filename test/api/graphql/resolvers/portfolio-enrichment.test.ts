@@ -55,11 +55,25 @@ function makeSnapshot() {
   };
 }
 
+/** Assert the store-backed resolver returned a snapshot. Tests always wire a store mock. */
+async function query() {
+  const result = await portfolioQuery();
+  if (!result) throw new Error('portfolioQuery returned null');
+  return result;
+}
+
 function createMockStore(): PortfolioSnapshotStore {
   return {
     getLatest: vi.fn().mockResolvedValue(makeSnapshot()),
     getAll: vi.fn().mockResolvedValue([makeSnapshot()]),
     save: vi.fn(),
+    getFirstSeenMap: vi.fn().mockResolvedValue({
+      firstSeenBySymbol: new Map([
+        ['AAPL', '2026-03-20'],
+        ['GOOG', '2026-03-20'],
+      ]),
+      overallFirstDate: '2026-03-20',
+    }),
   } as unknown as PortfolioSnapshotStore;
 }
 
@@ -169,7 +183,7 @@ describe('live quote enrichment', () => {
   it('portfolioQuery returns positions with live prices from Jintel quotes', async () => {
     setPortfolioJintelClient(createQuoteMockClient());
 
-    const positions = (await portfolioQuery()).positions;
+    const positions = (await query()).positions;
 
     const aapl = positions.find((p) => p.symbol === 'AAPL')!;
     expect(aapl.currentPrice).toBe(190);
@@ -190,7 +204,7 @@ describe('live quote enrichment', () => {
   it('portfolioQuery recalculates totals from live prices', async () => {
     setPortfolioJintelClient(createQuoteMockClient());
 
-    const portfolio = await portfolioQuery();
+    const portfolio = await query();
 
     const expectedTotalValue = 10 * 190 + 5 * 155; // 1900 + 775 = 2675
     const expectedTotalCost = 10 * 150 + 5 * 100; // 1500 + 500 = 2000
@@ -207,7 +221,7 @@ describe('live quote enrichment', () => {
     const failingQuotes = vi.fn().mockResolvedValue({ success: false, error: 'API down' });
     setPortfolioJintelClient(createQuoteMockClient(failingQuotes));
 
-    const positions = (await portfolioQuery()).positions;
+    const positions = (await query()).positions;
 
     // Positions retain original store values
     const aapl = positions.find((p) => p.symbol === 'AAPL')!;
@@ -219,7 +233,7 @@ describe('live quote enrichment', () => {
     const throwingQuotes = vi.fn().mockRejectedValue(new Error('Network error'));
     setPortfolioJintelClient(createQuoteMockClient(throwingQuotes));
 
-    const positions = (await portfolioQuery()).positions;
+    const positions = (await query()).positions;
 
     const aapl = positions.find((p) => p.symbol === 'AAPL')!;
     expect(aapl.currentPrice).toBe(175);
@@ -233,7 +247,7 @@ describe('live quote enrichment', () => {
     });
     setPortfolioJintelClient(createQuoteMockClient(partialQuotes));
 
-    const positions = (await portfolioQuery()).positions;
+    const positions = (await query()).positions;
 
     // AAPL gets live price
     const aapl = positions.find((p) => p.symbol === 'AAPL')!;
@@ -254,7 +268,7 @@ describe('live quote enrichment', () => {
     });
     setPortfolioJintelClient(createQuoteMockClient(quotesWithNull));
 
-    const positions = (await portfolioQuery()).positions;
+    const positions = (await query()).positions;
 
     // AAPL gets live price from the valid quote
     const aapl = positions.find((p) => p.symbol === 'AAPL')!;
@@ -280,27 +294,34 @@ describe('live quote enrichment', () => {
       priceHistory: emptyHistory,
     } as unknown as JintelClient);
 
-    const positions = (await portfolioQuery()).positions;
+    const positions = (await query()).positions;
 
     const goog = positions.find((p) => p.symbol === 'GOOG')!;
     expect(goog.currentPrice).toBe(140);
     expect(goog.marketValue).toBe(700);
   });
 
-  it('computes totalDayChange and totalDayChangePercent from position dayChanges', async () => {
-    setPortfolioJintelClient(createQuoteMockClient());
-    const portfolio = await portfolioQuery();
-    // AAPL dayChange=2.5, qty=10 → 25; GOOG dayChange=-1.2, qty=5 → -6
-    const expectedDayChange = 10 * 2.5 + 5 * -1.2; // 19
-    const expectedDayChangePct = (expectedDayChange / (portfolio.totalValue - expectedDayChange)) * 100;
-    expect(portfolio.totalDayChange).toBe(expectedDayChange);
-    expect(portfolio.totalDayChangePercent).toBeCloseTo(expectedDayChangePct, 2);
+  it('computes totalDayChange from yesterday close using the P&L chart formula', async () => {
+    // Align today with mock priceHistory's latest session (2026-03-24).
+    // With yesterday=2026-03-23 (no close), fillCalendarDays forward-fills from
+    // 2026-03-21: AAPL=188, GOOG=155. yesterdayValue = 10*188 + 5*155 = 2655.
+    // liveValue = 10*190 + 5*155 = 2675. costChange = 0 → delta = 20.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-24T20:00:00Z'));
+    try {
+      setPortfolioJintelClient(createQuoteMockClient());
+      const portfolio = await query();
+      expect(portfolio.totalDayChange).toBe(20);
+      expect(portfolio.totalDayChangePercent).toBeCloseTo((20 / 2655) * 100, 2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('sets totalDayChange to 0 when no quotes available', async () => {
     const failingQuotes = vi.fn().mockResolvedValue({ success: false, error: 'API down' });
     setPortfolioJintelClient(createQuoteMockClient(failingQuotes));
-    const portfolio = await portfolioQuery();
+    const portfolio = await query();
     expect(portfolio.totalDayChange).toBe(0);
     expect(portfolio.totalDayChangePercent).toBe(0);
   });

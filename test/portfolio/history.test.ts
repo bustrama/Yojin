@@ -5,6 +5,7 @@ import type { Position } from '../../src/api/graphql/types.js';
 import {
   buildHistoryPoints,
   buildPriceMap,
+  computePortfolioTodayDelta,
   fillCalendarDays,
   resolvePositionStart,
 } from '../../src/portfolio/history.js';
@@ -440,5 +441,80 @@ describe('buildHistoryPoints cross-range consistency', () => {
       expect(pick(week, day).periodPnl).toBeCloseTo(pick(month, day).periodPnl, 6);
       expect(pick(week, day).totalValue).toBe(pick(month, day).totalValue);
     }
+  });
+});
+
+describe('computePortfolioTodayDelta', () => {
+  const yesterday = '2026-04-18';
+  const positions = [
+    makePosition({ symbol: 'AAPL', platform: 'MANUAL', quantity: 10, costBasis: 150 }),
+    makePosition({ symbol: 'GOOG', platform: 'MANUAL', quantity: 5, costBasis: 100 }),
+  ];
+  const filledPrices = new Map<string, Map<string, number>>([
+    ['AAPL', new Map([[yesterday, 188]])],
+    ['GOOG', new Map([[yesterday, 152]])],
+  ]);
+
+  it('computes delta from live value minus yesterday value', () => {
+    // liveValue=2675, yesterdayValue=10*188 + 5*152 = 2640, costChange=0 → delta=35
+    const delta = computePortfolioTodayDelta(
+      { positions, totalValue: 2675, totalCost: 2000 },
+      filledPrices,
+      new Map(),
+      yesterday,
+    );
+    expect(delta.totalDayChange).toBe(35);
+    expect(delta.totalDayChangePercent).toBeCloseTo((35 / 2640) * 100, 6);
+  });
+
+  it('subtracts cost change so same-day buys do not register as gains', () => {
+    // Edit mutation added $500 of cost today: totalValue bumped by $500, delta should stay 35.
+    const delta = computePortfolioTodayDelta(
+      { positions, totalValue: 3175, totalCost: 2500 },
+      filledPrices,
+      new Map(),
+      yesterday,
+    );
+    expect(delta.totalDayChange).toBe(35);
+  });
+
+  it('gates positions whose start date is after yesterday', () => {
+    const gates = new Map([['GOOG', '2026-04-19']]);
+    // GOOG excluded: yesterdayValue = 10*188 = 1880; cost excluded too, yesterdayCost = 1500.
+    // liveValue=2675, liveCost=2000. delta = (2675 - 1880) - (2000 - 1500) = 795 - 500 = 295.
+    const delta = computePortfolioTodayDelta(
+      { positions, totalValue: 2675, totalCost: 2000 },
+      filledPrices,
+      gates,
+      yesterday,
+    );
+    expect(delta.totalDayChange).toBe(295);
+  });
+
+  it('falls back to currentPrice when priceData is missing for a symbol', () => {
+    const withCurrent = [
+      { ...positions[0], currentPrice: 190 },
+      { ...positions[1], currentPrice: 155 },
+    ];
+    const delta = computePortfolioTodayDelta(
+      { positions: withCurrent, totalValue: 2675, totalCost: 2000 },
+      new Map(),
+      new Map(),
+      yesterday,
+    );
+    // yesterdayValue = 10*190 + 5*155 = 2675 → delta = 0
+    expect(delta.totalDayChange).toBe(0);
+    expect(delta.totalDayChangePercent).toBe(0);
+  });
+
+  it('returns 0% when yesterdayValue is 0', () => {
+    const delta = computePortfolioTodayDelta(
+      { positions: [], totalValue: 0, totalCost: 0 },
+      filledPrices,
+      new Map(),
+      yesterday,
+    );
+    expect(delta.totalDayChange).toBe(0);
+    expect(delta.totalDayChangePercent).toBe(0);
   });
 });

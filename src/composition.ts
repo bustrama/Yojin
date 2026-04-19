@@ -46,6 +46,7 @@ import {
   setOnboardingVault,
 } from './api/graphql/resolvers/onboarding.js';
 import {
+  enrichAndOverlay,
   setPortfolioConnectionManager,
   setPortfolioJintelClient,
   setPortfolioWatchlistStore,
@@ -623,7 +624,9 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
   // Portfolio tools (2 tools: save_portfolio_positions, get_portfolio)
   for (const tool of createPortfolioTools({
     snapshotStore,
-    onPortfolioSaved: (snapshot) => pubsub.publish('portfolioUpdate', snapshot),
+    onPortfolioSaved: async (snapshot) => {
+      pubsub.publish('portfolioUpdate', await enrichAndOverlay(snapshot));
+    },
   })) {
     toolRegistry.register(tool);
   }
