@@ -86,19 +86,10 @@ function expandQuickActionKeyword(text: string): string | undefined {
   return QUICK_ACTION_KEYWORDS.get(normalized);
 }
 
-/** Scrub dollar amounts ($1,234.56), percentages with dollar context, and exact share counts from text. */
-const DOLLAR_AMOUNT_RE = /\$[\d,]+(?:\.\d{1,2})?(?:\s*(?:k|m|M|B|billion|million|thousand))?/g;
-const EXACT_SHARES_RE = /\b\d+(?:\.\d+)?\s*(?:shares?|units?|contracts?|lots?)\b/gi;
-
 function redactSensitiveText(text: string, redactor?: PiiRedactor): string {
-  let result = text.replace(DOLLAR_AMOUNT_RE, '<AMOUNT>').replace(EXACT_SHARES_RE, '<QTY>');
-
-  if (redactor) {
-    const { data } = redactor.redact({ text: result });
-    result = data.text as string;
-  }
-
-  return result;
+  if (!redactor) return text;
+  const { data } = redactor.redact({ text });
+  return data.text as string;
 }
 
 /**
