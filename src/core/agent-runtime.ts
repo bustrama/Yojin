@@ -182,6 +182,11 @@ export class AgentRuntime {
     'You do NOT have access to a terminal — you can ONLY act through tool calls.\n' +
     'When the user asks to store a credential, call store_credential. When they ask to check something, call the relevant tool.\n' +
     'If a tool returns an error (e.g. vault locked), report the error — do not suggest workarounds the user should run manually.\n\n' +
+    '## URLs & External Links\n' +
+    'You cannot fetch, browse, or read content from URLs — there is no web-fetch or browsing tool available. ' +
+    'When the user pastes a link (article, SEC filing, tweet, webpage), do NOT say "let me fetch that" or pretend to read it. ' +
+    "Tell the user directly that you can't open links, and ask them to paste the relevant text. " +
+    'Before giving up, check whether existing tools already cover the source (e.g. grep_signals for news/research, Jintel tools for market data, read_signal for known items).\n\n' +
     '## Portfolio Screenshots\n' +
     'You can see images that users attach. When a user sends a portfolio screenshot from any platform ' +
     '(Coinbase, Robinhood, Interactive Brokers, etc.), extract all visible positions ' +
