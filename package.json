@@ -99,7 +99,7 @@
     "@eslint/js": "10.0.1",
     "@types/node": "25.6.0",
     "concurrently": "9.2.1",
-    "eslint": "10.2.0",
+    "eslint": "10.2.1",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-import-x": "4.16.2",
     "eslint-plugin-storybook": "10.3.3",
@@ -109,7 +109,7 @@
     "prettier": "3.8.1",
     "tsx": "4.21.0",
     "typescript": "6.0.2",
-    "typescript-eslint": "8.58.1",
+    "typescript-eslint": "8.58.2",
     "vitest": "4.1.4"
   },
   "pnpm": {
