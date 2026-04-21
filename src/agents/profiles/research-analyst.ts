@@ -43,6 +43,12 @@ export function createResearchAnalystProfile(): AgentProfile {
       'get_inflation',
       'get_interest_rates',
       'get_sp500_multiples',
+      'get_clinical_trials',
+      'get_fda_events',
+      'get_litigation',
+      'get_government_contracts',
+      'fred_series',
+      'fred_batch',
       // Signal tools
       'glob_signals',
       'grep_signals',
