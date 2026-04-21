@@ -45,6 +45,15 @@ const cache = cacheExchange({
     PortfolioItem: () => null, // embedded — nested under PortfolioInsight
     AssetSnap: () => null, // embedded — nested under Snap
     MicroInsight: (data) => data.id as string,
+    // Supply chain — keyed by ticker; nested types are embedded (no stable id)
+    SupplyChainMap: (data) => data.ticker as string,
+    UpstreamEdge: () => null,
+    DownstreamEdge: () => null,
+    SupplyChainEvidence: () => null,
+    GeographicFootprintEntry: () => null,
+    ConcentrationFlag: () => null,
+    SupplyChainSource: () => null,
+    ProviderModel: () => null,
     Summary: (data) => data.id as string,
     SummarySourceSignal: () => null, // embedded — nested under Summary
     Action: (data) => data.id as string,

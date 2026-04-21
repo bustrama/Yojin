@@ -986,6 +986,105 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
+  # Supply Chain (per-ticker 2-hop graph, Phase A: raw capture)
+  # ---------------------------------------------------------------------------
+
+  enum SupplyChainRelationship {
+    SUPPLIER
+    MANUFACTURER
+    PARTNER
+    DISTRIBUTOR
+    LICENSOR
+    JOINT_VENTURE
+  }
+
+  enum Substitutability {
+    HIGH
+    MEDIUM
+    LOW
+  }
+
+  enum EdgeOrigin {
+    JINTEL_DIRECT
+    LLM_INFERRED
+  }
+
+  enum ConcentrationDimension {
+    PRODUCT
+    SEGMENT
+    GEOGRAPHY
+    CUSTOMER
+  }
+
+  type SupplyChainEvidence {
+    connector: String!
+    url: String
+    ref: String
+    asOf: String
+    contextQuote: String
+  }
+
+  type UpstreamEdge {
+    counterpartyName: String!
+    counterpartyTicker: ID
+    counterpartyCik: String
+    relationship: SupplyChainRelationship!
+    edgeOrigin: EdgeOrigin!
+    criticality: Float!
+    substitutability: Substitutability
+    evidence: [SupplyChainEvidence!]!
+    originCountry: String
+  }
+
+  type DownstreamEdge {
+    counterpartyName: String!
+    counterpartyTicker: ID
+    edgeOrigin: EdgeOrigin!
+    sharePct: Float
+    valueUsd: Float
+    evidence: [SupplyChainEvidence!]!
+  }
+
+  type GeographicFootprintEntry {
+    iso2: String!
+    country: String!
+    criticality: Float!
+    entities: [String!]!
+  }
+
+  type ConcentrationFlag {
+    dimension: ConcentrationDimension!
+    hhi: Float!
+    label: String!
+  }
+
+  type SupplyChainSource {
+    connector: String!
+    asOf: String
+    ref: String
+  }
+
+  type ProviderModel {
+    provider: String!
+    model: String!
+  }
+
+  type SupplyChainMap {
+    ticker: ID!
+    entityName: String!
+    upstream: [UpstreamEdge!]!
+    downstream: [DownstreamEdge!]!
+    geographicFootprint: [GeographicFootprintEntry!]!
+    concentrationRisks: [ConcentrationFlag!]!
+    narrative: String
+    asOf: String!
+    dataAsOf: String
+    staleAfter: String!
+    sources: [SupplyChainSource!]!
+    synthesizedBy: ProviderModel
+  }
+
+  # ---------------------------------------------------------------------------
   # Ticker Profiles (per-asset institutional knowledge)
   # ---------------------------------------------------------------------------
 
@@ -1391,6 +1490,8 @@ export const typeDefs = /* GraphQL */ `
     tickerProfiles(tickers: [String!]!): [TickerProfile!]!
     microInsight(symbol: String!): MicroInsight
     microInsights: [MicroInsight!]!
+    supplyChainMap(ticker: ID!): SupplyChainMap
+    supplyChainMapsByTickers(tickers: [ID!]!): [SupplyChainMap!]!
     aiConfig: AiConfig!
   }
 

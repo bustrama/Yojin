@@ -143,6 +143,7 @@ import {
   resolveToggleStrategySource,
 } from './resolvers/strategy-sources.js';
 import { summariesResolver, summaryResolver } from './resolvers/summaries.js';
+import { supplyChainMapQuery, supplyChainMapsByTickersQuery } from './resolvers/supply-chain.js';
 import {
   addVaultSecretMutation,
   changeVaultPassphraseMutation,
@@ -215,6 +216,8 @@ const schema = createSchema({
       tickerProfiles: tickerProfilesQuery,
       microInsight: microInsightQuery,
       microInsights: microInsightsQuery,
+      supplyChainMap: supplyChainMapQuery,
+      supplyChainMapsByTickers: supplyChainMapsByTickersQuery,
       aiConfig: aiConfigQuery,
     },
     PortfolioSnapshot: portfolioSnapshotFieldResolvers,
