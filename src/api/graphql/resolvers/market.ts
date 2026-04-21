@@ -8,6 +8,7 @@
 import type { JintelClient, USMarketStatus } from '@yojinhq/jintel-client';
 
 import { createSubsystemLogger } from '../../../logging/logger.js';
+import { sanitizeCandles } from '../../../market/sanitize-candles.js';
 import type { Article, Quote, SymbolSearchResult } from '../types.js';
 
 const log = createSubsystemLogger('market-resolver');
@@ -190,10 +191,13 @@ export async function priceHistoryQuery(
   ]);
 
   if (!historyResult.success) return [];
-  if (!quotesResult.success) return historyResult.data;
+
+  const sanitized = historyResult.data.map((th) => ({ ...th, history: sanitizeCandles(th.history) }));
+
+  if (!quotesResult.success) return sanitized;
 
   const livePrices = new Map(quotesResult.data.map((q) => [q.ticker.toUpperCase(), q.price]));
-  return historyResult.data.map((th) => applyLivePriceToTrailingCandle(th, livePrices.get(th.ticker.toUpperCase())));
+  return sanitized.map((th) => applyLivePriceToTrailingCandle(th, livePrices.get(th.ticker.toUpperCase())));
 }
 
 function applyLivePriceToTrailingCandle(th: TickerPriceHistory, livePrice: number | undefined): TickerPriceHistory {
