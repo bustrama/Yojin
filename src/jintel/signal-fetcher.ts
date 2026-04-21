@@ -106,6 +106,25 @@ const DEFAULT_CHUNK_SIZE = 8;
 /** Small delay before the single retry on a transient batch failure. */
 const RETRY_DELAY_MS = 500;
 
+// Per-chunk wall-clock deadline. The Jintel client has its own abort timeout, but if
+// that ever fails to settle the promise, the scheduler's single-flight flag wedges
+// forever and signal ingestion silently stops. Owning the deadline here guarantees
+// forward progress even if the library hangs. Kept under the library's 120s default
+// so we time out first on normal transient hangs and retry via the outer loop.
+const CHUNK_TIMEOUT_MS = 90_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /**
  * Return false for deterministic failures that won't recover on retry — 4xx
  * HTTP statuses (auth, bad query, rate-limit) and GraphQL validation errors.
@@ -233,7 +252,11 @@ export async function fetchJintelSignals(
     // 500ms delay tax on failures that can't recover.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        entities = await client.request<Entity[]>(query, { tickers: chunk, ...requestVars });
+        entities = await withTimeout(
+          client.request<Entity[]>(query, { tickers: chunk, ...requestVars }),
+          CHUNK_TIMEOUT_MS,
+          `Jintel batch fetch (${chunk.length} tickers)`,
+        );
         break;
       } catch (err) {
         lastError = err;
@@ -1138,13 +1161,17 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
 
   // Fire all macro queries in parallel via typed client methods (v0.20.0+ accept ArrayFilterInput).
   // These return JintelResult<T> and never throw — no Promise.allSettled needed.
-  const [gdpResult, inflationResult, ratesResult, peResult, shillerResult] = await Promise.all([
-    client.gdp('US', 'REAL', latestOnly),
-    client.inflation('US', latestOnly),
-    client.interestRates('US', latestOnly),
-    client.sp500Multiples('PE_MONTH', latestOnly),
-    client.sp500Multiples('SHILLER_PE_MONTH', latestOnly),
-  ]);
+  const [gdpResult, inflationResult, ratesResult, peResult, shillerResult] = await withTimeout(
+    Promise.all([
+      client.gdp('US', 'REAL', latestOnly),
+      client.inflation('US', latestOnly),
+      client.interestRates('US', latestOnly),
+      client.sp500Multiples('PE_MONTH', latestOnly),
+      client.sp500Multiples('SHILLER_PE_MONTH', latestOnly),
+    ]),
+    CHUNK_TIMEOUT_MS,
+    'Jintel macro indicators fetch',
+  );
 
   // GDP
   if (gdpResult.success && gdpResult.data.length > 0) {
