@@ -21,6 +21,10 @@ export function createRiskManagerProfile(): AgentProfile {
       // Jintel
       'sanctions_screen',
       'get_earnings_calendar',
+      'get_litigation',
+      'get_fda_events',
+      'fred_series',
+      'fred_batch',
       // Memory tools
       'store_signal_memory',
       'recall_signal_memories',

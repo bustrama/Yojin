@@ -36,6 +36,10 @@ export function createStrategistProfile(): AgentProfile {
       'get_strategy_evaluations',
       // Strategy proposal (display tool)
       'display_propose_strategy',
+      // Macro (FRED)
+      'fred_series',
+      'fred_batch',
+      'get_sp500_multiples',
       // Utility
       'get_current_time',
       'calculate',

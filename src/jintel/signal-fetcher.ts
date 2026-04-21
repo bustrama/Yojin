@@ -10,6 +10,7 @@ import type {
   EnrichOptions,
   EnrichmentField,
   Entity,
+  FdaEventType,
   FilingType,
   InsiderTrade,
   JintelClient,
@@ -21,7 +22,7 @@ import { buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 
 import { formatAssetLabel } from './format-label.js';
 import { isShortInterestFresh } from './freshness.js';
-import { formatNumber, riskSignalsToRaw } from './tools.js';
+import { fdaEventsToRaw, formatNumber, governmentContractsToRaw, riskSignalsToRaw } from './tools.js';
 import type { RedditComment } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
@@ -79,6 +80,12 @@ export const COLD_ENRICHMENT_FIELDS: readonly EnrichmentField[] = [
   'topHolders',
   'insiderTrades',
   'earningsPressReleases',
+  // Alt-data catalysts shipped in jintel-client 0.23.0. Recalls and large federal awards are
+  // change-driven (they fire on new events); filters below keep the feed clean.
+  // Litigation is deliberately omitted — active-case lists are *state*, not events, and mega-caps
+  // carry dozens of routine procedural filings. It stays available as a pull-only agent tool.
+  'fdaEvents',
+  'governmentContracts',
 ];
 
 export const ENRICHMENT_FIELDS: readonly EnrichmentField[] = [...HOT_ENRICHMENT_FIELDS, ...COLD_ENRICHMENT_FIELDS];
@@ -115,6 +122,12 @@ function isRetryableError(err: unknown): boolean {
 const MATERIAL_FILING_TYPES: FilingType[] = ['FILING_10K', 'FILING_10Q', 'FILING_8K', 'ANNUAL_REPORT'];
 // Drop LOW-severity risk signal noise; keep everything MEDIUM and above.
 const MEANINGFUL_RISK_SEVERITIES: Severity[] = ['MEDIUM', 'HIGH', 'CRITICAL'];
+// Only enforcement actions (recalls) flow into the Intel Feed. Adverse-event reports fire
+// constantly and would drown out catalysts — they remain available via `get_fda_events`.
+const FDA_EVENT_TYPES_FOR_FEED: FdaEventType[] = ['DRUG_RECALL'];
+// Intel Feed only surfaces material federal awards. $1M floor is too low for defense mega-caps
+// (LMT/RTX see routine $1M-$5M awards weekly); $10M captures catalyst-grade contracts only.
+const GOVERNMENT_CONTRACTS_MIN_AMOUNT_USD = 10_000_000;
 
 export interface JintelFetchResult {
   ingested: number;
@@ -159,6 +172,20 @@ export async function fetchJintelSignals(
   // 0.22.0: discussions and institutionalHoldings now require domain-specific filters.
   const discussionsFilter = { sort: 'DESC' as const, ...(options?.since ? { since: options.since } : {}) };
   const institutionalHoldingsFilter = { limit: 20, sort: 'DESC' as const };
+  // Alt-data catalysts (jintel-client 0.23.0) — filtered to material items only so the Intel
+  // Feed sees recalls, active lawsuits, and meaningful federal awards instead of raw firehose.
+  const fdaEventsFilter = {
+    types: FDA_EVENT_TYPES_FOR_FEED,
+    sort: 'DESC' as const,
+    limit: 5,
+    ...(options?.since ? { since: options.since } : {}),
+  };
+  const governmentContractsFilter = {
+    minAmount: GOVERNMENT_CONTRACTS_MIN_AMOUNT_USD,
+    sort: 'DESC' as const,
+    limit: 5,
+    ...(options?.since ? { since: options.since } : {}),
+  };
   const enrichOpts: EnrichOptions = {
     filter: arrayFilter,
     filingsFilter,
@@ -168,6 +195,8 @@ export async function fetchJintelSignals(
     topHoldersFilter,
     discussionsFilter,
     institutionalHoldingsFilter,
+    fdaEventsFilter,
+    governmentContractsFilter,
   };
   const fields = options?.fields ?? ENRICHMENT_FIELDS;
   const query = buildBatchEnrichQuery([...fields], enrichOpts);
@@ -188,6 +217,8 @@ export async function fetchJintelSignals(
     topHoldersFilter,
     discussionsFilter,
     institutionalHoldingsFilter,
+    fdaEventsFilter,
+    governmentContractsFilter,
   };
 
   for (let i = 0; i < tickers.length; i += chunkSize) {
@@ -544,6 +575,18 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
         metadata: { reportDate: si.reportDate, source: si.source },
       });
     }
+  }
+
+  // 5a. FDA enforcement actions (DRUG_RECALL only) — REGULATORY signals.
+  //     Adverse-event reports are excluded at the filter layer to keep the feed clean.
+  if (entity.fdaEvents?.length) {
+    signals.push(...fdaEventsToRaw(entity.fdaEvents, tickers));
+  }
+
+  // 5b. Material federal contracts (>= $10M) — FUNDAMENTAL signals.
+  //     Small awards are excluded at the filter layer to avoid feed dilution.
+  if (entity.governmentContracts?.length) {
+    signals.push(...governmentContractsToRaw(entity.governmentContracts, tickers));
   }
 
   // 5. SEC filings (Jintel returns newest-first, limited by ArraySubGraphOptions)
