@@ -19,7 +19,7 @@ importers:
         version: 1.2.1(grammy@1.42.0)
       '@hono/node-server':
         specifier: 1.19.14
-        version: 1.19.14(hono@4.12.8)
+        version: 1.19.14(hono@4.12.14)
       '@slack/bolt':
         specifier: 4.7.0
         version: 4.7.0(@types/express@5.0.6)
@@ -42,8 +42,8 @@ importers:
         specifier: 5.21.0
         version: 5.21.0(graphql@16.13.2)
       hono:
-        specifier: 4.12.8
-        version: 4.12.8
+        specifier: 4.12.14
+        version: 4.12.14
       rehydra:
         specifier: 0.10.1
         version: 0.10.1
@@ -2672,8 +2672,8 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
-  hono@4.12.8:
-    resolution: {integrity: sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A==}
+  hono@4.12.14:
+    resolution: {integrity: sha512-am5zfg3yu6sqn5yjKBNqhnTX7Cv+m00ox+7jbaKkrLMRJ4rAdldd1xPd/JzbBWspqaQv6RSTrgFN95EsfhC+7w==}
     engines: {node: '>=16.9.0'}
 
   hookified@1.15.1:
@@ -4599,9 +4599,9 @@ snapshots:
 
   '@hapi/hoek@9.3.0': {}
 
-  '@hono/node-server@1.19.14(hono@4.12.8)':
+  '@hono/node-server@1.19.14(hono@4.12.14)':
     dependencies:
-      hono: 4.12.8
+      hono: 4.12.14
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -6585,7 +6585,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  hono@4.12.8: {}
+  hono@4.12.14: {}
 
   hookified@1.15.1: {}
 
