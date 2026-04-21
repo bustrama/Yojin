@@ -2,6 +2,7 @@ import type { JintelClient, MarketQuote, TickerPriceHistory } from '@yojinhq/jin
 
 import type { PortfolioSnapshot, Position } from '../api/graphql/types.js';
 import { getLogger } from '../logging/index.js';
+import { sanitizeCandles } from '../market/sanitize-candles.js';
 
 const log = getLogger().sub('portfolio-live-enrichment');
 
@@ -158,7 +159,7 @@ function toETDate(dateStr: string): string {
  *  When `livePrice` is omitted (e.g. the live quote endpoint returned no data for this ticker),
  *  the sparkline ends at the most recent close from history instead. */
 export function buildSparkline(history: TickerPriceHistory, livePrice?: number, regularHoursOnly = false): number[] {
-  let candles = history.history;
+  let candles = sanitizeCandles(history.history);
   if (regularHoursOnly) {
     candles = candles.filter((p) => {
       const d = parseUTC(p.date);
