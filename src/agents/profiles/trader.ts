@@ -22,6 +22,7 @@ export function createTraderProfile(): AgentProfile {
       'list_credentials',
       // Jintel
       'market_quotes',
+      'market_status',
       // Diagnostics
       'diagnose_data_error',
       // Utility

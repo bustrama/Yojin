@@ -7,6 +7,7 @@
  */
 
 import {
+  type AnalystConsensus,
   type ArraySubGraphOptions,
   type ClinicalTrial,
   type ClinicalTrialFilterOptions,
@@ -65,6 +66,7 @@ import {
   type SocialSentiment,
   type TickerPriceHistory,
   type TopHolder,
+  type USMarketStatus,
   buildEnrichQuery,
 } from '@yojinhq/jintel-client';
 import { z } from 'zod';
@@ -129,6 +131,8 @@ const JINTEL_QUERY_KIND = z.enum([
   'segmented_revenue',
   'earnings_calendar',
   'periodic_filing',
+  'analyst_consensus',
+  'market_status',
 ]);
 
 type JintelQueryKind = z.infer<typeof JINTEL_QUERY_KIND>;
@@ -142,10 +146,13 @@ const ENRICHMENT_FIELDS = z.enum([
   'news',
   'research',
   'sentiment',
+  'analyst',
   // Costly fields — only request when explicitly needed
   'social',
   'predictions',
   'discussions',
+  'financials',
+  'executives',
   'institutionalHoldings',
   'ownership',
   'topHolders',
@@ -154,6 +161,13 @@ const ENRICHMENT_FIELDS = z.enum([
   'segmentedRevenue',
   'earnings',
   'periodicFilings',
+  'clinicalTrials',
+  'fdaEvents',
+  'litigation',
+  'governmentContracts',
+  'subsidiaries',
+  'concentration',
+  'relationships',
 ]);
 
 const SEVERITY_CONFIDENCE: Record<string, number> = {
@@ -1051,6 +1065,38 @@ function formatExecutives(executives: KeyExecutive[]): string {
     .join('\n');
 }
 
+function formatAnalystConsensus(a: AnalystConsensus, currentPrice?: number): string {
+  const lines: string[] = [];
+  if (a.recommendation) {
+    const mean =
+      a.recommendationMean != null ? ` (mean ${a.recommendationMean.toFixed(2)}/5, lower = more bullish)` : '';
+    lines.push(`Recommendation: ${a.recommendation}${mean}`);
+  }
+  if (a.numberOfAnalysts != null) lines.push(`Analysts covering: ${a.numberOfAnalysts}`);
+
+  const upside = (target: number | null | undefined): string =>
+    target != null && currentPrice != null && currentPrice > 0
+      ? ` (${(((target - currentPrice) / currentPrice) * 100).toFixed(1)}% vs $${currentPrice.toFixed(2)})`
+      : '';
+
+  if (a.targetMean != null) lines.push(`Target mean: $${a.targetMean.toFixed(2)}${upside(a.targetMean)}`);
+  if (a.targetMedian != null) lines.push(`Target median: $${a.targetMedian.toFixed(2)}${upside(a.targetMedian)}`);
+  if (a.targetHigh != null) lines.push(`Target high: $${a.targetHigh.toFixed(2)}${upside(a.targetHigh)}`);
+  if (a.targetLow != null) lines.push(`Target low: $${a.targetLow.toFixed(2)}${upside(a.targetLow)}`);
+  return lines.length ? lines.join('\n') : 'No analyst consensus fields populated.';
+}
+
+function formatMarketStatus(s: USMarketStatus): string {
+  const lines = [
+    `Date: ${s.date}`,
+    `Trading day: ${s.isTradingDay ? 'yes' : 'no'}`,
+    `Open: ${s.isOpen ? 'yes' : 'no'}`,
+    `Session: ${s.session}`,
+  ];
+  if (s.holiday) lines.push(`Holiday: ${s.holiday}`);
+  return `# US Market Status\n\n${lines.join('\n')}`;
+}
+
 function formatPredictions(markets: PredictionMarket[]): string {
   if (markets.length === 0) return 'No prediction markets found.';
   return markets
@@ -1552,6 +1598,24 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       const handled = handleResult(result.data);
       if (!handled.ok) return handled.toolResult;
       return { content: formatPriceHistory(handled.data) };
+    },
+  };
+
+  const marketStatus: ToolDefinition = {
+    name: 'market_status',
+    description:
+      'Get the current US equity market status — whether the market is open, the session ' +
+      '(PRE_MARKET, OPEN, AFTER_HOURS, CLOSED), whether today is a trading day, and any holiday name. ' +
+      'Use before placing orders or when timing matters for a recommendation.',
+    parameters: z.object({}),
+    async execute(): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const result = await safeCall(() => client.marketStatus());
+      if (!result.ok) return result.toolResult;
+      const handled = handleResult(result.data);
+      if (!handled.ok) return handled.toolResult;
+      return { content: formatMarketStatus(handled.data) };
     },
   };
 
@@ -2119,6 +2183,34 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
+  const getAnalystConsensus: ToolDefinition = {
+    name: 'get_analyst_consensus',
+    description:
+      'Get sell-side analyst price targets and recommendation consensus for an equity ticker. ' +
+      'Returns targetHigh / targetLow / targetMean / targetMedian (USD), recommendation (buy/hold/sell), ' +
+      'recommendationMean (1 = strong buy, 5 = strong sell), and numberOfAnalysts.\n\n' +
+      'Equity-only: returns no data for crypto. Use when the user asks about Wall Street consensus, ' +
+      'price targets, upside/downside to target, or analyst ratings.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Equity ticker symbol (e.g. AAPL, NVDA, MSFT)'),
+    }),
+    async execute(params: { ticker: string }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const result = await options.client.enrichEntity(params.ticker, ['analyst'] as EnrichmentField[]);
+      const handled = handleResult(result);
+      if (!handled.ok) return handled.toolResult;
+      const entity = handled.data as Entity;
+      if (!entity.analyst) {
+        return {
+          content: `No analyst consensus available for ${params.ticker}. (Equity-only field — not available for crypto.)`,
+        };
+      }
+      return {
+        content: `# ${formatAssetLabel(entity.name, params.ticker)} — Analyst Consensus\n\n${formatAnalystConsensus(entity.analyst, entity.market?.quote?.price)}`,
+      };
+    },
+  };
+
   const getSocial: ToolDefinition = {
     name: 'get_social',
     description:
@@ -2658,11 +2750,12 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     description:
       'Generic Jintel query tool for quotes, fundamentals, market data, history, news, research, sentiment, ' +
       'technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ' +
-      'ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, or ' +
-      'periodic_filing. Use this when you want one Jintel-backed entry point instead of choosing a more specialized tool.',
+      'ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, ' +
+      'periodic_filing, analyst_consensus, or market_status. Use this when you want one Jintel-backed entry point ' +
+      'instead of choosing a more specialized tool.',
     parameters: z.object({
       kind: JINTEL_QUERY_KIND.describe(
-        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, or periodic_filing',
+        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, periodic_filing, analyst_consensus, or market_status',
       ),
       ticker: z
         .string()
@@ -2689,7 +2782,13 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
         return { content: `jintel_query kind "${params.kind}" requires "ticker" or "tickers".`, isError: true };
       }
 
-      if (params.kind !== 'quote' && params.kind !== 'history' && (!singleTicker || normalizedTickers.length !== 1)) {
+      const kindRequiresNoTicker = params.kind === 'market_status';
+      if (
+        !kindRequiresNoTicker &&
+        params.kind !== 'quote' &&
+        params.kind !== 'history' &&
+        (!singleTicker || normalizedTickers.length !== 1)
+      ) {
         return { content: `jintel_query kind "${params.kind}" requires exactly one ticker.`, isError: true };
       }
 
@@ -2741,6 +2840,10 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
           return getEarningsCalendar.execute({ ticker: singleTicker });
         case 'periodic_filing':
           return getPeriodicFiling.execute({ ticker: singleTicker });
+        case 'analyst_consensus':
+          return getAnalystConsensus.execute({ ticker: singleTicker });
+        case 'market_status':
+          return marketStatus.execute({});
       }
 
       return { content: `Unsupported Jintel query kind: ${params.kind}`, isError: true };
@@ -3186,9 +3289,11 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     sanctionsScreen,
     runTechnical,
     priceHistory,
+    marketStatus,
     getNews,
     getResearch,
     getSentiment,
+    getAnalystConsensus,
     getDerivatives,
     getFilings,
     getRiskSignals,
