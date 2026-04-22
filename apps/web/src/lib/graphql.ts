@@ -31,6 +31,7 @@ const cache = cacheExchange({
     Concentration: () => null,
     CorrelationCluster: () => null,
     PriceEvent: () => null,
+    TierAvailability: () => null, // embedded — nested under detectAvailableTiers[]
     SignalSource: () => null, // embedded — same source id appears on many signals
     CuratedSignal: () => null, // embedded — wraps Signal with scores
     CuratedSignalAssessment: () => null, // embedded — nested under CuratedSignal
