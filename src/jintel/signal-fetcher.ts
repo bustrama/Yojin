@@ -103,15 +103,18 @@ const SOCIAL_MIN_HN_POINTS = 5;
 // heavy).
 const DEFAULT_CHUNK_SIZE = 8;
 
-/** Small delay before the single retry on a transient batch failure. */
-const RETRY_DELAY_MS = 500;
+// Backoff before the single retry on a transient batch failure. A timeout hang
+// on Jintel rarely recovers in <1s — a short pause gives upstream load a moment
+// to clear before the retry request goes out.
+const RETRY_DELAY_MS = 2_000;
 
-// Per-chunk wall-clock deadline. The Jintel client has its own abort timeout, but if
-// that ever fails to settle the promise, the scheduler's single-flight flag wedges
-// forever and signal ingestion silently stops. Owning the deadline here guarantees
-// forward progress even if the library hangs. Kept under the library's 120s default
-// so we time out first on normal transient hangs and retry via the outer loop.
-const CHUNK_TIMEOUT_MS = 90_000;
+// Per-chunk wall-clock safety net. The Jintel client owns the real request deadline
+// (configured to 90s in composition.ts). This wrapper sits above it so that if the
+// client ever fails to settle the promise — AbortSignal bug, stuck stream — the
+// scheduler's single-flight flag doesn't wedge forever and silently stop ingestion.
+// Set above the client timeout so the client aborts first on normal transient hangs
+// and the retry path handles it; this only fires when the client itself hangs.
+const CHUNK_TIMEOUT_MS = 120_000;
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -264,6 +267,7 @@ export async function fetchJintelSignals(
           logger.warn('Jintel batch fetch failed — retrying once', {
             chunk: chunk.slice(0, 3),
             error: err instanceof Error ? err.message : String(err),
+            retryDelayMs: RETRY_DELAY_MS,
           });
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
         } else {

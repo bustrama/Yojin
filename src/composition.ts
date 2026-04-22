@@ -435,7 +435,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
           apiKey: jintelApiKey,
           baseUrl: process.env.JINTEL_API_URL,
           debug: process.env.JINTEL_DEBUG === '1',
-          timeout: 60_000,
+          timeout: 90_000,
           cache: true,
         });
         log.info('Jintel client ready');
@@ -573,7 +573,7 @@ export async function buildContext(options?: BuildContextOptions): Promise<Yojin
     const newClient = new JintelClient({
       apiKey,
       debug: process.env.JINTEL_DEBUG === '1',
-      timeout: 60_000,
+      timeout: 90_000,
       cache: true,
     });
     jintelToolOptions.client = newClient;
