@@ -66,8 +66,16 @@ const UPSTREAM_RELATIONSHIP_MAP: Record<
   SUBSIDIARY: SupplyChainRelationshipSchema.enum.MANUFACTURER,
 };
 
-/** Build the Phase-A raw supply-chain map from hop-0 + hop-1 Jintel data. */
-export function buildRawSupplyChainMap(hop0: Entity, _hop1: Entity[]): SupplyChainMap {
+/**
+ * Build the Phase-A raw supply-chain map from hop-0 + hop-1 Jintel data.
+ *
+ * `requestedTicker` is the ticker the caller used to fetch hop-0 — it's the
+ * source of truth for the store's filename key. We never fall back to
+ * `hop0.id` (an internal Jintel entity ID like `ent_aapl`), because the store
+ * keys by `map.ticker` and a mismatch between the requested ticker and the
+ * stored key means `store.get('AAPL')` would miss every subsequent call.
+ */
+export function buildRawSupplyChainMap(requestedTicker: string, hop0: Entity, _hop1: Entity[]): SupplyChainMap {
   const relationships: RelationshipEdge[] = hop0.relationships ?? [];
 
   const upstreamRaw = relationships.filter(isUpstreamEdge);
@@ -87,7 +95,7 @@ export function buildRawSupplyChainMap(hop0: Entity, _hop1: Entity[]): SupplyCha
   const sources = dedupeSources(usedEdges);
 
   const map: SupplyChainMap = {
-    ticker: hop0.tickers?.[0] ?? hop0.id,
+    ticker: requestedTicker.toUpperCase(),
     entityName: hop0.name,
     upstream,
     downstream,

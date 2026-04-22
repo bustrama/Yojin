@@ -51,7 +51,7 @@ export async function ensureSupplyChainMap(args: EnsureSupplyChainMapArgs): Prom
     const topCounterparties = rankCounterparties(relationships);
     const hop1 = topCounterparties.length ? await fetchSupplyChainHop1(jintelClient, topCounterparties) : [];
 
-    const map = buildRawSupplyChainMap(hop0, hop1);
+    const map = buildRawSupplyChainMap(ticker, hop0, hop1);
 
     if (isDegraded(map, hop0)) {
       logger.warn('Degraded Jintel response (no edges / concentration / subsidiaries) — not caching', {

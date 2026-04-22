@@ -19,7 +19,7 @@ async function loadAaplHop0(): Promise<Entity> {
 describe('buildRawSupplyChainMap', () => {
   it('splits relationships into upstream and downstream by direction + type', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
 
     // PARTNER IN (TSM) + SUBSIDIARY OUT (Apple Ops Ireland) → upstream.
     expect(map.upstream).toHaveLength(2);
@@ -38,7 +38,7 @@ describe('buildRawSupplyChainMap', () => {
 
   it('tags every edge as JINTEL_DIRECT with null substitutability in Phase A', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     for (const edge of map.upstream) {
       expect(edge.edgeOrigin).toBe('JINTEL_DIRECT');
       expect(edge.substitutability).toBeNull();
@@ -50,7 +50,7 @@ describe('buildRawSupplyChainMap', () => {
 
   it('copies evidence verbatim from the Jintel edge source', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
 
     const bby = map.downstream.find((e) => e.counterpartyTicker === 'BBY');
     expect(bby).toBeDefined();
@@ -70,7 +70,7 @@ describe('buildRawSupplyChainMap', () => {
 
   it('assigns upstream criticality in [0,1] with single-edge fallback 0.5', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     for (const edge of map.upstream) {
       expect(edge.criticality).toBeGreaterThanOrEqual(0);
       expect(edge.criticality).toBeLessThanOrEqual(1);
@@ -79,7 +79,7 @@ describe('buildRawSupplyChainMap', () => {
 
   it('surfaces the CUSTOMER concentration flag for HHI>=2500 or top-3 share>=0.6', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     // Fixture: HHI=3200 (>=2500) and top-3 share = 1.0 (>=0.6).
     const customerFlag = map.concentrationRisks.find((f) => f.dimension === 'CUSTOMER');
     expect(customerFlag).toBeDefined();
@@ -89,7 +89,7 @@ describe('buildRawSupplyChainMap', () => {
 
   it('rolls up geographic footprint from subsidiaries, normalizing jurisdictions', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     // Ireland → IE; California → US.
     const iso2s = map.geographicFootprint.map((e) => e.iso2).sort();
     expect(iso2s).toEqual(['IE', 'US']);
@@ -97,34 +97,34 @@ describe('buildRawSupplyChainMap', () => {
 
   it('sets dataAsOf to the max source.asOf across used edges', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     expect(map.dataAsOf).toBe('2024-11-01');
   });
 
   it('narrative and synthesizedBy are null in Phase A', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     expect(map.narrative).toBeNull();
     expect(map.synthesizedBy).toBeNull();
   });
 
   it('dedupes sources by (connector, ref)', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     const keys = map.sources.map((s) => `${s.connector}|${s.ref ?? ''}`);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
   it('sets staleAfter to asOf + 24h', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     const delta = Date.parse(map.staleAfter) - Date.parse(map.asOf);
     expect(delta).toBe(24 * 60 * 60 * 1000);
   });
 
   it('schema-parses the built map', async () => {
     const hop0 = await loadAaplHop0();
-    const map = buildRawSupplyChainMap(hop0, []);
+    const map = buildRawSupplyChainMap('AAPL', hop0, []);
     // buildRawSupplyChainMap already calls `.parse()` internally; re-running
     // here confirms the output type shape for consumers.
     expect(() => SupplyChainMapSchema.parse(map)).not.toThrow();
@@ -137,13 +137,34 @@ describe('buildRawSupplyChainMap', () => {
       name: 'Empty Co.',
       tickers: ['EMP'],
     } as Entity;
-    const map = buildRawSupplyChainMap(empty, []);
+    const map = buildRawSupplyChainMap('EMP', empty, []);
     expect(map.upstream).toEqual([]);
     expect(map.downstream).toEqual([]);
     expect(map.geographicFootprint).toEqual([]);
     expect(map.concentrationRisks).toEqual([]);
     expect(map.dataAsOf).toBeNull();
     expect(map.sources).toEqual([]);
+  });
+
+  it('keys the map by the requested ticker, ignoring hop0.id and hop0.tickers[0]', () => {
+    const entity: Entity = {
+      id: 'ent_internal_xyz',
+      type: 'COMPANY',
+      name: 'Mismatch Inc.',
+      tickers: ['WRONG'],
+    } as Entity;
+    const map = buildRawSupplyChainMap('right', entity, []);
+    expect(map.ticker).toBe('RIGHT');
+  });
+
+  it('keys the map by the requested ticker even when hop0.tickers is absent', () => {
+    const entity: Entity = {
+      id: 'ent_internal_xyz',
+      type: 'COMPANY',
+      name: 'No Ticker Co.',
+    } as Entity;
+    const map = buildRawSupplyChainMap('ARM', entity, []);
+    expect(map.ticker).toBe('ARM');
   });
 });
 
