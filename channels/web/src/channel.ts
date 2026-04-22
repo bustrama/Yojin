@@ -254,51 +254,6 @@ export function buildWebChannel(): ChannelPlugin {
       // Mount GraphQL API
       mountGraphQL(app);
 
-      // Share-image upload proxy — forwards a PNG to catbox.moe server-side.
-      // catbox.moe returns no CORS headers, so browser uploads are blocked.
-      // Routing through the local backend sidesteps CORS. Image types and
-      // a 5 MB cap keep this from being usable as a generic file-upload abuse
-      // vector if the web channel is ever reachable off-loopback.
-      const SHARE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
-      const SHARE_UPLOAD_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-      app.post('/api/share-upload', async (c) => {
-        try {
-          const contentLength = Number(c.req.header('content-length') ?? '0');
-          if (Number.isFinite(contentLength) && contentLength > SHARE_UPLOAD_MAX_BYTES + 1024) {
-            return c.json({ error: 'Upload too large' }, 413);
-          }
-          const incoming = await c.req.formData();
-          const file = incoming.get('file');
-          if (!(file instanceof File)) {
-            return c.json({ error: 'Missing file field' }, 400);
-          }
-          if (file.size > SHARE_UPLOAD_MAX_BYTES) {
-            return c.json({ error: 'Upload too large' }, 413);
-          }
-          if (file.type && !SHARE_UPLOAD_ALLOWED_TYPES.has(file.type)) {
-            return c.json({ error: 'Unsupported file type' }, 415);
-          }
-          const outgoing = new FormData();
-          outgoing.append('reqtype', 'fileupload');
-          outgoing.append('fileToUpload', file, file.name || 'share.png');
-          const res = await fetch('https://catbox.moe/user/api.php', {
-            method: 'POST',
-            body: outgoing,
-          });
-          const body = (await res.text()).trim();
-          // catbox sometimes returns a non-2xx status with a valid URL body;
-          // treat any response starting with http(s):// as success.
-          if (!body.startsWith('http')) {
-            console.warn('[web] /api/share-upload failed', { status: res.status, body: body.slice(0, 200) });
-            return c.json({ error: `Upload failed (${res.status})` }, 502);
-          }
-          return c.json({ url: body });
-        } catch (err) {
-          console.error('[web] /api/share-upload error:', err);
-          return c.json({ error: err instanceof Error ? err.message : 'Upload failed' }, 500);
-        }
-      });
-
       // Chat endpoint — POST message, get response
       app.post('/api/chat', async (c) => {
         let threadId: string | undefined;

@@ -24,6 +24,10 @@ export async function renderNodeToPng(node: ReactNode): Promise<Blob> {
     // really wrong.
     const target = await waitForChild(host, 1000);
     if (!target) throw new Error('Share card failed to mount');
+    // Wait for any <img> inside the card to finish loading — html-to-image
+    // snapshots synchronously, so a pending image (e.g. the Yojin logo on a
+    // cold cache) would render as an empty box on the first click.
+    await waitForImages(target, 2000);
     const blob = await toBlob(target, {
       pixelRatio: 2,
       cacheBust: false,
@@ -35,6 +39,27 @@ export async function renderNodeToPng(node: ReactNode): Promise<Blob> {
     root.unmount();
     host.remove();
   }
+}
+
+async function waitForImages(root: HTMLElement, timeoutMs: number): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll('img'));
+  if (imgs.length === 0) return;
+  const pending = imgs
+    .filter((img) => !(img.complete && img.naturalWidth > 0))
+    .map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          const done = () => {
+            img.removeEventListener('load', done);
+            img.removeEventListener('error', done);
+            resolve();
+          };
+          img.addEventListener('load', done);
+          img.addEventListener('error', done);
+        }),
+    );
+  if (pending.length === 0) return;
+  await Promise.race([Promise.all(pending), new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs))]);
 }
 
 async function waitForChild(host: HTMLElement, timeoutMs: number): Promise<HTMLElement | null> {
