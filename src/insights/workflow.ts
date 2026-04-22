@@ -79,6 +79,8 @@ const RA_DISABLED_TOOLS = [
   'get_inflation',
   'get_interest_rates',
   'get_sp500_multiples',
+  'get_analyst_consensus',
+  'market_status',
   'glob_signals',
   'grep_signals',
   'read_signal',

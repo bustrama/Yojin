@@ -49,6 +49,8 @@ export function createResearchAnalystProfile(): AgentProfile {
       'get_government_contracts',
       'fred_series',
       'fred_batch',
+      'get_analyst_consensus',
+      'market_status',
       // Signal tools
       'glob_signals',
       'grep_signals',
