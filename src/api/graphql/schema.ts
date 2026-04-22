@@ -1168,8 +1168,12 @@ export const typeDefs = /* GraphQL */ `
     postMarketPrice: Float
     postMarketChange: Float
     postMarketChangePercent: Float
-    sparkline: [Float!]
     enrichedAt: String
+  }
+
+  type WatchlistSparkline {
+    symbol: String!
+    points: [Float!]!
   }
 
   type WatchlistResult implements MutationResult {
@@ -1466,6 +1470,7 @@ export const typeDefs = /* GraphQL */ `
     insightReports(limit: Int): [InsightReport!]!
     insightReport(id: ID!): InsightReport
     watchlist: [WatchlistEntry!]!
+    watchlistSparklines: [WatchlistSparkline!]!
     insightsWorkflowStatus: WorkflowStatus!
     briefingConfig: BriefingConfig
     schedulerStatus: SchedulerStatus!

@@ -80,6 +80,7 @@ const cache = cacheExchange({
     StrategySyncResult: () => null, // embedded — mutation result
     SymbolSearchResult: () => null, // embedded — search result, no stable identity
     WatchlistEntry: () => null, // embedded — nested under watchlist query array
+    WatchlistSparkline: () => null, // embedded — nested under watchlistSparklines array
     KeychainTokenResult: () => null, // query result — singleton per provider
     BriefingConfig: () => null, // singleton — no id field
     SchedulerStatus: () => null, // singleton — no id field
@@ -154,10 +155,12 @@ const cache = cacheExchange({
       },
       addToWatchlist(_result, _args, cache) {
         cache.invalidate('Query', 'watchlist');
+        cache.invalidate('Query', 'watchlistSparklines');
         cache.invalidate('Query', 'curatedSignals');
       },
       removeFromWatchlist(_result, _args, cache) {
         cache.invalidate('Query', 'watchlist');
+        cache.invalidate('Query', 'watchlistSparklines');
         cache.invalidate('Query', 'curatedSignals');
       },
       createSession(_result, _args, cache) {

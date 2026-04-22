@@ -154,7 +154,12 @@ import {
   updateVaultSecretMutation,
   vaultStatusQuery,
 } from './resolvers/vault.js';
-import { addToWatchlistMutation, removeFromWatchlistMutation, watchlistQuery } from './resolvers/watchlist.js';
+import {
+  addToWatchlistMutation,
+  removeFromWatchlistMutation,
+  watchlistQuery,
+  watchlistSparklinesQuery,
+} from './resolvers/watchlist.js';
 import { typeDefs } from './schema.js';
 
 const schema = createSchema({
@@ -196,6 +201,7 @@ const schema = createSchema({
       insightReports: insightReportsQuery,
       insightReport: insightReportQuery,
       watchlist: watchlistQuery,
+      watchlistSparklines: watchlistSparklinesQuery,
       insightsWorkflowStatus: () => getInsightsWorkflowStatus(),
       briefingConfig: briefingConfigQuery,
       schedulerStatus: schedulerStatusQuery,
