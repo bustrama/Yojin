@@ -7,7 +7,10 @@
  */
 
 import {
+  type AnalystConsensus,
   type ArraySubGraphOptions,
+  type ClinicalTrial,
+  type ClinicalTrialFilterOptions,
   type DerivativesData,
   type EarningsPressRelease,
   type EconomicDataPoint,
@@ -16,13 +19,21 @@ import {
   type Entity,
   type EntityType,
   EntityTypeSchema,
+  FRED,
+  FRED_BATCH,
   type FactorDataPoint,
   type FamaFrenchSeries,
   FamaFrenchSeriesSchema,
+  type FdaEvent,
+  type FdaEventFilterOptions,
+  type FdaEventType,
   type FilingType,
+  type FredSeries,
   GDP,
   type GdpType,
   GdpTypeSchema,
+  type GovernmentContract,
+  type GovernmentContractFilterOptions,
   type HackerNewsStory,
   INFLATION,
   INTEREST_RATES,
@@ -31,6 +42,8 @@ import {
   JintelAuthError,
   type JintelClient,
   type JintelResult,
+  type LitigationCase,
+  type LitigationFilterOptions,
   type MarketQuote,
   type NewsArticle,
   type OptionType,
@@ -53,6 +66,7 @@ import {
   type SocialSentiment,
   type TickerPriceHistory,
   type TopHolder,
+  type USMarketStatus,
   buildEnrichQuery,
 } from '@yojinhq/jintel-client';
 import { z } from 'zod';
@@ -117,6 +131,8 @@ const JINTEL_QUERY_KIND = z.enum([
   'segmented_revenue',
   'earnings_calendar',
   'periodic_filing',
+  'analyst_consensus',
+  'market_status',
 ]);
 
 type JintelQueryKind = z.infer<typeof JINTEL_QUERY_KIND>;
@@ -130,10 +146,13 @@ const ENRICHMENT_FIELDS = z.enum([
   'news',
   'research',
   'sentiment',
+  'analyst',
   // Costly fields — only request when explicitly needed
   'social',
   'predictions',
   'discussions',
+  'financials',
+  'executives',
   'institutionalHoldings',
   'ownership',
   'topHolders',
@@ -142,6 +161,13 @@ const ENRICHMENT_FIELDS = z.enum([
   'segmentedRevenue',
   'earnings',
   'periodicFilings',
+  'clinicalTrials',
+  'fdaEvents',
+  'litigation',
+  'governmentContracts',
+  'subsidiaries',
+  'concentration',
+  'relationships',
 ]);
 
 const SEVERITY_CONFIDENCE: Record<string, number> = {
@@ -166,6 +192,7 @@ const OPTIONS_CHAIN_SORT = z.enum([
 const FILING_TYPE = z.enum(['FILING_10K', 'FILING_10Q', 'FILING_8K', 'ANNUAL_REPORT', 'OTHER']);
 const SEVERITY = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 const RISK_SIGNAL_TYPE = z.enum(['SANCTIONS', 'LITIGATION', 'REGULATORY_ACTION', 'ADVERSE_MEDIA', 'PEP']);
+const FDA_EVENT_TYPE = z.enum(['DRUG_ADVERSE', 'DEVICE_ADVERSE', 'DRUG_RECALL']);
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -238,6 +265,125 @@ export function riskSignalsToRaw(signals: RiskSignal[], tickers: string[]): RawS
       confidence: SEVERITY_CONFIDENCE[s.severity] ?? 0.7,
       metadata: { riskType: s.type, severity: s.severity, source: s.source },
     }));
+}
+
+/** Normalize a date field (YYYY-MM-DD or ISO) to an ISO timestamp. Falls back to `now` when missing/unparseable. */
+function toIsoDate(value: string | null | undefined): string {
+  if (!value) return new Date().toISOString();
+  const iso = value.includes('T') ? value : `${value}T00:00:00.000Z`;
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : new Date().toISOString();
+}
+
+/** Recall severity string ("CLASS I"/"CLASS II"/"CLASS III") → confidence score. */
+const RECALL_CLASS_CONFIDENCE: Record<string, number> = {
+  'CLASS I': 0.95,
+  'CLASS II': 0.85,
+  'CLASS III': 0.7,
+};
+
+/**
+ * Map FDA events to raw signals for the Intel Feed.
+ *
+ * Ingests only recalls (DRUG_RECALL) — adverse-event reports fire constantly and would flood
+ * the feed. Adverse events remain available via the `get_fda_events` agent tool.
+ */
+export function fdaEventsToRaw(events: FdaEvent[], tickers: string[]): RawSignalInput[] {
+  return events
+    .filter((e) => e.type === 'DRUG_RECALL')
+    .map((e) => {
+      const severity = e.severity?.toUpperCase() ?? '';
+      const confidence = RECALL_CLASS_CONFIDENCE[severity] ?? 0.75;
+      const classLabel = severity ? `${severity} ` : '';
+      const product = e.product ? ` — ${e.product}` : '';
+      return {
+        sourceId: 'jintel-fda',
+        sourceName: 'FDA Enforcement',
+        sourceType: SourceType.ENRICHMENT,
+        reliability: 0.95,
+        title: `${tickers[0] ?? 'FDA'}: ${classLabel}drug recall ${e.id}${product}`,
+        content:
+          e.summary ?? `FDA drug recall (${severity || 'class unknown'}) — ${e.product ?? 'product unspecified'}`,
+        publishedAt: toIsoDate(e.reportDate),
+        type: SignalType.REGULATORY,
+        tickers,
+        confidence,
+        metadata: {
+          fdaEventId: e.id,
+          fdaEventType: e.type,
+          severity: e.severity,
+          product: e.product,
+        },
+      };
+    });
+}
+
+/**
+ * Map litigation cases to raw signals for the Intel Feed.
+ *
+ * Ingests only active cases (no `dateTerminated`). Terminated cases still appear in the
+ * `get_litigation` tool output — but the Intel Feed should surface pending legal exposure,
+ * not closed dockets.
+ */
+export function litigationToRaw(cases: LitigationCase[], tickers: string[]): RawSignalInput[] {
+  return cases
+    .filter((c) => !c.dateTerminated)
+    .map((c) => {
+      const docket = c.docketNumber ? ` (${c.docketNumber})` : '';
+      const nature = c.natureOfSuit ? ` [${c.natureOfSuit}]` : '';
+      return {
+        sourceId: 'jintel-litigation',
+        sourceName: 'Federal Litigation',
+        sourceType: SourceType.ENRICHMENT,
+        reliability: 0.9,
+        title: `${tickers[0] ?? ''}: Lawsuit — ${c.caseName}${docket}`,
+        content: `Filed ${c.dateFiled ?? 'date unknown'}${c.court ? ` in ${c.court}` : ''}${nature}.`,
+        link: c.absoluteUrl ?? undefined,
+        publishedAt: toIsoDate(c.dateFiled),
+        type: SignalType.REGULATORY,
+        tickers,
+        confidence: 0.8,
+        metadata: {
+          caseId: c.id,
+          court: c.court,
+          natureOfSuit: c.natureOfSuit,
+          docketNumber: c.docketNumber,
+        },
+      };
+    });
+}
+
+/**
+ * Map government contracts to raw signals for the Intel Feed.
+ *
+ * Expects the caller to have already applied a `minAmount` filter — this mapper does not
+ * re-filter. The `get_government_contracts` tool and the batch signal-fetcher both set
+ * thresholds before the mapper runs.
+ */
+export function governmentContractsToRaw(contracts: GovernmentContract[], tickers: string[]): RawSignalInput[] {
+  return contracts.map((c) => {
+    const amountLabel = c.amount != null ? formatUsd(c.amount) : 'amount unknown';
+    const agency = c.agency ? ` from ${c.agency}` : '';
+    return {
+      sourceId: 'jintel-contracts',
+      sourceName: 'Federal Contracts',
+      sourceType: SourceType.ENRICHMENT,
+      reliability: 0.9,
+      title: `${tickers[0] ?? ''}: Federal award ${c.awardId} — ${amountLabel}`,
+      content: `${c.recipient} awarded ${amountLabel}${agency}${c.actionDate ? ` on ${c.actionDate}` : ''}.${c.description ? ` ${c.description}` : ''}`,
+      publishedAt: toIsoDate(c.actionDate),
+      type: SignalType.FUNDAMENTAL,
+      tickers,
+      confidence: 0.8,
+      metadata: {
+        awardId: c.awardId,
+        recipient: c.recipient,
+        agency: c.agency,
+        awardType: c.awardType,
+        amount: c.amount,
+      },
+    };
+  });
 }
 
 /** Build ArraySubGraphOptions and the matching $filter variable from optional since/limit params. */
@@ -692,6 +838,102 @@ function formatSegmentedRevenue(rows: SegmentRevenue[]): string {
   return sections.join('\n\n');
 }
 
+function formatClinicalTrials(trials: ClinicalTrial[]): string {
+  if (trials.length === 0) return 'No clinical trials found.';
+  return trials
+    .map((t) => {
+      const header = `- **${t.title}** (${t.nctId})`;
+      const meta: string[] = [];
+      if (t.phase) meta.push(`Phase: ${t.phase}`);
+      if (t.status) meta.push(`Status: ${t.status}`);
+      if (t.startDate) meta.push(`Start: ${t.startDate}`);
+      if (t.completionDate) meta.push(`Completion: ${t.completionDate}`);
+      if (t.enrollment != null) meta.push(`Enrollment: ${formatNumber(t.enrollment)}`);
+      const parts = [header];
+      if (meta.length) parts.push(`  ${meta.join(' | ')}`);
+      if (t.sponsor) parts.push(`  Sponsor: ${t.sponsor}`);
+      if (t.conditions.length) parts.push(`  Conditions: ${t.conditions.join(', ')}`);
+      if (t.interventions.length) parts.push(`  Interventions: ${t.interventions.join(', ')}`);
+      parts.push(`  https://clinicaltrials.gov/study/${t.nctId}`);
+      return parts.join('\n');
+    })
+    .join('\n');
+}
+
+function formatFdaEvents(events: FdaEvent[]): string {
+  if (events.length === 0) return 'No FDA events found.';
+  return events
+    .map((e) => {
+      const header = `- [${e.type}]${e.severity ? ` (${e.severity})` : ''}${e.reportDate ? ` — ${e.reportDate}` : ''}`;
+      const parts = [header];
+      if (e.product) parts.push(`  Product: ${e.product}`);
+      if (e.summary) parts.push(`  ${e.summary}`);
+      parts.push(`  ID: ${e.id}`);
+      return parts.join('\n');
+    })
+    .join('\n');
+}
+
+function formatLitigation(cases: LitigationCase[]): string {
+  if (cases.length === 0) return 'No litigation cases found.';
+  return cases
+    .map((c) => {
+      const active = c.dateTerminated ? 'closed' : 'active';
+      const dates = [c.dateFiled && `filed ${c.dateFiled}`, c.dateTerminated && `terminated ${c.dateTerminated}`]
+        .filter(Boolean)
+        .join(', ');
+      const parts = [`- **${c.caseName}** (${active})`];
+      const meta: string[] = [];
+      if (c.docketNumber) meta.push(`Docket: ${c.docketNumber}`);
+      if (c.court) meta.push(`Court: ${c.court}`);
+      if (dates) meta.push(dates);
+      if (meta.length) parts.push(`  ${meta.join(' | ')}`);
+      if (c.natureOfSuit) parts.push(`  Nature: ${c.natureOfSuit}`);
+      if (c.absoluteUrl) parts.push(`  ${c.absoluteUrl}`);
+      return parts.join('\n');
+    })
+    .join('\n');
+}
+
+function formatGovernmentContracts(contracts: GovernmentContract[]): string {
+  if (contracts.length === 0) return 'No government contracts found.';
+  const total = contracts.reduce((sum, c) => sum + (c.amount ?? 0), 0);
+  const lines = contracts.map((c) => {
+    const parts = [`- ${c.awardId} — ${c.recipient}`];
+    const meta: string[] = [];
+    if (c.amount != null) meta.push(formatUsd(c.amount));
+    if (c.actionDate) meta.push(c.actionDate);
+    if (c.agency) meta.push(c.agency);
+    if (c.awardType) meta.push(c.awardType);
+    if (meta.length) parts.push(`  ${meta.join(' | ')}`);
+    if (c.description) parts.push(`  ${c.description}`);
+    return parts.join('\n');
+  });
+  const header = `Total across ${contracts.length} award${contracts.length === 1 ? '' : 's'}: ${formatUsd(total)}`;
+  return `${header}\n\n${lines.join('\n')}`;
+}
+
+function formatFredSeries(series: FredSeries): string {
+  const headerParts: string[] = [`# FRED — ${series.title ?? series.id} (${series.id})`];
+  const meta: string[] = [];
+  if (series.units) meta.push(`Units: ${series.units}`);
+  if (series.frequency) meta.push(`Frequency: ${series.frequency}`);
+  if (series.lastUpdated) meta.push(`Last updated: ${series.lastUpdated}`);
+  if (meta.length) headerParts.push(meta.join(' | '));
+
+  const observations = series.observations ?? [];
+  if (observations.length === 0) {
+    headerParts.push('No observations returned.');
+    return headerParts.join('\n');
+  }
+  const sorted = [...observations].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const recent = sorted.slice(0, 20);
+  const lines = recent.map((o) => `${o.date}: ${o.value != null ? o.value.toFixed(4) : 'N/A'}`);
+  headerParts.push(lines.join('\n'));
+  if (sorted.length > 20) headerParts.push(`\n... and ${sorted.length - 20} more observations`);
+  return headerParts.join('\n');
+}
+
 type EarningsReport = NonNullable<Entity['earnings']>[number];
 type PeriodicFiling = NonNullable<Entity['periodicFilings']>[number];
 
@@ -821,6 +1063,38 @@ function formatExecutives(executives: KeyExecutive[]): string {
       return line;
     })
     .join('\n');
+}
+
+function formatAnalystConsensus(a: AnalystConsensus, currentPrice?: number): string {
+  const lines: string[] = [];
+  if (a.recommendation) {
+    const mean =
+      a.recommendationMean != null ? ` (mean ${a.recommendationMean.toFixed(2)}/5, lower = more bullish)` : '';
+    lines.push(`Recommendation: ${a.recommendation}${mean}`);
+  }
+  if (a.numberOfAnalysts != null) lines.push(`Analysts covering: ${a.numberOfAnalysts}`);
+
+  const upside = (target: number | null | undefined): string =>
+    target != null && currentPrice != null && currentPrice > 0
+      ? ` (${(((target - currentPrice) / currentPrice) * 100).toFixed(1)}% vs $${currentPrice.toFixed(2)})`
+      : '';
+
+  if (a.targetMean != null) lines.push(`Target mean: $${a.targetMean.toFixed(2)}${upside(a.targetMean)}`);
+  if (a.targetMedian != null) lines.push(`Target median: $${a.targetMedian.toFixed(2)}${upside(a.targetMedian)}`);
+  if (a.targetHigh != null) lines.push(`Target high: $${a.targetHigh.toFixed(2)}${upside(a.targetHigh)}`);
+  if (a.targetLow != null) lines.push(`Target low: $${a.targetLow.toFixed(2)}${upside(a.targetLow)}`);
+  return lines.length ? lines.join('\n') : 'No analyst consensus fields populated.';
+}
+
+function formatMarketStatus(s: USMarketStatus): string {
+  const lines = [
+    `Date: ${s.date}`,
+    `Trading day: ${s.isTradingDay ? 'yes' : 'no'}`,
+    `Open: ${s.isOpen ? 'yes' : 'no'}`,
+    `Session: ${s.session}`,
+  ];
+  if (s.holiday) lines.push(`Holiday: ${s.holiday}`);
+  return `# US Market Status\n\n${lines.join('\n')}`;
 }
 
 function formatPredictions(markets: PredictionMarket[]): string {
@@ -1324,6 +1598,24 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
       const handled = handleResult(result.data);
       if (!handled.ok) return handled.toolResult;
       return { content: formatPriceHistory(handled.data) };
+    },
+  };
+
+  const marketStatus: ToolDefinition = {
+    name: 'market_status',
+    description:
+      'Get the current US equity market status — whether the market is open, the session ' +
+      '(PRE_MARKET, OPEN, AFTER_HOURS, CLOSED), whether today is a trading day, and any holiday name. ' +
+      'Use before placing orders or when timing matters for a recommendation.',
+    parameters: z.object({}),
+    async execute(): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const result = await safeCall(() => client.marketStatus());
+      if (!result.ok) return result.toolResult;
+      const handled = handleResult(result.data);
+      if (!handled.ok) return handled.toolResult;
+      return { content: formatMarketStatus(handled.data) };
     },
   };
 
@@ -1891,6 +2183,34 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
+  const getAnalystConsensus: ToolDefinition = {
+    name: 'get_analyst_consensus',
+    description:
+      'Get sell-side analyst price targets and recommendation consensus for an equity ticker. ' +
+      'Returns targetHigh / targetLow / targetMean / targetMedian (USD), recommendation (buy/hold/sell), ' +
+      'recommendationMean (1 = strong buy, 5 = strong sell), and numberOfAnalysts.\n\n' +
+      'Equity-only: returns no data for crypto. Use when the user asks about Wall Street consensus, ' +
+      'price targets, upside/downside to target, or analyst ratings.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Equity ticker symbol (e.g. AAPL, NVDA, MSFT)'),
+    }),
+    async execute(params: { ticker: string }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const result = await options.client.enrichEntity(params.ticker, ['analyst'] as EnrichmentField[]);
+      const handled = handleResult(result);
+      if (!handled.ok) return handled.toolResult;
+      const entity = handled.data as Entity;
+      if (!entity.analyst) {
+        return {
+          content: `No analyst consensus available for ${params.ticker}. (Equity-only field — not available for crypto.)`,
+        };
+      }
+      return {
+        content: `# ${formatAssetLabel(entity.name, params.ticker)} — Analyst Consensus\n\n${formatAnalystConsensus(entity.analyst, entity.market?.quote?.price)}`,
+      };
+    },
+  };
+
   const getSocial: ToolDefinition = {
     name: 'get_social',
     description:
@@ -2430,11 +2750,12 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     description:
       'Generic Jintel query tool for quotes, fundamentals, market data, history, news, research, sentiment, ' +
       'technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ' +
-      'ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, or ' +
-      'periodic_filing. Use this when you want one Jintel-backed entry point instead of choosing a more specialized tool.',
+      'ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, ' +
+      'periodic_filing, analyst_consensus, or market_status. Use this when you want one Jintel-backed entry point ' +
+      'instead of choosing a more specialized tool.',
     parameters: z.object({
       kind: JINTEL_QUERY_KIND.describe(
-        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, or periodic_filing',
+        'What to fetch: quote, market, fundamentals, history, news, research, sentiment, technicals, derivatives, risk, regulatory, short_interest, financials, executives, institutional_holdings, ownership, top_holders, insider_trades, earnings_press_releases, segmented_revenue, earnings_calendar, periodic_filing, analyst_consensus, or market_status',
       ),
       ticker: z
         .string()
@@ -2461,7 +2782,13 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
         return { content: `jintel_query kind "${params.kind}" requires "ticker" or "tickers".`, isError: true };
       }
 
-      if (params.kind !== 'quote' && params.kind !== 'history' && (!singleTicker || normalizedTickers.length !== 1)) {
+      const kindRequiresNoTicker = params.kind === 'market_status';
+      if (
+        !kindRequiresNoTicker &&
+        params.kind !== 'quote' &&
+        params.kind !== 'history' &&
+        (!singleTicker || normalizedTickers.length !== 1)
+      ) {
         return { content: `jintel_query kind "${params.kind}" requires exactly one ticker.`, isError: true };
       }
 
@@ -2513,6 +2840,10 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
           return getEarningsCalendar.execute({ ticker: singleTicker });
         case 'periodic_filing':
           return getPeriodicFiling.execute({ ticker: singleTicker });
+        case 'analyst_consensus':
+          return getAnalystConsensus.execute({ ticker: singleTicker });
+        case 'market_status':
+          return marketStatus.execute({});
       }
 
       return { content: `Unsupported Jintel query kind: ${params.kind}`, isError: true };
@@ -2634,6 +2965,319 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     },
   };
 
+  const getClinicalTrials: ToolDefinition = {
+    name: 'get_clinical_trials',
+    description:
+      'Get ClinicalTrials.gov studies where the ticker is the lead sponsor or collaborator. Returns NCT id, ' +
+      'phase, status, conditions, interventions, dates, and enrollment count.\n\n' +
+      'Use for biotech/pharma/medical-device tickers when the user asks about pipeline, trial phase progression, ' +
+      'readouts, or catalysts. Filter by `phase` (e.g. "PHASE3") or `status` (e.g. "RECRUITING", "COMPLETED") ' +
+      'to narrow to late-stage or active studies.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Ticker symbol of the sponsor/collaborator (e.g. PFE, MRNA, LLY)'),
+      phase: z.string().optional().describe('Case-insensitive phase match (e.g. "PHASE3" or partial "PHASE")'),
+      status: z
+        .string()
+        .optional()
+        .describe('Exact status (e.g. "RECRUITING", "COMPLETED", "TERMINATED", "ACTIVE_NOT_RECRUITING")'),
+      since: z.string().optional().describe('ISO date — only trials with startDate on/after this date'),
+      until: z.string().optional().describe('ISO date — only trials with startDate on/before this date'),
+      limit: z.number().int().min(1).max(100).optional().describe('Max trials to return (default 20)'),
+      offset: z.number().int().nonnegative().optional().describe('Rows to skip for pagination (default 0)'),
+    }),
+    async execute(params: {
+      ticker: string;
+      phase?: string;
+      status?: string;
+      since?: string;
+      until?: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+
+      const clinicalTrialsFilter: ClinicalTrialFilterOptions = { sort: 'DESC' };
+      if (params.phase) clinicalTrialsFilter.phase = params.phase;
+      if (params.status) clinicalTrialsFilter.status = params.status;
+      if (params.since) clinicalTrialsFilter.since = params.since;
+      if (params.until) clinicalTrialsFilter.until = params.until;
+      if (params.limit) clinicalTrialsFilter.limit = params.limit;
+      if (params.offset != null) clinicalTrialsFilter.offset = params.offset;
+
+      const query = buildEnrichQuery(['clinicalTrials'] as EnrichmentField[], { clinicalTrialsFilter });
+      const result = await safeCall(() =>
+        client.request<Entity>(query, { id: params.ticker.toUpperCase(), clinicalTrialsFilter }),
+      );
+      if (!result.ok) return result.toolResult;
+
+      const entity = result.data;
+      const trials = entity.clinicalTrials ?? [];
+      if (trials.length === 0) {
+        return { content: `No clinical trials found for ${params.ticker}.` };
+      }
+      return {
+        content: `# ${formatAssetLabel(entity.name, params.ticker)} — Clinical Trials (${trials.length})\n\n${formatClinicalTrials(trials)}`,
+      };
+    },
+  };
+
+  const getFdaEvents: ToolDefinition = {
+    name: 'get_fda_events',
+    description:
+      'Get openFDA events for a ticker — adverse event reports (drugs, devices) and drug enforcement/recall ' +
+      'actions. Returns event type (DRUG_ADVERSE, DEVICE_ADVERSE, DRUG_RECALL), severity (recall class I/II/III ' +
+      'or outcome flag), product name, and a summary narrative.\n\n' +
+      'Use for biotech/pharma/medical-device tickers when the user asks about safety, recalls, regulatory risk, ' +
+      'or adverse outcomes. Class I recalls = highest risk (serious injury/death). Filter by `types` or ' +
+      '`severity` to narrow.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Ticker symbol (e.g. PFE, JNJ, MDT)'),
+      types: z
+        .array(FDA_EVENT_TYPE)
+        .optional()
+        .describe('Restrict to event kinds (e.g. ["DRUG_RECALL"], ["DRUG_ADVERSE", "DEVICE_ADVERSE"])'),
+      severity: z
+        .string()
+        .optional()
+        .describe(
+          'Exact severity match — "CLASS I", "CLASS II", "CLASS III" for recalls; outcome flag for adverse events',
+        ),
+      since: z.string().optional().describe('ISO date — only events with reportDate on/after this date'),
+      until: z.string().optional().describe('ISO date — only events with reportDate on/before this date'),
+      limit: z.number().int().min(1).max(100).optional().describe('Max events to return (default 20)'),
+      offset: z.number().int().nonnegative().optional().describe('Rows to skip for pagination (default 0)'),
+    }),
+    async execute(params: {
+      ticker: string;
+      types?: FdaEventType[];
+      severity?: string;
+      since?: string;
+      until?: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+
+      const fdaEventsFilter: FdaEventFilterOptions = { sort: 'DESC' };
+      if (params.types?.length) fdaEventsFilter.types = params.types;
+      if (params.severity) fdaEventsFilter.severity = params.severity;
+      if (params.since) fdaEventsFilter.since = params.since;
+      if (params.until) fdaEventsFilter.until = params.until;
+      if (params.limit) fdaEventsFilter.limit = params.limit;
+      if (params.offset != null) fdaEventsFilter.offset = params.offset;
+
+      const query = buildEnrichQuery(['fdaEvents'] as EnrichmentField[], { fdaEventsFilter });
+      const result = await safeCall(() =>
+        client.request<Entity>(query, { id: params.ticker.toUpperCase(), fdaEventsFilter }),
+      );
+      if (!result.ok) return result.toolResult;
+
+      const entity = result.data;
+      const events = entity.fdaEvents ?? [];
+      if (events.length === 0) {
+        return { content: `No FDA events found for ${params.ticker}.` };
+      }
+      await bestEffortIngest(options.ingestor, fdaEventsToRaw(events, entity.tickers ?? [params.ticker.toUpperCase()]));
+      return {
+        content: `# ${formatAssetLabel(entity.name, params.ticker)} — FDA Events (${events.length})\n\n${formatFdaEvents(events)}`,
+      };
+    },
+  };
+
+  const getLitigation: ToolDefinition = {
+    name: 'get_litigation',
+    description:
+      'Get US federal court litigation for a ticker (from CourtListener/RECAP). Returns case name, court, ' +
+      'docket number, filing/termination dates, nature of suit, and a link to the docket.\n\n' +
+      'Use when the user asks about legal exposure, active lawsuits, patent/antitrust/securities cases, or ' +
+      'court-driven catalysts. Set `onlyActive: true` to drop terminated cases. Filter by `natureOfSuit` ' +
+      '(e.g. "PATENT", "ANTITRUST", "SECURITIES") or `court` substring.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Ticker symbol of a party in the case (e.g. AAPL, META, GOOGL)'),
+      onlyActive: z.boolean().optional().describe('Only include cases with no dateTerminated (still open)'),
+      court: z
+        .string()
+        .optional()
+        .describe('Case-insensitive substring against court name/citation (e.g. "N.D. CAL", "S.D.N.Y.")'),
+      natureOfSuit: z
+        .string()
+        .optional()
+        .describe('Case-insensitive substring against nature of suit (e.g. "PATENT", "ANTITRUST", "SECURITIES")'),
+      since: z.string().optional().describe('ISO date — only cases with dateFiled on/after this date'),
+      until: z.string().optional().describe('ISO date — only cases with dateFiled on/before this date'),
+      limit: z.number().int().min(1).max(100).optional().describe('Max cases to return (default 20)'),
+      offset: z.number().int().nonnegative().optional().describe('Rows to skip for pagination (default 0)'),
+    }),
+    async execute(params: {
+      ticker: string;
+      onlyActive?: boolean;
+      court?: string;
+      natureOfSuit?: string;
+      since?: string;
+      until?: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+
+      const litigationFilter: LitigationFilterOptions = { sort: 'DESC' };
+      if (params.onlyActive != null) litigationFilter.onlyActive = params.onlyActive;
+      if (params.court) litigationFilter.court = params.court;
+      if (params.natureOfSuit) litigationFilter.natureOfSuit = params.natureOfSuit;
+      if (params.since) litigationFilter.since = params.since;
+      if (params.until) litigationFilter.until = params.until;
+      if (params.limit) litigationFilter.limit = params.limit;
+      if (params.offset != null) litigationFilter.offset = params.offset;
+
+      const query = buildEnrichQuery(['litigation'] as EnrichmentField[], { litigationFilter });
+      const result = await safeCall(() =>
+        client.request<Entity>(query, { id: params.ticker.toUpperCase(), litigationFilter }),
+      );
+      if (!result.ok) return result.toolResult;
+
+      const entity = result.data;
+      const cases = entity.litigation ?? [];
+      if (cases.length === 0) {
+        return { content: `No litigation cases found for ${params.ticker}.` };
+      }
+      await bestEffortIngest(options.ingestor, litigationToRaw(cases, entity.tickers ?? [params.ticker.toUpperCase()]));
+      return {
+        content: `# ${formatAssetLabel(entity.name, params.ticker)} — Litigation (${cases.length})\n\n${formatLitigation(cases)}`,
+      };
+    },
+  };
+
+  const getGovernmentContracts: ToolDefinition = {
+    name: 'get_government_contracts',
+    description:
+      'Get USASpending.gov federal contract awards for a ticker. Returns award ID, recipient, amount (USD), ' +
+      'awarding agency, award type, action date, and description.\n\n' +
+      'Use for defense/government-exposed tickers (e.g. LMT, RTX, BA, GD, PLTR) when the user asks about ' +
+      'contract wins, backlog, agency concentration, or defense-budget exposure. Filter by `minAmount` (USD) ' +
+      'to drop small awards.',
+    parameters: z.object({
+      ticker: z.string().min(1).describe('Ticker symbol of the contract recipient (e.g. LMT, RTX, PLTR)'),
+      minAmount: z
+        .number()
+        .nonnegative()
+        .optional()
+        .describe('Only contracts with amount >= this value in USD (e.g. 1000000 for $1M+)'),
+      since: z.string().optional().describe('ISO date — only contracts with actionDate on/after this date'),
+      until: z.string().optional().describe('ISO date — only contracts with actionDate on/before this date'),
+      limit: z.number().int().min(1).max(100).optional().describe('Max contracts to return (default 20)'),
+      offset: z.number().int().nonnegative().optional().describe('Rows to skip for pagination (default 0)'),
+    }),
+    async execute(params: {
+      ticker: string;
+      minAmount?: number;
+      since?: string;
+      until?: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+
+      const governmentContractsFilter: GovernmentContractFilterOptions = { sort: 'DESC' };
+      if (params.minAmount != null) governmentContractsFilter.minAmount = params.minAmount;
+      if (params.since) governmentContractsFilter.since = params.since;
+      if (params.until) governmentContractsFilter.until = params.until;
+      if (params.limit) governmentContractsFilter.limit = params.limit;
+      if (params.offset != null) governmentContractsFilter.offset = params.offset;
+
+      const query = buildEnrichQuery(['governmentContracts'] as EnrichmentField[], { governmentContractsFilter });
+      const result = await safeCall(() =>
+        client.request<Entity>(query, { id: params.ticker.toUpperCase(), governmentContractsFilter }),
+      );
+      if (!result.ok) return result.toolResult;
+
+      const entity = result.data;
+      const contracts = entity.governmentContracts ?? [];
+      if (contracts.length === 0) {
+        return { content: `No government contracts found for ${params.ticker}.` };
+      }
+      await bestEffortIngest(
+        options.ingestor,
+        governmentContractsToRaw(contracts, entity.tickers ?? [params.ticker.toUpperCase()]),
+      );
+      return {
+        content: `# ${formatAssetLabel(entity.name, params.ticker)} — Government Contracts (${contracts.length})\n\n${formatGovernmentContracts(contracts)}`,
+      };
+    },
+  };
+
+  const fredSeries: ToolDefinition = {
+    name: 'fred_series',
+    description:
+      'Get a FRED (Federal Reserve Economic Data) time series by series id. Returns metadata (title, units, ' +
+      'frequency, last updated) and observations (date/value pairs, newest first).\n\n' +
+      'Use for macro context: unemployment (UNRATE), real GDP (GDPC1), CPI (CPIAUCSL), fed funds (FEDFUNDS), ' +
+      '10Y Treasury (DGS10), 2s10s spread (T10Y2Y), M2 (M2SL), yield curve, etc. Full series catalog at ' +
+      'https://fred.stlouisfed.org. Prefer this over get_gdp/get_inflation/get_interest_rates when a specific ' +
+      'FRED series id is known.',
+    parameters: z.object({
+      seriesId: z.string().min(1).describe('FRED series id (e.g. "UNRATE", "GDPC1", "CPIAUCSL", "DGS10")'),
+      since: z.string().optional().describe('ISO date — only observations on/after this date'),
+      until: z.string().optional().describe('ISO date — only observations on/before this date'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Max observations to return (default 100)'),
+    }),
+    async execute(params: { seriesId: string; since?: string; until?: string; limit?: number }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const filter: ArraySubGraphOptions = { sort: 'DESC' };
+      if (params.since) filter.since = params.since;
+      if (params.until) filter.until = params.until;
+      if (params.limit) filter.limit = params.limit;
+      const result = await safeCall(() => client.request<FredSeries>(FRED, { seriesId: params.seriesId, filter }));
+      if (!result.ok) return result.toolResult;
+      return { content: formatFredSeries(result.data) };
+    },
+  };
+
+  const fredBatch: ToolDefinition = {
+    name: 'fred_batch',
+    description:
+      'Batch-fetch multiple FRED series in one call. Same observations/metadata shape as `fred_series`, but ' +
+      'returned for each series id. Prefer this over repeated `fred_series` calls when comparing macro series ' +
+      '(e.g. ["DGS10","DGS2","T10Y2Y"] for yield-curve context, or ["UNRATE","CPIAUCSL","FEDFUNDS"] for ' +
+      'inflation/employment/policy context).',
+    parameters: z.object({
+      seriesIds: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(20)
+        .describe('FRED series ids (e.g. ["UNRATE", "CPIAUCSL", "FEDFUNDS"])'),
+      since: z.string().optional().describe('ISO date — only observations on/after this date'),
+      until: z.string().optional().describe('ISO date — only observations on/before this date'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Max observations per series (default 100)'),
+    }),
+    async execute(params: {
+      seriesIds: string[];
+      since?: string;
+      until?: string;
+      limit?: number;
+    }): Promise<ToolResult> {
+      if (!options.client) return notConfigured();
+      const client = options.client;
+      const filter: ArraySubGraphOptions = { sort: 'DESC' };
+      if (params.since) filter.since = params.since;
+      if (params.until) filter.until = params.until;
+      if (params.limit) filter.limit = params.limit;
+      const result = await safeCall(() =>
+        client.request<FredSeries[]>(FRED_BATCH, { seriesIds: params.seriesIds, filter }),
+      );
+      if (!result.ok) return result.toolResult;
+      const seriesList = result.data;
+      if (seriesList.length === 0) {
+        return { content: 'No FRED series returned.' };
+      }
+      return { content: seriesList.map(formatFredSeries).join('\n\n---\n\n') };
+    },
+  };
+
   return [
     searchEntities,
     jintelQuery,
@@ -2645,9 +3289,11 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     sanctionsScreen,
     runTechnical,
     priceHistory,
+    marketStatus,
     getNews,
     getResearch,
     getSentiment,
+    getAnalystConsensus,
     getDerivatives,
     getFilings,
     getRiskSignals,
@@ -2670,5 +3316,11 @@ export function createJintelTools(options: JintelToolOptions): ToolDefinition[] 
     getSegmentedRevenue,
     getEarningsCalendar,
     getPeriodicFiling,
+    getClinicalTrials,
+    getFdaEvents,
+    getLitigation,
+    getGovernmentContracts,
+    fredSeries,
+    fredBatch,
   ];
 }

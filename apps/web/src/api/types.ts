@@ -489,8 +489,12 @@ export interface WatchlistEntry {
   postMarketPrice: number | null;
   postMarketChange: number | null;
   postMarketChangePercent: number | null;
-  sparkline: number[] | null;
   enrichedAt: string | null;
+}
+
+export interface WatchlistSparkline {
+  symbol: string;
+  points: number[];
 }
 
 export interface WatchlistResult {
@@ -500,6 +504,10 @@ export interface WatchlistResult {
 
 export interface WatchlistQueryResult {
   watchlist: WatchlistEntry[];
+}
+
+export interface WatchlistSparklinesQueryResult {
+  watchlistSparklines: WatchlistSparkline[];
 }
 
 export interface AddToWatchlistMutationResult {
@@ -1142,11 +1150,14 @@ export interface Summary {
 export interface SummariesQueryResult {
   summaries: Summary[];
 }
+export type SummaryScope = 'PORTFOLIO' | 'WATCHLIST' | 'ALL';
+
 export interface SummariesQueryVariables {
   ticker?: string;
   flow?: SummaryFlow;
   since?: string;
   limit?: number;
+  scope?: SummaryScope;
 }
 
 export interface SummaryQueryResult {

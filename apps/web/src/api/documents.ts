@@ -228,8 +228,16 @@ export const WATCHLIST_QUERY = gql`
       postMarketPrice
       postMarketChange
       postMarketChangePercent
-      sparkline
       enrichedAt
+    }
+  }
+`;
+
+export const WATCHLIST_SPARKLINES_QUERY = gql`
+  query WatchlistSparklines {
+    watchlistSparklines {
+      symbol
+      points
     }
   }
 `;
@@ -1603,8 +1611,8 @@ export const SUMMARY_FIELDS = gql`
 `;
 
 export const SUMMARIES_QUERY = gql`
-  query Summaries($ticker: String, $flow: SummaryFlow, $since: String, $limit: Int) {
-    summaries(ticker: $ticker, flow: $flow, since: $since, limit: $limit) {
+  query Summaries($ticker: String, $flow: SummaryFlow, $since: String, $limit: Int, $scope: SummaryScope) {
+    summaries(ticker: $ticker, flow: $flow, since: $since, limit: $limit, scope: $scope) {
       ...SummaryFields
     }
   }

@@ -10,6 +10,7 @@ import type {
   EnrichOptions,
   EnrichmentField,
   Entity,
+  FdaEventType,
   FilingType,
   InsiderTrade,
   JintelClient,
@@ -21,7 +22,7 @@ import { buildBatchEnrichQuery } from '@yojinhq/jintel-client';
 
 import { formatAssetLabel } from './format-label.js';
 import { isShortInterestFresh } from './freshness.js';
-import { formatNumber, riskSignalsToRaw } from './tools.js';
+import { fdaEventsToRaw, formatNumber, governmentContractsToRaw, riskSignalsToRaw } from './tools.js';
 import type { RedditComment } from './types.js';
 import { createSubsystemLogger } from '../logging/logger.js';
 import type { RawSignalInput, SignalIngestor } from '../signals/ingestor.js';
@@ -47,7 +48,15 @@ const logger = createSubsystemLogger('jintel-signal-fetcher');
 // micro tick (5 min) but cold fields only hourly — cuts Jintel credit burn
 // ~55% vs pulling everything every tick.
 //
-// HOT: intraday-changing — quotes, news articles, social/HN posts, sentiment.
+// PRICE: tied to live market — quote + technical indicators. Only meaningful
+//        when the underlying market is open (equities gated to US RTH by the
+//        scheduler; crypto trades 24/7).
+// NARRATIVE: story-driving feeds — news, sentiment, social, discussions. These
+//        fire around the clock (after-hours press releases, overnight social
+//        moments, weekend reddit threads) and must be polled 24/7 regardless
+//        of market state.
+// HOT = PRICE ∪ NARRATIVE, kept as the union for callers that want every
+//        intraday-changing field (e.g. on-demand agent tools).
 // COLD: updates daily or less — SEC filings, 13F holdings, Form 4, ownership,
 //       earnings press releases. Polling these every 5 min is pure waste.
 //
@@ -55,13 +64,13 @@ const logger = createSubsystemLogger('jintel-signal-fetcher');
 // predictions intentionally excluded — too niche for automated runs, agent-only.
 // research excluded — Exa-backed, returns low-quality web search results (score 0,
 // no URLs, duplicate "Market Snapshot" titles). Available on-demand via get_research tool.
+export const PRICE_ENRICHMENT_FIELDS: readonly EnrichmentField[] = ['market', 'technicals'];
+
+export const NARRATIVE_ENRICHMENT_FIELDS: readonly EnrichmentField[] = ['news', 'sentiment', 'social', 'discussions'];
+
 export const HOT_ENRICHMENT_FIELDS: readonly EnrichmentField[] = [
-  'market',
-  'technicals',
-  'news',
-  'sentiment',
-  'social',
-  'discussions',
+  ...PRICE_ENRICHMENT_FIELDS,
+  ...NARRATIVE_ENRICHMENT_FIELDS,
 ];
 
 export const COLD_ENRICHMENT_FIELDS: readonly EnrichmentField[] = [
@@ -71,6 +80,12 @@ export const COLD_ENRICHMENT_FIELDS: readonly EnrichmentField[] = [
   'topHolders',
   'insiderTrades',
   'earningsPressReleases',
+  // Alt-data catalysts shipped in jintel-client 0.23.0. Recalls and large federal awards are
+  // change-driven (they fire on new events); filters below keep the feed clean.
+  // Litigation is deliberately omitted — active-case lists are *state*, not events, and mega-caps
+  // carry dozens of routine procedural filings. It stays available as a pull-only agent tool.
+  'fdaEvents',
+  'governmentContracts',
 ];
 
 export const ENRICHMENT_FIELDS: readonly EnrichmentField[] = [...HOT_ENRICHMENT_FIELDS, ...COLD_ENRICHMENT_FIELDS];
@@ -88,8 +103,30 @@ const SOCIAL_MIN_HN_POINTS = 5;
 // heavy).
 const DEFAULT_CHUNK_SIZE = 8;
 
-/** Small delay before the single retry on a transient batch failure. */
-const RETRY_DELAY_MS = 500;
+// Backoff before the single retry on a transient batch failure. A timeout hang
+// on Jintel rarely recovers in <1s — a short pause gives upstream load a moment
+// to clear before the retry request goes out.
+const RETRY_DELAY_MS = 2_000;
+
+// Per-chunk wall-clock safety net. The Jintel client owns the real request deadline
+// (configured to 90s in composition.ts). This wrapper sits above it so that if the
+// client ever fails to settle the promise — AbortSignal bug, stuck stream — the
+// scheduler's single-flight flag doesn't wedge forever and silently stop ingestion.
+// Set above the client timeout so the client aborts first on normal transient hangs
+// and the retry path handles it; this only fires when the client itself hangs.
+const CHUNK_TIMEOUT_MS = 120_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 /**
  * Return false for deterministic failures that won't recover on retry — 4xx
@@ -107,6 +144,12 @@ function isRetryableError(err: unknown): boolean {
 const MATERIAL_FILING_TYPES: FilingType[] = ['FILING_10K', 'FILING_10Q', 'FILING_8K', 'ANNUAL_REPORT'];
 // Drop LOW-severity risk signal noise; keep everything MEDIUM and above.
 const MEANINGFUL_RISK_SEVERITIES: Severity[] = ['MEDIUM', 'HIGH', 'CRITICAL'];
+// Only enforcement actions (recalls) flow into the Intel Feed. Adverse-event reports fire
+// constantly and would drown out catalysts — they remain available via `get_fda_events`.
+const FDA_EVENT_TYPES_FOR_FEED: FdaEventType[] = ['DRUG_RECALL'];
+// Intel Feed only surfaces material federal awards. $1M floor is too low for defense mega-caps
+// (LMT/RTX see routine $1M-$5M awards weekly); $10M captures catalyst-grade contracts only.
+const GOVERNMENT_CONTRACTS_MIN_AMOUNT_USD = 10_000_000;
 
 export interface JintelFetchResult {
   ingested: number;
@@ -151,6 +194,20 @@ export async function fetchJintelSignals(
   // 0.22.0: discussions and institutionalHoldings now require domain-specific filters.
   const discussionsFilter = { sort: 'DESC' as const, ...(options?.since ? { since: options.since } : {}) };
   const institutionalHoldingsFilter = { limit: 20, sort: 'DESC' as const };
+  // Alt-data catalysts (jintel-client 0.23.0) — filtered to material items only so the Intel
+  // Feed sees recalls, active lawsuits, and meaningful federal awards instead of raw firehose.
+  const fdaEventsFilter = {
+    types: FDA_EVENT_TYPES_FOR_FEED,
+    sort: 'DESC' as const,
+    limit: 5,
+    ...(options?.since ? { since: options.since } : {}),
+  };
+  const governmentContractsFilter = {
+    minAmount: GOVERNMENT_CONTRACTS_MIN_AMOUNT_USD,
+    sort: 'DESC' as const,
+    limit: 5,
+    ...(options?.since ? { since: options.since } : {}),
+  };
   const enrichOpts: EnrichOptions = {
     filter: arrayFilter,
     filingsFilter,
@@ -160,6 +217,8 @@ export async function fetchJintelSignals(
     topHoldersFilter,
     discussionsFilter,
     institutionalHoldingsFilter,
+    fdaEventsFilter,
+    governmentContractsFilter,
   };
   const fields = options?.fields ?? ENRICHMENT_FIELDS;
   const query = buildBatchEnrichQuery([...fields], enrichOpts);
@@ -180,6 +239,8 @@ export async function fetchJintelSignals(
     topHoldersFilter,
     discussionsFilter,
     institutionalHoldingsFilter,
+    fdaEventsFilter,
+    governmentContractsFilter,
   };
 
   for (let i = 0; i < tickers.length; i += chunkSize) {
@@ -194,7 +255,11 @@ export async function fetchJintelSignals(
     // 500ms delay tax on failures that can't recover.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        entities = await client.request<Entity[]>(query, { tickers: chunk, ...requestVars });
+        entities = await withTimeout(
+          client.request<Entity[]>(query, { tickers: chunk, ...requestVars }),
+          CHUNK_TIMEOUT_MS,
+          `Jintel batch fetch (${chunk.length} tickers)`,
+        );
         break;
       } catch (err) {
         lastError = err;
@@ -202,6 +267,7 @@ export async function fetchJintelSignals(
           logger.warn('Jintel batch fetch failed — retrying once', {
             chunk: chunk.slice(0, 3),
             error: err instanceof Error ? err.message : String(err),
+            retryDelayMs: RETRY_DELAY_MS,
           });
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
         } else {
@@ -536,6 +602,18 @@ export function enrichmentToSignals(entity: Entity, tickers: string[]): RawSigna
         metadata: { reportDate: si.reportDate, source: si.source },
       });
     }
+  }
+
+  // 5a. FDA enforcement actions (DRUG_RECALL only) — REGULATORY signals.
+  //     Adverse-event reports are excluded at the filter layer to keep the feed clean.
+  if (entity.fdaEvents?.length) {
+    signals.push(...fdaEventsToRaw(entity.fdaEvents, tickers));
+  }
+
+  // 5b. Material federal contracts (>= $10M) — FUNDAMENTAL signals.
+  //     Small awards are excluded at the filter layer to avoid feed dilution.
+  if (entity.governmentContracts?.length) {
+    signals.push(...governmentContractsToRaw(entity.governmentContracts, tickers));
   }
 
   // 5. SEC filings (Jintel returns newest-first, limited by ArraySubGraphOptions)
@@ -1087,13 +1165,17 @@ export async function fetchMacroIndicators(client: JintelClient, ingestor: Signa
 
   // Fire all macro queries in parallel via typed client methods (v0.20.0+ accept ArrayFilterInput).
   // These return JintelResult<T> and never throw — no Promise.allSettled needed.
-  const [gdpResult, inflationResult, ratesResult, peResult, shillerResult] = await Promise.all([
-    client.gdp('US', 'REAL', latestOnly),
-    client.inflation('US', latestOnly),
-    client.interestRates('US', latestOnly),
-    client.sp500Multiples('PE_MONTH', latestOnly),
-    client.sp500Multiples('SHILLER_PE_MONTH', latestOnly),
-  ]);
+  const [gdpResult, inflationResult, ratesResult, peResult, shillerResult] = await withTimeout(
+    Promise.all([
+      client.gdp('US', 'REAL', latestOnly),
+      client.inflation('US', latestOnly),
+      client.interestRates('US', latestOnly),
+      client.sp500Multiples('PE_MONTH', latestOnly),
+      client.sp500Multiples('SHILLER_PE_MONTH', latestOnly),
+    ]),
+    CHUNK_TIMEOUT_MS,
+    'Jintel macro indicators fetch',
+  );
 
   // GDP
   if (gdpResult.success && gdpResult.data.length > 0) {

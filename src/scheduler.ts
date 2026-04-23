@@ -37,10 +37,12 @@ import { buildMacroSummaryInputs } from './insights/macro-summary-builder.js';
 import type { MicroInsightStore } from './insights/micro-insight-store.js';
 import { runMicroResearch } from './insights/micro-runner.js';
 import type { MicroInsight, MicroInsightSource } from './insights/micro-types.js';
+import type { SupplyChainMap } from './insights/supply-chain-types.js';
 import type { InsightReport } from './insights/types.js';
 import {
   COLD_ENRICHMENT_FIELDS,
-  HOT_ENRICHMENT_FIELDS,
+  NARRATIVE_ENRICHMENT_FIELDS,
+  PRICE_ENRICHMENT_FIELDS,
   fetchJintelSignals,
   fetchMacroIndicators,
 } from './jintel/signal-fetcher.js';
@@ -165,6 +167,13 @@ export interface SchedulerOptions {
   profileStore?: TickerProfileStore;
   /** Signal archive — for building single-ticker DataBriefs. */
   signalArchive?: SignalArchive;
+  /**
+   * Resolver for per-ticker supply-chain maps. Passed through to the micro
+   * runner so the analyst sees upstream/downstream counterparties + recent
+   * counterparty signals in the DataBrief. Typically the same
+   * `ensureSupplyChainMap` closure the GraphQL resolver uses.
+   */
+  getSupplyChainMap?: (ticker: string) => Promise<SupplyChainMap | null>;
   /** Micro research interval in ms (default: 5 * 60_000 = 5 minutes). */
   microIntervalMs?: number;
   /** Minimum interval between LLM analyses per asset in ms (default: 4h). */
@@ -286,6 +295,7 @@ export class Scheduler {
   private readonly memoryStores?: Map<MemoryAgentRole, SignalMemoryStore>;
   private readonly profileStore?: TickerProfileStore;
   private readonly signalArchive?: SignalArchive;
+  private readonly getSupplyChainMap?: (ticker: string) => Promise<SupplyChainMap | null>;
   private readonly microIntervalMs: number;
   /** Minimum interval between LLM analyses per asset. Settable at runtime. */
   private microLlmIntervalMs: number;
@@ -340,6 +350,7 @@ export class Scheduler {
     this.memoryStores = options.memoryStores;
     this.profileStore = options.profileStore;
     this.signalArchive = options.signalArchive;
+    this.getSupplyChainMap = options.getSupplyChainMap;
     this.microIntervalMs = options.microIntervalMs ?? DEFAULT_MICRO_INTERVAL_MS;
     this.microLlmIntervalMs = options.microLlmIntervalMs ?? DEFAULT_MICRO_LLM_INTERVAL_MS;
   }
@@ -572,11 +583,14 @@ export class Scheduler {
     logger.info('Micro research batch started', { symbols });
 
     try {
-      // Fetch Jintel signals. Two-axis split:
-      //   1. Field cadence: HOT fields (quote/news/social) every tick, COLD fields
-      //      (filings, 13F, Form 4, ownership) only hourly. Cuts credit burn ~55%.
-      //   2. Market-hours gating: equities skip the HOT fetch outside US market hours
-      //      — news/sentiment barely change overnight. Crypto runs HOT 24/7.
+      // Fetch Jintel signals. Three-axis split:
+      //   1. PRICE fields (market/technicals) — gated to US market hours for
+      //      equities; crypto runs 24/7. Quotes off-hours are stale placeholders.
+      //   2. NARRATIVE fields (news/sentiment/social/discussions) — 24/7 for
+      //      every asset class. After-hours press releases, overnight social
+      //      moments, and weekend threads must not wait for the next open.
+      //   3. COLD fields (filings, 13F, Form 4, ownership) — at most hourly.
+      //      Filings update daily at best; polling every 5 min is pure waste.
       // Within each fetch, bucket first-run (7d window) vs recurring (oldest lastMicroAt)
       // so a single cold start doesn't drag the batch to 7d. fetchJintelSignals chunks
       // internally to stay under the Jintel 20-symbol-per-request cap.
@@ -587,10 +601,15 @@ export class Scheduler {
         const marketOpen = isUSMarketOpen();
         const ingestor = this.signalIngestor;
 
-        const hotEligible = assets.filter((a) => {
+        const priceEligible = assets.filter((a) => {
           const state = this.microRegistry.get(a.symbol);
           return isAlwaysOnAsset(state) || marketOpen;
         });
+
+        // Narrative fires for everyone every tick — news/sentiment/social have no
+        // market-hours concept. Earnings releases, Korean market moves, viral
+        // tweets, and weekend reddit threads must all land within one cycle.
+        const narrativeEligible = assets;
 
         const coldEligible = assets.filter((a) => {
           const last = this.microRegistry.get(a.symbol)?.lastColdMicroAt;
@@ -633,9 +652,13 @@ export class Scheduler {
           return { ingested, duplicates };
         };
 
-        const hotResult = await runFetch(
-          hotEligible.map((a) => a.symbol),
-          HOT_ENRICHMENT_FIELDS,
+        const priceResult = await runFetch(
+          priceEligible.map((a) => a.symbol),
+          PRICE_ENRICHMENT_FIELDS,
+        );
+        const narrativeResult = await runFetch(
+          narrativeEligible.map((a) => a.symbol),
+          NARRATIVE_ENRICHMENT_FIELDS,
         );
         const coldResult = await runFetch(
           coldEligible.map((a) => a.symbol),
@@ -652,15 +675,16 @@ export class Scheduler {
           }
         }
 
-        const totalIngested = hotResult.ingested + coldResult.ingested;
-        const totalDuplicates = hotResult.duplicates + coldResult.duplicates;
-        if (totalIngested > 0 || hotEligible.length !== assets.length || coldEligible.length > 0) {
+        const totalIngested = priceResult.ingested + narrativeResult.ingested + coldResult.ingested;
+        const totalDuplicates = priceResult.duplicates + narrativeResult.duplicates + coldResult.duplicates;
+        if (totalIngested > 0 || priceEligible.length !== assets.length || coldEligible.length > 0) {
           logger.info('Micro research Jintel fetch', {
             ingested: totalIngested,
             duplicates: totalDuplicates,
-            hotSymbols: hotEligible.length,
+            priceSymbols: priceEligible.length,
+            narrativeSymbols: narrativeEligible.length,
             coldSymbols: coldEligible.length,
-            skippedEquitiesOffHours: assets.length - hotEligible.length,
+            skippedEquitiesOffHours: assets.length - priceEligible.length,
             marketOpen,
           });
         }
@@ -763,6 +787,16 @@ export class Scheduler {
                 llmReadyFlags[i] = false;
                 continue;
               }
+            } else {
+              // First LLM pass for this asset in this scheduler instance —
+              // mirror the signal-gate's first-run escape so every registered
+              // asset establishes a baseline MICRO insight (and therefore a
+              // MICRO summary) at least once. Without this, assets whose
+              // narrow 10-min freshness window happens to land on a Jintel
+              // outage or an off-hours equity fetch can never cross the gate
+              // and stay permanently starved of LLM analysis.
+              llmReadyFlags[i] = true;
+              continue;
             }
             // Freshness short-circuit: if baseline is newer than the LLM window,
             // the signal-gate already proved freshness — no extra archive query.
@@ -836,6 +870,9 @@ export class Scheduler {
                 profileStore: this.profileStore,
                 signalsSince: isFirstRun ? fourDaysAgo : oneDayAgo,
                 enrichFields: readyForLlm ? undefined : lightFields,
+                // Supply-chain brief only matters when the LLM is actually running;
+                // trigger-only light passes skip the Jintel round-trip.
+                getSupplyChainMap: readyForLlm ? this.getSupplyChainMap : undefined,
               },
               eventLog: this.eventLog,
             });
@@ -1782,43 +1819,62 @@ export class Scheduler {
     state.lastRuns['process-insights'] = new Date().toISOString();
     await this.saveState(state);
 
+    // Capture the pre-run report id so post-save work can detect whether this
+    // run actually produced a new report — even if the orchestrator throws
+    // after `save_insight_report` already committed it to disk.
+    const preRunInsightId = (await this.insightStore?.getLatest())?.id ?? null;
+    let workflowSucceeded = false;
+
     try {
       await this.orchestrator.execute('process-insights', {
         message: reason,
       });
 
       this.recordLlmSuccess();
+      workflowSucceeded = true;
       logger.info('Process-insights completed');
-
-      // Notify channels that a new insight report is available
-      const latestInsight = await this.insightStore?.getLatest();
-      if (latestInsight) {
-        this.notificationBus?.publish({ type: 'insight.ready', insightId: latestInsight.id });
-
-        // Persist per-position and portfolio-level Summaries from the macro
-        // report so the Intel Feed has neutral observations from both flows.
-        await this.persistMacroSummaries(latestInsight);
-      }
-
-      if (this.eventLog) {
-        await this.eventLog.append({
-          type: 'insight',
-          data: { message: 'Portfolio insights report generated' },
-        });
-      }
-
-      // Run reflection sweep after insights — grades past predictions older than 7 days
-      if (this.reflectionEngine) {
-        try {
-          const sweep = await this.reflectionEngine.runSweep({ olderThanDays: 7 });
-          logger.info('Post-insights reflection sweep completed', { ...sweep });
-        } catch (err) {
-          logger.warn('Reflection sweep failed (non-fatal)', { error: err });
-        }
-      }
     } catch (err) {
       this.recordLlmError(err);
       logger.error('Process-insights failed', { error: err });
+      // Fall through — the Strategist may have already saved a report via
+      // the save_insight_report tool before the later throw (e.g. an LLM
+      // timeout on a subsequent iteration). Without this, a flaky LLM call
+      // leaves the Intel Feed empty of MACRO observations for the whole
+      // portfolio even though a valid report is on disk.
+    }
+
+    const latestInsight = await this.insightStore?.getLatest();
+    const hasNewReport = !!latestInsight && latestInsight.id !== preRunInsightId;
+    if (latestInsight && hasNewReport) {
+      this.notificationBus?.publish({ type: 'insight.ready', insightId: latestInsight.id });
+
+      try {
+        await this.persistMacroSummaries(latestInsight);
+      } catch (err) {
+        logger.warn('Failed to persist macro summaries (non-fatal)', { error: err });
+      }
+
+      if (this.eventLog) {
+        try {
+          await this.eventLog.append({
+            type: 'insight',
+            data: { message: 'Portfolio insights report generated' },
+          });
+        } catch (err) {
+          logger.warn('Failed to append insight event (non-fatal)', { error: err });
+        }
+      }
+    }
+
+    // Run reflection sweep after insights — grades past predictions older
+    // than 7 days. Gated on workflow success to match prior behavior.
+    if (workflowSucceeded && this.reflectionEngine) {
+      try {
+        const sweep = await this.reflectionEngine.runSweep({ olderThanDays: 7 });
+        logger.info('Post-insights reflection sweep completed', { ...sweep });
+      } catch (err) {
+        logger.warn('Reflection sweep failed (non-fatal)', { error: err });
+      }
     }
   }
 

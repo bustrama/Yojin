@@ -546,6 +546,12 @@ export const typeDefs = /* GraphQL */ `
     MICRO
   }
 
+  enum SummaryScope {
+    PORTFOLIO
+    WATCHLIST
+    ALL
+  }
+
   type SummarySourceSignal {
     id: ID!
     type: SignalType!
@@ -986,6 +992,105 @@ export const typeDefs = /* GraphQL */ `
   }
 
   # ---------------------------------------------------------------------------
+  # Supply Chain (per-ticker 2-hop graph, Phase A: raw capture)
+  # ---------------------------------------------------------------------------
+
+  enum SupplyChainRelationship {
+    SUPPLIER
+    MANUFACTURER
+    PARTNER
+    DISTRIBUTOR
+    LICENSOR
+    JOINT_VENTURE
+  }
+
+  enum Substitutability {
+    HIGH
+    MEDIUM
+    LOW
+  }
+
+  enum EdgeOrigin {
+    JINTEL_DIRECT
+    LLM_INFERRED
+  }
+
+  enum ConcentrationDimension {
+    PRODUCT
+    SEGMENT
+    GEOGRAPHY
+    CUSTOMER
+  }
+
+  type SupplyChainEvidence {
+    connector: String!
+    url: String
+    ref: String
+    asOf: String
+    contextQuote: String
+  }
+
+  type UpstreamEdge {
+    counterpartyName: String!
+    counterpartyTicker: ID
+    counterpartyCik: String
+    relationship: SupplyChainRelationship!
+    edgeOrigin: EdgeOrigin!
+    criticality: Float!
+    substitutability: Substitutability
+    evidence: [SupplyChainEvidence!]!
+    originCountry: String
+  }
+
+  type DownstreamEdge {
+    counterpartyName: String!
+    counterpartyTicker: ID
+    edgeOrigin: EdgeOrigin!
+    sharePct: Float
+    valueUsd: Float
+    evidence: [SupplyChainEvidence!]!
+  }
+
+  type GeographicFootprintEntry {
+    iso2: String!
+    country: String!
+    criticality: Float!
+    entities: [String!]!
+  }
+
+  type ConcentrationFlag {
+    dimension: ConcentrationDimension!
+    hhi: Float!
+    label: String!
+  }
+
+  type SupplyChainSource {
+    connector: String!
+    asOf: String
+    ref: String
+  }
+
+  type ProviderModel {
+    provider: String!
+    model: String!
+  }
+
+  type SupplyChainMap {
+    ticker: ID!
+    entityName: String!
+    upstream: [UpstreamEdge!]!
+    downstream: [DownstreamEdge!]!
+    geographicFootprint: [GeographicFootprintEntry!]!
+    concentrationRisks: [ConcentrationFlag!]!
+    narrative: String
+    asOf: String!
+    dataAsOf: String
+    staleAfter: String!
+    sources: [SupplyChainSource!]!
+    synthesizedBy: ProviderModel
+  }
+
+  # ---------------------------------------------------------------------------
   # Ticker Profiles (per-asset institutional knowledge)
   # ---------------------------------------------------------------------------
 
@@ -1069,8 +1174,12 @@ export const typeDefs = /* GraphQL */ `
     postMarketPrice: Float
     postMarketChange: Float
     postMarketChangePercent: Float
-    sparkline: [Float!]
     enrichedAt: String
+  }
+
+  type WatchlistSparkline {
+    symbol: String!
+    points: [Float!]!
   }
 
   type WatchlistResult implements MutationResult {
@@ -1367,6 +1476,7 @@ export const typeDefs = /* GraphQL */ `
     insightReports(limit: Int): [InsightReport!]!
     insightReport(id: ID!): InsightReport
     watchlist: [WatchlistEntry!]!
+    watchlistSparklines: [WatchlistSparkline!]!
     insightsWorkflowStatus: WorkflowStatus!
     briefingConfig: BriefingConfig
     schedulerStatus: SchedulerStatus!
@@ -1374,7 +1484,7 @@ export const typeDefs = /* GraphQL */ `
     notificationPreferences: [NotificationPreferences!]!
     snap: Snap
     activityLog(types: [ActivityEventType!], since: String, limit: Int): [ActivityEvent!]!
-    summaries(ticker: String, flow: SummaryFlow, since: String, limit: Int): [Summary!]!
+    summaries(ticker: String, flow: SummaryFlow, since: String, limit: Int, scope: SummaryScope): [Summary!]!
     summary(id: ID!): Summary
     actions(status: ActionStatus, since: String, limit: Int, dismissed: Boolean): [Action!]!
     action(id: ID!): Action
@@ -1391,6 +1501,8 @@ export const typeDefs = /* GraphQL */ `
     tickerProfiles(tickers: [String!]!): [TickerProfile!]!
     microInsight(symbol: String!): MicroInsight
     microInsights: [MicroInsight!]!
+    supplyChainMap(ticker: ID!): SupplyChainMap
+    supplyChainMapsByTickers(tickers: [ID!]!): [SupplyChainMap!]!
     aiConfig: AiConfig!
   }
 
