@@ -102,16 +102,17 @@ function dedup(data: PriceChartDatum[], intraday: boolean): PriceChartDatum[] {
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function toTime(dateStr: string, intraday: boolean): Time {
-  if (intraday) {
-    return Math.floor(new Date(dateStr).getTime() / 1000) as UTCTimestamp;
-  }
-  return dateStr as Time;
+// Bare Jintel timestamps ("2026-03-31 16:30:00") are parsed as local time in Chrome — force UTC.
+function parseUTC(dateStr: string): Date {
+  if (dateStr.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateStr)) return new Date(dateStr);
+  return new Date(dateStr.replace(' ', 'T') + 'Z');
 }
 
+// Intraday uses the bar index as `time` so lightweight-charts collapses non-trading gaps
+// (TradingView-style). Real timestamps are recovered from `barTimes` for labels/tooltips.
 function toChartData(data: PriceChartDatum[], intraday: boolean): CandlestickData<Time>[] {
-  return data.map((d) => ({
-    time: toTime(d.date, intraday),
+  return data.map((d, i) => ({
+    time: intraday ? (i as UTCTimestamp) : (d.date as Time),
     open: d.open,
     high: d.high,
     low: d.low,
@@ -120,11 +121,41 @@ function toChartData(data: PriceChartDatum[], intraday: boolean): CandlestickDat
 }
 
 function toVolumeData(data: PriceChartDatum[], intraday: boolean): HistogramData<Time>[] {
-  return data.map((d) => ({
-    time: toTime(d.date, intraday),
+  return data.map((d, i) => ({
+    time: intraday ? (i as UTCTimestamp) : (d.date as Time),
     value: d.volume,
     color: d.close >= d.open ? COLORS.volumeUp : COLORS.volumeDown,
   }));
+}
+
+function buildBarTimes(data: PriceChartDatum[]): number[] {
+  return data.map((d) => Math.floor(parseUTC(d.date).getTime() / 1000));
+}
+
+function formatEtTime(ts: number): string {
+  return new Date(ts * 1000).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/New_York',
+  });
+}
+
+function formatEtDay(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'America/New_York',
+  });
+}
+
+function etDayKey(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'America/New_York',
+  });
 }
 
 function timeToMs(t: Time): number {
@@ -133,15 +164,44 @@ function timeToMs(t: Time): number {
   return Date.UTC(t.year, t.month - 1, t.day);
 }
 
-function applyInitialWindow(chart: IChartApi, candles: CandlestickData<Time>[], windowMs: number): void {
+function formatDailyTick(time: Time): string {
+  const ms = timeToMs(time);
+  const d = new Date(ms);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function formatDailyCrosshair(time: Time): string {
+  const ms = timeToMs(time);
+  const d = new Date(ms);
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function applyInitialWindow(
+  chart: IChartApi,
+  candles: CandlestickData<Time>[],
+  barTimes: number[],
+  windowMs: number,
+  intraday: boolean,
+): void {
   if (candles.length === 0) return;
-  const lastMs = timeToMs(candles[candles.length - 1].time);
-  const cutoffMs = lastMs - windowMs;
   let fromIndex = 0;
-  for (let i = 0; i < candles.length; i++) {
-    if (timeToMs(candles[i].time) >= cutoffMs) {
-      fromIndex = i;
-      break;
+  if (intraday && barTimes.length > 0) {
+    const lastMs = barTimes[barTimes.length - 1] * 1000;
+    const cutoffMs = lastMs - windowMs;
+    for (let i = 0; i < barTimes.length; i++) {
+      if (barTimes[i] * 1000 >= cutoffMs) {
+        fromIndex = i;
+        break;
+      }
+    }
+  } else {
+    const lastMs = timeToMs(candles[candles.length - 1].time);
+    const cutoffMs = lastMs - windowMs;
+    for (let i = 0; i < candles.length; i++) {
+      if (timeToMs(candles[i].time) >= cutoffMs) {
+        fromIndex = i;
+        break;
+      }
     }
   }
   chart.timeScale().setVisibleLogicalRange({ from: fromIndex, to: candles.length - 0.5 });
@@ -156,6 +216,7 @@ export function PriceChart({ data, intraday = false, initialWindowMs, resetKey }
   const [chartReady, setChartReady] = useState(false);
   const lastSnappedResetKeyRef = useRef<number | null>(null);
   const lastSnappedDataPropRef = useRef<PriceChartDatum[] | null>(null);
+  const barTimesRef = useRef<number[]>([]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -166,6 +227,33 @@ export function PriceChart({ data, intraday = false, initialWindowMs, resetKey }
       if (width === 0 || height === 0) return;
 
       try {
+        // Dual-mode formatters: intraday uses bar-index `time` (number); daily+
+        // uses a date string / BusinessDay. The chart instance lives across
+        // candle-size switches, so these must handle both cases.
+        const tickFormatter = (time: Time): string => {
+          if (typeof time === 'number') {
+            const idx = Math.round(time);
+            const barTimes = barTimesRef.current;
+            const ts = barTimes[idx];
+            if (ts == null) return '';
+            const prevTs = idx > 0 ? barTimes[idx - 1] : null;
+            if (prevTs != null && etDayKey(prevTs) !== etDayKey(ts)) {
+              return formatEtDay(ts);
+            }
+            return formatEtTime(ts);
+          }
+          return formatDailyTick(time);
+        };
+        const crosshairFormatter = (time: Time): string => {
+          if (typeof time === 'number') {
+            const idx = Math.round(time);
+            const ts = barTimesRef.current[idx];
+            if (ts == null) return '';
+            return `${formatEtDay(ts)} ${formatEtTime(ts)}`;
+          }
+          return formatDailyCrosshair(time);
+        };
+
         const chart = createChart(container, {
           width,
           height,
@@ -187,7 +275,9 @@ export function PriceChart({ data, intraday = false, initialWindowMs, resetKey }
           timeScale: {
             borderColor: COLORS.border,
             timeVisible: intraday,
+            tickMarkFormatter: tickFormatter,
           },
+          localization: { timeFormatter: crosshairFormatter },
           handleScroll: { vertTouchDrag: false },
         });
 
@@ -233,6 +323,7 @@ export function PriceChart({ data, intraday = false, initialWindowMs, resetKey }
       chartRef.current = null;
       lastSnappedResetKeyRef.current = null;
       lastSnappedDataPropRef.current = null;
+      barTimesRef.current = [];
       setChartReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -250,6 +341,7 @@ export function PriceChart({ data, intraday = false, initialWindowMs, resetKey }
     chart.applyOptions({ timeScale: { timeVisible: intraday } });
 
     const clean = sanitize(dedup(data, intraday));
+    barTimesRef.current = intraday ? buildBarTimes(clean) : [];
     const candleData = toChartData(clean, intraday);
     const volumeData = toVolumeData(clean, intraday);
     candleSeries.setData(candleData);
@@ -260,7 +352,7 @@ export function PriceChart({ data, intraday = false, initialWindowMs, resetKey }
     if (resetKeyChanged && dataChanged) {
       lastSnappedResetKeyRef.current = resetKey;
       lastSnappedDataPropRef.current = data;
-      applyInitialWindow(chart, candleData, initialWindowMs);
+      applyInitialWindow(chart, candleData, barTimesRef.current, initialWindowMs, intraday);
     }
   }, [data, intraday, resetKey, initialWindowMs, chartReady]);
 

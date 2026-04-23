@@ -13,7 +13,6 @@ describe('CANDLE_CONFIG', () => {
     expect(CANDLE_CONFIG['15m']).toEqual({
       interval: '15m',
       range: '59d',
-      cryptoRange: '1d',
       initialWindowMs: 1 * DAY_MS,
       intraday: true,
       label: '15min',
@@ -21,7 +20,6 @@ describe('CANDLE_CONFIG', () => {
     expect(CANDLE_CONFIG['30m']).toEqual({
       interval: '30m',
       range: '59d',
-      cryptoRange: '1d',
       initialWindowMs: 2 * DAY_MS,
       intraday: true,
       label: '30min',
@@ -29,7 +27,6 @@ describe('CANDLE_CONFIG', () => {
     expect(CANDLE_CONFIG['1h']).toEqual({
       interval: '1h',
       range: '700d',
-      cryptoRange: '5d',
       initialWindowMs: 3 * DAY_MS,
       intraday: true,
       label: '1h',
@@ -37,7 +34,6 @@ describe('CANDLE_CONFIG', () => {
     expect(CANDLE_CONFIG['1d']).toEqual({
       interval: '1d',
       range: '10y',
-      cryptoRange: '1mo',
       initialWindowMs: 90 * DAY_MS,
       intraday: false,
       label: '1D',
@@ -45,7 +41,6 @@ describe('CANDLE_CONFIG', () => {
     expect(CANDLE_CONFIG['1wk']).toEqual({
       interval: '1wk',
       range: '50y',
-      cryptoRange: 'max',
       initialWindowMs: 365 * DAY_MS,
       intraday: false,
       label: '1W',
@@ -53,7 +48,6 @@ describe('CANDLE_CONFIG', () => {
     expect(CANDLE_CONFIG['1mo']).toEqual({
       interval: '1mo',
       range: '50y',
-      cryptoRange: 'max',
       initialWindowMs: 5 * 365 * DAY_MS,
       intraday: false,
       label: '1M',

@@ -137,6 +137,11 @@ export function isUSMarketSessionAvailable(): boolean {
   return minutes >= 570; // 9:30 AM ET
 }
 
+// Scrapers (Fidelity) sometimes mislabel crypto holdings as EQUITY; symbol suffix is the fallback.
+export function isCryptoSymbol(symbol: string): boolean {
+  return /-USDT?$/i.test(symbol);
+}
+
 /** Parse a candle timestamp as UTC. The Jintel API returns UTC timestamps
  *  without a timezone suffix (e.g. '2026-03-31 16:30:00'). Bare `new Date()`
  *  treats these as local time, shifting the regular-hours filter by the host's
@@ -225,7 +230,9 @@ export async function enrichPortfolioSnapshotWithLiveQuotes(
 
   // Crypto trades 24/7 → always intraday. Equities → intraday only during US market hours.
   const cryptoSet = new Set(
-    snapshot.positions.filter((p) => p.assetClass === 'CRYPTO').map((p) => p.symbol.toUpperCase()),
+    snapshot.positions
+      .filter((p) => p.assetClass === 'CRYPTO' || isCryptoSymbol(p.symbol))
+      .map((p) => p.symbol.toUpperCase()),
   );
   const equitySymbols = symbols.filter((s) => !cryptoSet.has(s));
   const cryptoSymbols = symbols.filter((s) => cryptoSet.has(s));
@@ -274,7 +281,10 @@ export async function enrichPortfolioSnapshotWithLiveQuotes(
   const [quotesResult, equityHistoryMap, cryptoHistoryMap] = await Promise.all([
     quotesPromise,
     equitySymbols.length > 0 ? fetchHistory(equitySymbols, equityRange, equityInterval) : undefined,
-    cryptoSymbols.length > 0 ? fetchHistory(cryptoSymbols, '1d', '1m') : undefined,
+    // Crypto trades 24h: use 5m candles to keep point count (~288) close to
+    // the ~390-point regular-hours equity sparkline — 1m over 24h is 1440
+    // points crammed into 80px, which renders visibly denser/noisier than equities.
+    cryptoSymbols.length > 0 ? fetchHistory(cryptoSymbols, '1d', '5m') : undefined,
   ]);
 
   // Handle quotes failure

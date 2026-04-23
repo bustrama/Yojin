@@ -63,11 +63,6 @@ function writeExtendedHoursPref(value: boolean): void {
   }
 }
 
-// Scraper occasionally mislabels crypto as EQUITY; symbol suffix is the fallback.
-function isCryptoSymbol(symbol: string): boolean {
-  return /-USDT?$/i.test(symbol);
-}
-
 function fmtCurrency(value: number): string {
   return value.toLocaleString('en-US', {
     style: 'currency',
@@ -188,15 +183,16 @@ function AssetDetailContent({ symbol, onClose }: { symbol: string; onClose: () =
   const [quoteResult] = useQuote(symbol);
   const quote = quoteResult.data?.quote ?? undefined;
 
-  const isEquity = position != null && position.assetClass !== 'CRYPTO' && !isCryptoSymbol(symbol);
+  // Session filter (regular-hours / extended-hours) applies only to equities.
+  // Scraper (Fidelity) occasionally mislabels crypto as EQUITY; symbol suffix is the fallback.
+  const isEquity = position != null && position.assetClass !== 'CRYPTO' && !/-USDT?$/i.test(symbol);
 
   const [candle, setCandle] = useState<Candle>('15m');
   const [resetKey, setResetKey] = useState(0);
   const [extendedHours, setExtendedHoursState] = useState<boolean>(() => readExtendedHoursPref());
 
   const candleConfig = CANDLE_CONFIG[candle];
-  const { interval, intraday, initialWindowMs } = candleConfig;
-  const range = isEquity ? candleConfig.range : candleConfig.cryptoRange;
+  const { interval, range, intraday, initialWindowMs } = candleConfig;
 
   const pickCandle = useCallback(
     (next: Candle) => {
