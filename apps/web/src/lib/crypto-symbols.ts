@@ -24,7 +24,10 @@ export const CRYPTO_SYMBOLS = new Set([
 ]);
 
 export function isCryptoSymbol(symbol: string): boolean {
-  return CRYPTO_SYMBOLS.has(symbol.toUpperCase()) || /-USDT?$/i.test(symbol);
+  const upper = symbol.toUpperCase();
+  if (CRYPTO_SYMBOLS.has(upper)) return true;
+  const base = /^([A-Z0-9]+)-(?:USDT?)$/.exec(upper)?.[1];
+  return base !== undefined && CRYPTO_SYMBOLS.has(base);
 }
 
 export function inferAssetClass(symbol: string): AssetClass {

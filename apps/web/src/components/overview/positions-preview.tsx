@@ -69,7 +69,8 @@ function Sparkline({
   const showBaseline = dayChangePercent !== 0;
   let baselineY: number | undefined;
   if (showBaseline) {
-    const prevClose = data[0];
+    const currentPrice = data[data.length - 1];
+    const prevClose = currentPrice / (1 + dayChangePercent / 100);
     const rawY = 32 - ((prevClose - min) / range) * 24 - 4;
     baselineY = Math.max(0.5, Math.min(31.5, rawY));
   }

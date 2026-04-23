@@ -197,7 +197,9 @@ export class FidelityUiConnector implements TieredPlatformConnector {
         };
 
         const symbol = symbolEl.textContent.trim();
-        const isCrypto = cryptoSet.has(symbol.toUpperCase()) || /-USDT?$/i.test(symbol);
+        const symbolUpper = symbol.toUpperCase();
+        const base = /^([A-Z0-9]+)-(?:USDT?)$/.exec(symbolUpper)?.[1];
+        const isCrypto = cryptoSet.has(symbolUpper) || (base !== undefined && cryptoSet.has(base));
 
         positions.push({
           symbol,
